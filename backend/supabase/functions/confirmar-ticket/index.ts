@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 
 async function verifySessionToken(
   token: string,
@@ -23,18 +24,7 @@ async function verifySessionToken(
   }
 }
 
-// Stub: placeholder for Google Sheets integration
-async function enviarAGoogleSheets(registro: Record<string, unknown>): Promise<void> {
-  // TODO: Implement Google Sheets API call
-  // 1. Authenticate with a service account (GOOGLE_SERVICE_ACCOUNT_KEY env var)
-  // 2. Determine target spreadsheet (GOOGLE_SHEETS_ID env var)
-  // 3. Determine sheet tab by current month (e.g. "2024-06")
-  // 4. Append a row with: fecha, comercio, producto, cantidad, monto, categoria, sucursal, empleado, storage_path
-  console.log('[Google Sheets stub] Registro a enviar:', registro)
-}
-
 serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -47,7 +37,6 @@ serve(async (req: Request) => {
       })
     }
 
-    // Validate session token
     const authHeader = req.headers.get('Authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Token de sesión requerido' }), {
@@ -81,10 +70,13 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-    // Fetch the pending record — also verify it belongs to the session's empleado
     const { data: registro, error: fetchError } = await supabase
       .from('registros_tickets')
-      .select('*')
+      .select(`
+        *,
+        sucursales:sucursal_id ( nombre ),
+        empleados:empleado_id ( nombre )
+      `)
       .eq('id', registro_id)
       .eq('empleado_id', sessionPayload.sub)
       .eq('estado', 'pendiente')
@@ -100,60 +92,73 @@ serve(async (req: Request) => {
       )
     }
 
-    // Build archive path: archivo/YYYY-MM/<original_filename>
+    // Build archive path
     const now = new Date()
     const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const originalFilename = registro.storage_path.split('/').pop()!
+    const originalPath = registro.storage_path_original
+    const originalFilename = originalPath?.split('/').pop() ?? `${registro_id}.jpg`
     const archivoPath = `${yearMonth}/${originalFilename}`
 
-    // Move file: copy to 'archivo' bucket then delete from 'por-revisar'
-    const { error: copyError } = await supabase.storage
-      .from('archivo')
-      .copy(archivoPath, registro.storage_path, { sourceStorage: 'por-revisar' } as never)
+    // Move file: download from por-revisar, upload to archivo
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('por-revisar')
+      .download(originalPath)
 
-    if (copyError) {
-      // Supabase Storage doesn't have a native cross-bucket copy via JS SDK yet.
-      // Workaround: download then upload.
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('por-revisar')
-        .download(registro.storage_path)
-
-      if (downloadError || !fileData) {
-        console.error('Download error:', downloadError)
-        return new Response(JSON.stringify({ error: 'Error al mover la imagen' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
-      const fileBuffer = await fileData.arrayBuffer()
-
-      const { error: uploadError } = await supabase.storage
-        .from('archivo')
-        .upload(archivoPath, fileBuffer, {
-          contentType: fileData.type,
-          upsert: true,
-        })
-
-      if (uploadError) {
-        console.error('Archive upload error:', uploadError)
-        return new Response(JSON.stringify({ error: 'Error al archivar la imagen' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
+    if (downloadError || !fileData) {
+      console.error('Download error:', downloadError)
+      return new Response(JSON.stringify({ error: 'Error al mover la imagen' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    // Delete from 'por-revisar'
-    await supabase.storage.from('por-revisar').remove([registro.storage_path])
+    const fileBuffer = await fileData.arrayBuffer()
 
-    // Update record: estado → 'confirmado', update storage_path to archive path
+    const { error: uploadError } = await supabase.storage
+      .from('archivo')
+      .upload(archivoPath, fileBuffer, {
+        contentType: fileData.type,
+        upsert: true,
+      })
+
+    if (uploadError) {
+      console.error('Archive upload error:', uploadError)
+      return new Response(JSON.stringify({ error: 'Error al archivar la imagen' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    await supabase.storage.from('por-revisar').remove([originalPath])
+
+    const confirmadoEn = now.toISOString()
+
+    // Send to Google Sheets
+    let sheetsRowId: string | null = null
+    try {
+      sheetsRowId = await enviarAGoogleSheets({
+        fecha_ticket: registro.fecha_ticket,
+        comercio: registro.comercio,
+        producto: registro.producto,
+        cantidad: registro.cantidad,
+        monto: registro.monto,
+        categoria_gasto: registro.categoria_gasto,
+        sucursal_nombre: registro.sucursales?.nombre ?? sessionPayload.slug,
+        empleado_nombre: registro.empleados?.nombre ?? 'Desconocido',
+        storage_path: archivoPath,
+        confirmado_en: confirmadoEn,
+      })
+    } catch (sheetsErr) {
+      console.error('Google Sheets error (non-blocking):', sheetsErr)
+    }
+
     const { error: updateError } = await supabase
       .from('registros_tickets')
       .update({
         estado: 'confirmado',
-        storage_path: archivoPath,
-        confirmado_en: new Date().toISOString(),
+        storage_path_archivo: archivoPath,
+        confirmado_en: confirmadoEn,
+        sheets_row_id: sheetsRowId,
       })
       .eq('id', registro_id)
 
@@ -165,10 +170,7 @@ serve(async (req: Request) => {
       })
     }
 
-    // Send to Google Sheets (stub)
-    await enviarAGoogleSheets({ ...registro, storage_path: archivoPath, estado: 'confirmado' })
-
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, sheets_row: sheetsRowId }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

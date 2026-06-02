@@ -191,7 +191,7 @@ serve(async (req: Request) => {
         sucursal_id: sucursalId,
         empleado_id: empleadoId,
         hash_imagen: hashImagen,
-        storage_path: storagePath,
+        storage_path_original: storagePath,
         estado: 'pendiente',
         fecha_ticket: datosExtraidos.fecha ?? null,
         comercio: datosExtraidos.comercio ?? null,
@@ -199,7 +199,7 @@ serve(async (req: Request) => {
         cantidad: datosExtraidos.cantidad ?? null,
         monto: datosExtraidos.monto ?? null,
         categoria_gasto: datosExtraidos.categoria_gasto ?? null,
-        respuesta_gemini_raw: geminiText,
+        gemini_raw: datosExtraidos,
       })
       .select('id')
       .single()
