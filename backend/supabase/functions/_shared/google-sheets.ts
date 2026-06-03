@@ -116,7 +116,7 @@ async function ensureSheetTab(
 
   // Add header row
   await fetch(
-    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(tabName)}!A1:J1?valueInputOption=RAW`,
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(tabName)}!A1:K1?valueInputOption=RAW`,
     {
       method: 'PUT',
       headers: {
@@ -124,7 +124,7 @@ async function ensureSheetTab(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        values: [['Fecha Ticket', 'Comercio', 'Producto', 'Cantidad', 'Monto', 'Categoría', 'Sucursal', 'Empleado', 'Archivo', 'Confirmado']],
+        values: [['Fecha', 'Folio', 'Comercio', 'Producto', 'Cantidad', 'Unidad', 'Monto', 'Categoria', 'Empleado', 'Archivo', 'Confirmado']],
       }),
     }
   )
@@ -132,9 +132,11 @@ async function ensureSheetTab(
 
 export interface TicketRow {
   fecha_ticket: string | null
+  folio_ticket: string | null
   comercio: string | null
   producto: string | null
   cantidad: number | null
+  unidad: string | null
   monto: number | null
   categoria_gasto: string | null
   sucursal_nombre: string
@@ -155,25 +157,27 @@ export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> 
   const token = await getAccessToken(sa)
 
   const now = new Date()
-  const tabName = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const tabName = `${registro.sucursal_nombre} ${yearMonth}`
 
   await ensureSheetTab(spreadsheetId, token, tabName)
 
   const row = [
     registro.fecha_ticket ?? '',
+    registro.folio_ticket ?? '',
     registro.comercio ?? '',
     registro.producto ?? '',
     registro.cantidad ?? '',
+    registro.unidad ?? '',
     registro.monto ?? '',
     registro.categoria_gasto ?? '',
-    registro.sucursal_nombre,
     registro.empleado_nombre,
     registro.storage_path,
     registro.confirmado_en,
   ]
 
   const appendRes = await fetch(
-    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(tabName)}!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(tabName)}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: 'POST',
       headers: {

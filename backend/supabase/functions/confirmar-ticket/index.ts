@@ -138,9 +138,11 @@ serve(async (req: Request) => {
     try {
       sheetsRowId = await enviarAGoogleSheets({
         fecha_ticket: registro.fecha_ticket,
+        folio_ticket: registro.folio_ticket,
         comercio: registro.comercio,
         producto: registro.producto,
         cantidad: registro.cantidad,
+        unidad: registro.unidad,
         monto: registro.monto,
         categoria_gasto: registro.categoria_gasto,
         sucursal_nombre: registro.sucursales?.nombre ?? sessionPayload.slug,
