@@ -92,10 +92,23 @@
 
 ---
 
+## Fase 1 Backend — COMPLETADA (2026-06-03)
+
+Todo en branch `feat/fase1-backoffice-backend`:
+- [x] 4 tablas nuevas: categorias_gasto, catalogo_productos, alertas_tickets, presupuestos
+- [x] 3 columnas nuevas en registros_tickets: folio_ticket, unidad, categoria_id
+- [x] 6 categorias iniciales seeded
+- [x] Modulo catalog.ts: loader + prompt builder + product matcher
+- [x] procesar-ticket mejorado: catalogo como contexto Gemini, folio, unidad, confianza, 3 capas anti-duplicados, alertas automaticas
+- [x] confirmar-ticket: tabs por sucursal+mes, columnas folio y unidad
+- [x] Supabase Auth: admin user + RLS policies para tablas backoffice
+- [x] enviar-alerta-email: notificaciones via Resend para alertas criticas
+- [x] 4 edge functions desplegadas y activas
+
 ## Proxima sesion debe
 
-1. Completar configuracion de Supabase secrets
-2. Desplegar las 3 edge functions
-3. Crear buckets de storage
-4. Insertar datos de prueba
-5. Test end-to-end del flujo completo
+1. Merge branch feat/fase1-backoffice-backend a main
+2. Fase 2: Web /admin (login, dashboard alertas, correccion tickets, catalogo)
+3. Fase 3: Google Sheets dashboard con graficos y presupuestos
+4. Configurar Resend API key cuando se cree cuenta
+5. Test E2E del flujo completo (frontend -> edge functions -> sheets)
