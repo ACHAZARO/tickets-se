@@ -9,6 +9,11 @@
 ### Ultima sesion: 2026-06-02
 - Setup completo: Git, GitHub, Vercel, Supabase, Google Cloud
 - Google Sheets integration implementada en confirmar-ticket
+- 3 Edge Functions desplegadas y activas
+- 4 Supabase Secrets configurados (JWT_SECRET, GEMINI_API_KEY, GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID)
+- Buckets de storage creados (por-revisar, archivo)
+- Datos de prueba insertados (sucursal-centro, PIN 1234)
+- Fix: verificar_pin search_path para pgcrypto en schema extensions
 - Documentacion del proyecto creada (CLAUDE.md, PROJECT_STATE.md)
 
 ---
@@ -42,10 +47,11 @@
 ## Que FALTA
 
 ### Critico (bloquea uso real)
-- [ ] Configurar Supabase Secrets (JWT_SECRET, GEMINI_API_KEY, GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID)
-- [ ] Desplegar Edge Functions a Supabase
-- [ ] Crear buckets de Storage (`por-revisar`, `archivo`)
-- [ ] Insertar datos de prueba (sucursal + empleado con PIN)
+- [x] Configurar Supabase Secrets (JWT_SECRET, GEMINI_API_KEY, GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID)
+- [x] Desplegar Edge Functions a Supabase (3 funciones activas)
+- [x] Crear buckets de Storage (`por-revisar`, `archivo`)
+- [x] Insertar datos de prueba (sucursal-centro + Gerente Prueba, PIN: 1234)
+- [x] Fix: verificar_pin search_path (pgcrypto en schema `extensions`, no `public`)
 - [ ] Testing end-to-end del flujo completo
 
 ### Importante (pre-produccion)
