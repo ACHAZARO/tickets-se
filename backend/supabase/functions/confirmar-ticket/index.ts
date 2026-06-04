@@ -133,22 +133,40 @@ serve(async (req: Request) => {
 
     const confirmadoEn = now.toISOString()
 
-    // Send to Google Sheets
+    // Items del ticket (multi-producto). Fallback al registro legacy si no hay items.
+    const { data: itemsData } = await supabase
+      .from('ticket_items')
+      .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id ( nombre )')
+      .eq('registro_ticket_id', registro_id)
+
+    const items = (itemsData ?? []).map((it: Record<string, unknown>) => ({
+      descripcion: (it.descripcion as string) ?? null,
+      cantidad: (it.cantidad as number) ?? null,
+      unidad: (it.unidad as string) ?? null,
+      monto: (it.monto as number) ?? null,
+      categoria_gasto: (it.categorias_gasto as { nombre: string } | null)?.nombre ?? null,
+    }))
+
+    const itemsForSheet = items.length ? items : [{
+      descripcion: registro.producto ?? null,
+      cantidad: registro.cantidad ?? null,
+      unidad: registro.unidad ?? null,
+      monto: registro.monto ?? null,
+      categoria_gasto: registro.categoria_gasto ?? null,
+    }]
+
+    // Send to Google Sheets (una fila por item)
     let sheetsRowId: string | null = null
     try {
       sheetsRowId = await enviarAGoogleSheets({
         fecha_ticket: registro.fecha_ticket,
         folio_ticket: registro.folio_ticket,
         comercio: registro.comercio,
-        producto: registro.producto,
-        cantidad: registro.cantidad,
-        unidad: registro.unidad,
-        monto: registro.monto,
-        categoria_gasto: registro.categoria_gasto,
         sucursal_nombre: registro.sucursales?.nombre ?? sessionPayload.slug,
         empleado_nombre: registro.empleados?.nombre ?? 'Desconocido',
         storage_path: archivoPath,
         confirmado_en: confirmadoEn,
+        items: itemsForSheet,
       })
     } catch (sheetsErr) {
       console.error('Google Sheets error (non-blocking):', sheetsErr)

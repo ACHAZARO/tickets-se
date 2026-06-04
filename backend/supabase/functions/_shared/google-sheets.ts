@@ -130,19 +130,23 @@ async function ensureSheetTab(
   )
 }
 
-export interface TicketRow {
-  fecha_ticket: string | null
-  folio_ticket: string | null
-  comercio: string | null
-  producto: string | null
+export interface SheetItem {
+  descripcion: string | null
   cantidad: number | null
   unidad: string | null
   monto: number | null
   categoria_gasto: string | null
+}
+
+export interface TicketRow {
+  fecha_ticket: string | null
+  folio_ticket: string | null
+  comercio: string | null
   sucursal_nombre: string
   empleado_nombre: string
   storage_path: string
   confirmado_en: string
+  items: SheetItem[]
 }
 
 export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> {
@@ -162,19 +166,23 @@ export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> 
 
   await ensureSheetTab(spreadsheetId, token, tabName)
 
-  const row = [
+  // Una fila por item del ticket (multi-producto)
+  const items = registro.items.length ? registro.items : [
+    { descripcion: null, cantidad: null, unidad: null, monto: registro.items.length ? null : null, categoria_gasto: null },
+  ]
+  const rows = items.map(it => [
     registro.fecha_ticket ?? '',
     registro.folio_ticket ?? '',
     registro.comercio ?? '',
-    registro.producto ?? '',
-    registro.cantidad ?? '',
-    registro.unidad ?? '',
-    registro.monto ?? '',
-    registro.categoria_gasto ?? '',
+    it.descripcion ?? '',
+    it.cantidad ?? '',
+    it.unidad ?? '',
+    it.monto ?? '',
+    it.categoria_gasto ?? '',
     registro.empleado_nombre,
     registro.storage_path,
     registro.confirmado_en,
-  ]
+  ])
 
   const appendRes = await fetch(
     `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(tabName)}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
@@ -184,7 +192,7 @@ export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> 
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ values: [row] }),
+      body: JSON.stringify({ values: rows }),
     }
   )
 

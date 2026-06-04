@@ -67,6 +67,23 @@ export function buildCatalogPromptContext(catalog: Catalog): string {
   return `Categorias validas: ${catList}\n\nProductos conocidos (usa estos para clasificar si aplican):\n${prodLines}`
 }
 
+export function resolveCategoria(
+  name: string | null,
+  categories: CatalogCategory[]
+): CatalogCategory | null {
+  if (!name) return null
+  const n = name.trim().toLowerCase()
+  if (!n) return null
+  return (
+    categories.find(c => c.nombre.toLowerCase() === n) ??
+    categories.find(c => {
+      const cn = c.nombre.toLowerCase()
+      return cn.includes(n) || n.includes(cn)
+    }) ??
+    null
+  )
+}
+
 export function matchProductInCatalog(
   producto: string | null,
   products: CatalogProduct[]
