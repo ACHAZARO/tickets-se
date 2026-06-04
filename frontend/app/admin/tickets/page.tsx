@@ -82,6 +82,16 @@ export default function TicketsPage() {
     return pb ? (urls[`${pb.bucket}/${pb.path}`] ?? null) : null
   }
 
+  async function eliminarTicket(t: Ticket) {
+    if (!confirm('¿Eliminar este ticket? Se borran el registro, sus renglones y la foto. No se puede deshacer.')) return
+    const pb = pathBucket(t)
+    if (pb) await supabase.storage.from(pb.bucket).remove([pb.path])
+    const { error } = await supabase.from('registros_tickets').delete().eq('id', t.id)
+    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    setDetalle(null)
+    setTickets(prev => prev.filter(x => x.id !== t.id))
+  }
+
   async function abrirDetalle(t: Ticket) {
     const { data } = await supabase.from('ticket_items')
       .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre)')
@@ -210,6 +220,12 @@ export default function TicketsPage() {
               <span className="text-zinc-500">Total</span>
               <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
             </div>
+            <button
+              onClick={() => eliminarTicket(detalle.ticket)}
+              className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400 hover:bg-zinc-700"
+            >
+              Eliminar ticket
+            </button>
           </div>
         </div>
       )}
