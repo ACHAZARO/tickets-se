@@ -4,305 +4,175 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 
-interface Categoria {
-  id: string
-  nombre: string
-}
-
+interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null }
 interface Producto {
   id: string
   nombre: string
   sinonimos: string[]
-  categoria_id: string
+  categoria_id: string | null
   unidad_default: string | null
-  precio_referencia: number | null
   veces_matched: number
   activo: boolean
-  categorias_gasto: { nombre: string } | null
+  sucursal_id: string | null
 }
 
 const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
 
-interface FormState {
-  nombre: string
-  categoriaId: string
-  unidad: string
-  precioRef: string
-  sinonimos: string
-  activo: boolean
-}
-
-const EMPTY_FORM: FormState = {
-  nombre: '',
-  categoriaId: '',
-  unidad: '',
-  precioRef: '',
-  sinonimos: '',
-  activo: true,
-}
-
 export default function CatalogoPage() {
   const { sucursalId } = useSucursal()
-  const [productos, setProductos] = useState<Producto[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [productos, setProductos] = useState<Producto[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null) // null = closed, 'new' = adding
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
+  const [nuevaCat, setNuevaCat] = useState('')
+  const [savingCat, setSavingCat] = useState(false)
+  // alta de producto: categoriaId del form abierto -> datos
+  const [addProd, setAddProd] = useState<null | { categoriaId: string; nombre: string; sinonimos: string; unidad: string }>(null)
+  const [savingProd, setSavingProd] = useState(false)
 
   const fetchData = useCallback(async () => {
-    let prodQ = supabase
-      .from('catalogo_productos')
-      .select('id, nombre, sinonimos, categoria_id, unidad_default, precio_referencia, veces_matched, activo, categorias_gasto:categoria_id ( nombre )')
-      .order('nombre')
-    let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
-    // global + sucursal seleccionada
-    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
+    let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id').order('orden')
+    let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id').order('nombre')
     catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
-    const [prodRes, catRes] = await Promise.all([prodQ, catQ])
-    setProductos((prodRes.data as unknown as Producto[]) ?? [])
-    setCategorias(catRes.data ?? [])
+    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
+    const [catRes, prodRes] = await Promise.all([catQ, prodQ])
+    setCategorias((catRes.data as Categoria[] | null) ?? [])
+    setProductos((prodRes.data as Producto[] | null) ?? [])
     setLoading(false)
   }, [sucursalId])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  function openNew() {
-    setForm({ ...EMPTY_FORM, categoriaId: categorias[0]?.id ?? '' })
-    setEditingId('new')
+  async function agregarCat() {
+    if (!nuevaCat.trim()) return
+    setSavingCat(true)
+    const maxOrden = categorias.reduce((m, c) => Math.max(m, c.orden), 0)
+    await supabase.from('categorias_gasto').insert({ nombre: nuevaCat.trim(), orden: maxOrden + 1, sucursal_id: sucursalId || null })
+    setSavingCat(false); setNuevaCat(''); setLoading(true); fetchData()
   }
 
-  function openEdit(p: Producto) {
-    setForm({
-      nombre: p.nombre,
-      categoriaId: p.categoria_id,
-      unidad: p.unidad_default ?? '',
-      precioRef: p.precio_referencia?.toString() ?? '',
-      sinonimos: p.sinonimos.join(', '),
-      activo: p.activo,
+  async function renombrarCat(c: Categoria, nombre: string) {
+    setCategorias(prev => prev.map(x => x.id === c.id ? { ...x, nombre } : x))
+  }
+  async function guardarNombreCat(c: Categoria) {
+    if (c.nombre.trim()) await supabase.from('categorias_gasto').update({ nombre: c.nombre.trim() }).eq('id', c.id)
+  }
+  async function toggleCat(c: Categoria) {
+    await supabase.from('categorias_gasto').update({ activa: !c.activa }).eq('id', c.id)
+    setCategorias(prev => prev.map(x => x.id === c.id ? { ...x, activa: !x.activa } : x))
+  }
+
+  async function guardarProducto() {
+    if (!addProd || !addProd.nombre.trim()) return
+    setSavingProd(true)
+    await supabase.from('catalogo_productos').insert({
+      nombre: addProd.nombre.trim(),
+      sinonimos: addProd.sinonimos ? addProd.sinonimos.split(',').map(s => s.trim()).filter(Boolean) : [],
+      categoria_id: addProd.categoriaId,
+      unidad_default: addProd.unidad || null,
+      sucursal_id: sucursalId || null,
     })
-    setEditingId(p.id)
+    setSavingProd(false); setAddProd(null); setLoading(true); fetchData()
   }
 
-  function closeForm() {
-    setEditingId(null)
-    setForm(EMPTY_FORM)
-  }
-
-  async function handleSave() {
-    if (!form.nombre.trim() || !form.categoriaId) return
-    setSaving(true)
-
-    const payload = {
-      nombre: form.nombre.trim(),
-      categoria_id: form.categoriaId,
-      unidad_default: form.unidad || null,
-      precio_referencia: form.precioRef ? parseFloat(form.precioRef) : null,
-      sinonimos: form.sinonimos
-        ? form.sinonimos.split(',').map(s => s.trim()).filter(Boolean)
-        : [],
-      activo: form.activo,
-    }
-
-    if (editingId === 'new') {
-      await supabase.from('catalogo_productos').insert({ ...payload, sucursal_id: sucursalId || null })
-    } else {
-      await supabase.from('catalogo_productos').update(payload).eq('id', editingId)
-    }
-
-    setSaving(false)
-    closeForm()
-    setLoading(true)
-    fetchData()
-  }
-
-  async function toggleActivo(p: Producto) {
+  async function toggleProd(p: Producto) {
     await supabase.from('catalogo_productos').update({ activo: !p.activo }).eq('id', p.id)
-    setProductos(prev => prev.map(x => (x.id === p.id ? { ...x, activo: !x.activo } : x)))
+    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, activo: !x.activo } : x))
+  }
+  async function eliminarProd(p: Producto) {
+    if (!confirm(`¿Eliminar "${p.nombre}" del catálogo?`)) return
+    await supabase.from('catalogo_productos').delete().eq('id', p.id)
+    setProductos(prev => prev.filter(x => x.id !== p.id))
   }
 
-  const filtered = productos.filter(p => {
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (
-      p.nombre.toLowerCase().includes(q) ||
-      p.sinonimos.some(s => s.toLowerCase().includes(q)) ||
-      (p.categorias_gasto?.nombre ?? '').toLowerCase().includes(q)
-    )
-  })
+  if (loading) {
+    return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+  }
+
+  const prodsPorCat = (catId: string) => productos.filter(p => p.categoria_id === catId)
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-zinc-100">Catalogo de productos</h2>
-        <button
-          onClick={openNew}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white"
-        >
-          + Agregar
-        </button>
+      <div>
+        <h2 className="text-xl font-semibold text-zinc-100">Catálogo y categorías</h2>
+        <p className="text-sm text-zinc-500 mt-1">
+          Cada categoría con sus productos (lo que la IA ha aprendido).{' '}
+          {sucursalId ? 'Ves lo global + lo de esta sucursal; lo nuevo es de esta sucursal.' : 'Ves lo global; elige una sucursal arriba para algo específico.'}
+        </p>
       </div>
 
-      <input
-        type="text"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar por nombre, sinonimo o categoria..."
-        className="w-full rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600"
-      />
+      <div className="flex gap-2">
+        <input value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') agregarCat() }}
+          placeholder="Nueva categoría (ej. Mantenimiento)"
+          className="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600" />
+        <button onClick={agregarCat} disabled={savingCat || !nuevaCat.trim()}
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">+ Categoría</button>
+      </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">
-          {productos.length === 0 ? 'Aun no hay productos en el catalogo' : 'Sin coincidencias'}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map(p => (
-            <div
-              key={p.id}
-              className={`flex items-center gap-4 rounded-xl bg-zinc-900 p-4 ${!p.activo ? 'opacity-50' : ''}`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className="text-sm font-medium text-zinc-100 truncate">{p.nombre}</p>
-                  {p.unidad_default && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.unidad_default}</span>
-                  )}
+      <div className="space-y-4">
+        {categorias.map(c => {
+          const prods = prodsPorCat(c.id)
+          return (
+            <div key={c.id} className={`rounded-2xl bg-zinc-900 overflow-hidden ${!c.activa ? 'opacity-50' : ''}`}>
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <input value={c.nombre} onChange={e => renombrarCat(c, e.target.value)} onBlur={() => guardarNombreCat(c)}
+                    className="text-sm font-medium text-zinc-100 bg-transparent outline-none focus:bg-zinc-800 rounded px-2 py-1 min-w-0" />
+                  {c.sucursal_id === null
+                    ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">global</span>
+                    : <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400">sucursal</span>}
+                  <span className="text-xs text-zinc-600">· {prods.length} prod.</span>
                 </div>
-                <p className="text-xs text-zinc-500 truncate">
-                  {p.categorias_gasto?.nombre ?? 'Sin categoria'}
-                  {p.precio_referencia != null && ` · ref $${p.precio_referencia}`}
-                  {p.veces_matched > 0 && ` · ${p.veces_matched} usos`}
-                  {p.sinonimos.length > 0 && ` · ${p.sinonimos.join(', ')}`}
-                </p>
+                <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
+                  className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap">+ producto</button>
+                <button onClick={() => toggleCat(c)}
+                  className={`text-xs px-2 py-1 rounded-lg ${c.activa ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                  {c.activa ? 'Activa' : 'Inactiva'}
+                </button>
               </div>
 
-              <button
-                onClick={() => toggleActivo(p)}
-                title={p.activo ? 'Desactivar' : 'Activar'}
-                className={`text-xs font-medium px-2 py-1 rounded-lg ${
-                  p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
-                }`}
-              >
-                {p.activo ? 'Activo' : 'Inactivo'}
-              </button>
-              <button
-                onClick={() => openEdit(p)}
-                className="text-sm text-zinc-400 hover:text-zinc-200 px-2"
-              >
-                Editar
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              {addProd?.categoriaId === c.id && (
+                <div className="px-4 py-3 bg-zinc-800/40 space-y-2 border-b border-zinc-800">
+                  <input value={addProd.nombre} onChange={e => setAddProd({ ...addProd, nombre: e.target.value })} placeholder="Nombre del producto (ej. Pasta)"
+                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                  <input value={addProd.sinonimos} onChange={e => setAddProd({ ...addProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. barilla, espagueti)"
+                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                  <div className="flex gap-2">
+                    <select value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
+                      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                      <option value="">Unidad</option>
+                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
+                      className="flex-1 rounded-lg bg-zinc-100 py-1.5 text-sm font-semibold text-zinc-900 disabled:opacity-50">Guardar</button>
+                    <button onClick={() => setAddProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
+                  </div>
+                </div>
+              )}
 
-      {/* Edit / Add panel */}
-      {editingId && (
-        <div
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4"
-          onClick={closeForm}
-        >
-          <div
-            className="w-full md:max-w-md rounded-t-2xl md:rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4 max-h-[90dvh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-zinc-100">
-                {editingId === 'new' ? 'Nuevo producto' : 'Editar producto'}
-              </h3>
-              <button onClick={closeForm} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">×</button>
-            </div>
-
-            <Field label="Nombre" value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} />
-
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Categoria</label>
-              <select
-                value={form.categoriaId}
-                onChange={e => setForm(f => ({ ...f, categoriaId: e.target.value }))}
-                className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100"
-              >
-                <option value="">Seleccionar...</option>
-                {categorias.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-500 block mb-1">Unidad default</label>
-                <select
-                  value={form.unidad}
-                  onChange={e => setForm(f => ({ ...f, unidad: e.target.value }))}
-                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100"
-                >
-                  <option value="">Ninguna</option>
-                  {UNIDADES.map(u => (
-                    <option key={u} value={u}>{u}</option>
+              {prods.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-zinc-600">Sin productos. La IA aprende al revisar tickets o agrégalos aquí.</p>
+              ) : (
+                <div className="divide-y divide-zinc-800/50">
+                  {prods.map(p => (
+                    <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 ${!p.activo ? 'opacity-50' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
+                          {p.unidad_default && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.unidad_default}</span>}
+                          {p.veces_matched > 0 && <span className="text-[10px] text-zinc-600">{p.veces_matched}×</span>}
+                        </div>
+                        {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">tambien: {p.sinonimos.join(', ')}</p>}
+                      </div>
+                      <button onClick={() => toggleProd(p)} className={`text-xs px-2 py-1 rounded-lg ${p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
+                      <button onClick={() => eliminarProd(p)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
+                    </div>
                   ))}
-                </select>
-              </div>
-              <Field
-                label="Precio referencia"
-                value={form.precioRef}
-                onChange={v => setForm(f => ({ ...f, precioRef: v }))}
-                type="number"
-              />
+                </div>
+              )}
             </div>
-
-            <Field
-              label="Sinonimos"
-              value={form.sinonimos}
-              onChange={v => setForm(f => ({ ...f, sinonimos: v }))}
-              placeholder="aceite, aceite cocina (separados por coma)"
-            />
-
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
-              <input
-                type="checkbox"
-                checked={form.activo}
-                onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))}
-                className="h-4 w-4 rounded border-zinc-700 bg-zinc-800"
-              />
-              Activo
-            </label>
-
-            <button
-              onClick={handleSave}
-              disabled={saving || !form.nombre.trim() || !form.categoriaId}
-              className="w-full rounded-xl bg-zinc-100 py-3 text-base font-semibold text-zinc-900 disabled:opacity-60"
-            >
-              {saving ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Field({ label, value, onChange, type = 'text', placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string
-}) {
-  return (
-    <div>
-      <label className="text-xs text-zinc-500 block mb-1">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600"
-      />
+          )
+        })}
+      </div>
     </div>
   )
 }

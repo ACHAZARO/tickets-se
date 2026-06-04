@@ -13,7 +13,6 @@ const NAV_ITEMS = [
   { href: '/admin/alertas', label: 'Alertas' },
   { href: '/admin/ventas', label: 'Ventas' },
   { href: '/admin/catalogo', label: 'Catalogo' },
-  { href: '/admin/categorias', label: 'Categorias' },
   { href: '/admin/objetivos', label: 'Objetivos' },
   { href: '/admin/sucursales', label: 'Sucursales' },
 ]
