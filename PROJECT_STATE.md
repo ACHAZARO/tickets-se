@@ -1,223 +1,115 @@
-# PROJECT_STATE.md -- Revision de Tickets
+# PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Actualizar al cerrar cada sesion.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-06-04.
 
----
+## Estado general: EN PRODUCCION (funcional end-to-end)
 
-## Estado general: EN DESARROLLO
-
-### Ultima sesion: 2026-06-02
-- Setup completo: Git, GitHub, Vercel, Supabase, Google Cloud
-- Google Sheets integration implementada en confirmar-ticket
-- 3 Edge Functions desplegadas y activas
-- 4 Supabase Secrets configurados (JWT_SECRET, GEMINI_API_KEY, GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID)
-- Buckets de storage creados (por-revisar, archivo)
-- Datos de prueba insertados (sucursal-centro, PIN 1234)
-- Fix: verificar_pin search_path para pgcrypto en schema extensions
-- Documentacion del proyecto creada (CLAUDE.md, PROJECT_STATE.md)
+App movil para que gerentes suban fotos de tickets de gasto. Gemini (vision)
+extrae los renglones, auto-categoriza, y el admin audita el costo vs ventas por
+sucursal. Todo en `main`, deploy automatico en Vercel.
 
 ---
 
-## Que esta LISTO
+## Como funciona AL MOMENTO (flujo real)
 
-### Infraestructura
-- [x] Repo GitHub (`ACHAZARO/tickets-se`, privado)
-- [x] Supabase proyecto `tickets-se` (ref: dlmqqmvrgkilptawllep)
-- [x] Schema SQL aplicado (001_initial_schema: 4 tablas + RLS + verificar_pin)
-- [x] Vercel proyecto `tickets-se` (URL: tickets-se.vercel.app)
-- [x] Vercel env vars configuradas (production)
-- [x] Google Cloud proyecto `tickets-se` con Sheets API + Drive API
-- [x] Service account `tickets-sheets@tickets-se.iam.gserviceaccount.com`
-- [x] Spreadsheet creado y compartido (ID: 1jAV80R_HYPKozGFTtoMAi7R9zyd-ws0CoVi6ES98zao)
-- [x] Tab `2026-06` con headers configurados
+### 1. Gerente sube ticket (movil)
+1. Escanea QR / abre `/sucursal/[slug]` → ingresa PIN → `verificar-pin` devuelve
+   un `session_token` (JWT HMAC propio, 1h) que se guarda en sessionStorage.
+2. Toma o elige **una o varias fotos** → "Enviar".
+3. El frontend manda cada imagen a `procesar-ticket` con `Authorization: Bearer <session_token>`.
+4. **Respuesta instantanea**: "¡Enviado! Muchas gracias". El gerente NO espera a la IA.
 
-### Codigo
-- [x] Frontend scaffold (Next.js 14, Tailwind, dark theme, mobile-first)
-- [x] Pagina PIN auth (`/sucursal/[slug]`)
-- [x] Pagina subir ticket (`/sucursal/[slug]/subir`) con estados: idle/preview/processing/review/confirming/done/error
-- [x] Edge Function `verificar-pin` (rate limiting, JWT session)
-- [x] Edge Function `procesar-ticket` (Gemini 1.5 Flash, SHA-256 dupes, Storage upload)
-- [x] Edge Function `confirmar-ticket` (Google Sheets append, archivo de imagen)
-- [x] Modulo `_shared/google-sheets.ts` (JWT RS256, auto-create tabs, append rows)
-- [x] Modulo `_shared/cors.ts`
-- [x] Columnas corregidas: storage_path_original, gemini_raw (match con schema)
+### 2. Procesamiento en SEGUNDO PLANO (async)
+`procesar-ticket` (Edge Function) responde `{recibido:true}` al instante y sigue
+con `EdgeRuntime.waitUntil()`:
+- Sube la imagen a Storage (`por-revisar`), inserta `registros_tickets` (encabezado, estado `pendiente`).
+- Llama a **Gemini** (modelo `gemini-2.5-flash`, configurable via secret `GEMINI_MODEL`,
+  con fallback automatico a otros modelos). Prompt multi-producto + categorias y
+  catalogo de la sucursal como contexto.
+- Inserta N **`ticket_items`** (un renglon por producto), cada uno auto-categorizado.
+- Genera alertas SOLO por excepcion: `ilegible` (confianza baja), `producto_no_reconocido`
+  (renglon sin categoria), `sin_unidad`, `posible_duplicado`, duplicado por hash.
+- Si NO hay alertas → **auto-confirma**: mueve la imagen a `archivo/AAAA-MM/`, manda
+  una fila por item a Google Sheets, estado `confirmado`.
+- Si hay alertas → queda `pendiente` para que el admin lo revise.
 
----
-
-## Que FALTA
-
-### Critico (bloquea uso real)
-- [x] Configurar Supabase Secrets (JWT_SECRET, GEMINI_API_KEY, GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID)
-- [x] Desplegar Edge Functions a Supabase (3 funciones activas)
-- [x] Crear buckets de Storage (`por-revisar`, `archivo`)
-- [x] Insertar datos de prueba (sucursal-centro + Gerente Prueba, PIN: 1234)
-- [x] Fix: verificar_pin search_path (pgcrypto en schema `extensions`, no `public`)
-- [ ] Testing end-to-end del flujo completo
-
-### Importante (pre-produccion)
-- [ ] Vercel env vars para preview/development (bug en CLI v52 con preview envs)
-- [ ] Generar QR codes para sucursales
-- [ ] Validacion de frontend: mapear correctamente campos entre frontend y edge functions
-- [ ] Revisar que el frontend envie Authorization header con JWT (actualmente no lo hace)
-
-### Nice to have
-- [ ] PWA manifest para instalacion en home screen
-- [ ] Notificaciones de error mas descriptivas
-- [ ] Dashboard de tickets procesados
-- [ ] Exportar reporte mensual
+### 3. Admin audita (web /admin)
+Login Supabase Auth. **Un selector de sucursal en el header filtra TODAS las
+secciones** (contexto global, persistido en localStorage; "Todas" = global).
 
 ---
 
-## Decisiones tecnicas
+## Secciones del admin (todas operan por sucursal)
 
-| Decision | Razon | Fecha |
-|---|---|---|
-| next.config.mjs en vez de .ts | Next.js 14 no soporta .ts config | 2026-06-02 |
-| Google Sheets error non-blocking | El ticket debe confirmarse aunque Sheets falle | 2026-06-02 |
-| Service account (no OAuth user) | No requiere login del usuario, funciona server-side | 2026-06-02 |
-| Session en sessionStorage | Mas simple que Supabase Auth para este caso (PIN, no email) | 2026-06-02 |
-| SHA-256 hash para dupes | Deteccion de duplicados por contenido de imagen | 2026-06-02 |
-
----
-
-## Errores encontrados y resueltos
-
-| Error | Solucion | Fecha |
-|---|---|---|
-| Vercel build: "next.config.ts not supported" | Renombrar a next.config.mjs | 2026-06-02 |
-| Vercel CLI v52: preview env vars piden branch | Solo configuramos production por ahora | 2026-06-02 |
-| gcloud default scopes bloqueados para Sheets | Crear spreadsheet manualmente, compartir con SA | 2026-06-02 |
-| PowerShell 5.1: ImportPkcs8PrivateKey no existe | Usar Node.js para operaciones con RSA keys | 2026-06-02 |
-| Schema vs codigo: storage_path vs storage_path_original | Corregido en procesar-ticket y confirmar-ticket | 2026-06-02 |
+| Ruta | Que hace |
+|---|---|
+| `/admin/dashboard` (Arqueo) | Gasto real (de `ticket_items` confirmados) vs ventas, % por categoria con objetivo y semaforo, dona y tendencia. Selector mes/rango. Export a Excel. Usa el objetivo de la sucursal con global de respaldo. |
+| `/admin/tickets` | Lista TODOS los tickets (filtro periodo + sucursal del header) con foto, comercio, total y **quien lo subio**. Detalle con foto + renglones. Boton "Descargar periodo" → ZIP con imagenes + tickets.csv. |
+| `/admin/alertas` | Tickets que necesitan revision (filtra por sucursal). Detalle `/admin/alertas/[id]`: corrige categoria/unidad **por renglon** y **ensena sinonimos** (los guarda en el catalogo). Resuelve o rechaza. |
+| `/admin/ventas` | Captura manual de la venta mensual por sucursal (para el arqueo). |
+| `/admin/catalogo` | Productos conocidos que entrenan a la IA. Por sucursal (global + de la sucursal). Sinonimos, unidad, precio ref. |
+| `/admin/categorias` | CRUD de categorias de gasto. Por sucursal (global + de la sucursal). |
+| `/admin/objetivos` | % objetivo de costo por categoria. Por sucursal (global de respaldo). |
+| `/admin/sucursales` | CRUD de sucursales y empleados (PIN). Enlace + **QR descargable**. Eliminar (o desactivar si tienen datos). |
 
 ---
 
-## Fase 1 Backend — COMPLETADA (2026-06-03)
+## Base de datos (tablas principales)
 
-Todo en branch `feat/fase1-backoffice-backend`:
-- [x] 4 tablas nuevas: categorias_gasto, catalogo_productos, alertas_tickets, presupuestos
-- [x] 3 columnas nuevas en registros_tickets: folio_ticket, unidad, categoria_id
-- [x] 6 categorias iniciales seeded
-- [x] Modulo catalog.ts: loader + prompt builder + product matcher
-- [x] procesar-ticket mejorado: catalogo como contexto Gemini, folio, unidad, confianza, 3 capas anti-duplicados, alertas automaticas
-- [x] confirmar-ticket: tabs por sucursal+mes, columnas folio y unidad
-- [x] Supabase Auth: admin user + RLS policies para tablas backoffice
-- [x] enviar-alerta-email: notificaciones via Resend para alertas criticas
-- [x] 4 edge functions desplegadas y activas
+- `sucursales` (slug, nombre, activa) · `empleados` (pin_hash bcrypt) · `sucursal_empleados` (N:M)
+- `registros_tickets` — **encabezado** del ticket (comercio, fecha, folio, monto total,
+  sucursal, empleado, estado, storage paths, hash, gemini_raw). Columnas producto/cantidad/
+  unidad legacy (no se usan para tickets nuevos).
+- **`ticket_items`** — renglones (descripcion, cantidad, unidad, monto, categoria_id,
+  producto_catalogo_id, necesita_revision, motivo_revision).
+- `categorias_gasto` (+ `sucursal_id` NULL=global) · `catalogo_productos` (+ `sucursal_id`)
+- `alertas_tickets` (tipo, resuelta) · `ventas` (sucursal+mes+monto) ·
+  `objetivos_costo` (categoria + `sucursal_id` NULL=global + pct_objetivo)
 
-## Fase 2 Admin Panel — COMPLETADA (2026-06-03)
+### Funciones / jobs
+- `verificar_pin(slug, pin)` — valida PIN (SECURITY DEFINER).
+- `admin_guardar_empleado(...)` — crea/edita empleado hasheando el PIN (SECURITY DEFINER).
+- `limpiar_imagenes_antiguas()` + **pg_cron mensual** — borra fotos con +1 año (conserva datos).
 
-Todo en branch `feat/fase2-admin-panel` (mergeada Fase 1 a main antes de iniciar):
-- [x] Task 10: Login admin (`/admin/login`) + auth guard client-side + layout con nav (bc55f34)
-- [x] Task 11: Dashboard de alertas (`/admin/alertas`) con contadores, filtros y lista con thumbnails (871d45b)
-- [x] Task 12: Detalle de alerta (`/admin/alertas/[id]`) con foto, correccion de datos, aprobar/rechazar y alta al catalogo (3e68d1e)
-- [x] Task 13: Catalogo de productos (`/admin/catalogo`) — tabla editable con alta, edicion en panel, busqueda y toggle activo (7ea3ee0)
-- Auth: Supabase Auth client-side (sessionStorage del SDK), single admin user. Sin @supabase/ssr.
-- Typecheck (tsc --noEmit) limpio en todo el frontend.
-- Deploy a produccion verificado: /admin/login, /admin/alertas, /admin/catalogo responden 200.
+### Storage
+- Buckets `por-revisar` y `archivo` (PRIVADOS). El admin ve las fotos via **URLs firmadas**
+  (createSignedUrl). RLS: SELECT para `authenticated` (migracion 011).
 
-## Fix infra deploy (2026-06-03)
-- El proyecto Vercel NUNCA estuvo conectado a Git: todos los deploys eran manuales por CLI desde frontend/. El CLAUDE.md asumia auto-deploy que no existia.
-- Conectado `vercel git connect` a `ACHAZARO/tickets-se`, production branch `main`.
-- Seteado `rootDirectory: frontend` via API (monorepo: el Next.js no esta en la raiz). Sin esto, los builds por Git push fallarian al buildear desde la raiz del repo.
-- Remote local corregido: owner en mayusculas `ACHAZARO` (antes `achazaro` daba aviso "repository moved" 301).
+### Migraciones aplicadas: 001–013
 
-## Fase 3 Auditoria de costos — COMPLETADA (2026-06-03)
+---
 
-En `main` (commits 3d8ce11, e890194). Spec en docs/superpowers/specs/2026-06-03-fase3-auditoria-costos-design.md.
-Concepto: NO es presupuesto plano — el gasto esperado es % de la venta. Auditoria
-(arqueo) semanal/mensual: gasto real de tickets confirmados vs ventas.
-- [x] Migracion 008: tablas `ventas` (mensual por sucursal) y `objetivos_costo` (% por categoria), RLS admin.
-- [x] `lib/arqueo.ts`: logica pura (prorrateo de ventas por dias en rango libre, % por categoria, semaforo). Verificada con casos.
-- [x] `/admin/dashboard`: arqueo con selector mes/rango libre, filtro sucursal, tarjetas, tabla con semaforo, dona (conic-gradient) y tendencia 6 meses (SVG/CSS, sin libreria de charts). Export a Excel (SheetJS, import dinamico).
-- [x] `/admin/ventas`: captura manual mensual por sucursal, copiar mes anterior.
-- [x] `/admin/objetivos`: % objetivo de costo por categoria.
-- [x] Nav actualizado, /admin -> /admin/dashboard. Build limpio, deploy auto verificado (rutas 200).
-- Modelo de periodo A+C: ventas mensuales (robusto) + selector de rango libre con venta prorrateada (marcada "estimada").
-- Ventas hoy: captura manual. POS pendiente de explorar (no cambia el modelo).
-- Datos de prueba sembrados en prod (junio 2026, marcados TEST/_test): 3 tickets confirmados, venta 30000, 3 objetivos. Borrables.
+## Edge Functions (Deno, verify_jwt=false, auth JWT HMAC propio)
+- `verificar-pin` — PIN → session_token.
+- `procesar-ticket` (v15) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
+- `confirmar-ticket` — confirmacion manual (1 fila/item a Sheets). (El happy path auto-confirma desde procesar-ticket.)
+- `enviar-alerta-email` — Resend para alertas criticas.
+- Deploy: via Supabase MCP `deploy_edge_function` (no hay token para el CLI de supabase).
 
-## Admin de sucursales/empleados — COMPLETADO (2026-06-04)
+---
 
-En `main` (commit e74d040). Migracion 009.
-- [x] `/admin/sucursales`: CRUD de sucursales (nombre, slug auto-generado, direccion, toggle activa).
-- [x] Enlace copiable (`/sucursal/{slug}`) y QR descargable (lib `qrcode`) por sucursal.
-- [x] Gestion de empleados por sucursal: alta/edicion (nombre + PIN + activo).
-- [x] Migracion 009: RLS admin para sucursales/empleados/sucursal_empleados + RPC
-  `admin_guardar_empleado` (SECURITY DEFINER, hashea PIN con pgcrypto). Verificado:
-  bcrypt OK bajo authenticated, anon recibe permission denied.
-- Nav admin actualizado con "Sucursales".
+## Gemini
+- `gemini-1.5-flash` fue RETIRADO por Google (404). Modelo actual: **`gemini-2.5-flash`**
+  (funciona con la API key con billing). Configurable sin redeploy via secret `GEMINI_MODEL`.
+- Cadena de fallback de modelos en `procesar-ticket` por robustez.
+- Imagen → base64 con `encodeBase64` de Deno std (no `String.fromCharCode` que desborda el stack).
 
-## Fix login admin (2026-06-04)
-- Usuario alepolch@gmail.com no podia entrar. Causa doble (creado por SQL directo):
-  (1) faltaba registro en `auth.identities` (provider email); (2) columnas de token
-  (`email_change`, `confirmation_token`, etc.) en NULL — GoTrue truena al convertir
-  NULL->string ("Database error querying schema"). Arreglado: identity insertada +
-  columnas puestas en ''. Login verificado OK contra /auth/v1/token.
-- LECCION: crear usuarios admin desde Supabase Dashboard / Admin API, NO por SQL directo.
+---
 
-## PENDIENTE GRANDE: Multi-producto + auto-categorizacion IA
-Spec completo en docs/superpowers/specs/2026-06-04-multiproducto-ia-design.md (APROBADO).
-Casi todos los tickets son multi-producto; el diseno actual (1 producto/ticket) es inservible.
-Refactor profundo: tabla `ticket_items`, prompt Gemini multi-item + auto-categoria, alerta
-solo por excepciones, revision por renglon + enseñar sinonimos, Sheets 1 fila/item, dashboard
-desde ticket_items. Hacer por capas. Incluye feature C (CRUD de categorias, pieza chica).
+## Stack / servicios
+- Frontend Next.js 14 (Vercel, auto-deploy desde `main`, rootDirectory=frontend).
+- Supabase `tickets-se` (ref `dlmqqmvrgkilptawllep`). Google Sheets (service account).
+- Repo `ACHAZARO/tickets-se` (remote con owner en MAYUSCULAS; credencial GCM fijada a ACHAZARO).
 
-## Multi-producto + IA robusta — IMPLEMENTADO (2026-06-04)
+---
 
-En `main`. Spec: docs/superpowers/specs/2026-06-04-multiproducto-ia-design.md.
-- [x] Migracion 010: tabla `ticket_items` (renglones). registros_tickets = encabezado.
-- [x] procesar-ticket (v13): prompt multi-item, auto-categoriza cada renglon, inserta N
-  ticket_items, alerta SOLO por excepciones. Deriva sucursal/empleado del JWT. Parsing robusto.
-- [x] confirmar-ticket + google-sheets: una fila por item en el Sheet.
-- [x] Frontend subir: ARREGLADO el contrato roto con el backend (mandaba sin token y con
-  campos viejos). Ahora manda Authorization Bearer con session_token, solo imagen, confirma
-  con registro_id. Muestra lista de renglones. PIN page ahora guarda session_token.
-- [x] dashboard arqueo: gasto por categoria desde ticket_items.
-- [x] /admin/alertas/[id]: revision por renglon (corrige categoria/unidad, ensena sinonimos).
-- [x] /admin/categorias: CRUD de categorias (feature C).
-- Migracion 009 ya existia (sucursales/empleados).
+## Login admin
+- `alepolch@gmail.com` (creado por SQL; se le agrego identity + columnas de token para que
+  GoTrue lo aceptara). Crear nuevos admin desde el Dashboard de Supabase, NO por SQL directo.
 
-### Gemini FUNCIONANDO (2026-06-04) — verificado E2E
-- gemini-1.5-flash fue RETIRADO (404) y gemini-2.0-flash da 429 free-tier limit 0.
-  SOLUCION: fallback de modelos en procesar-ticket; **gemini-2.5-flash SI tiene cuota free**
-  y es el primero de la lista -> acierta al primer intento. Override via secret GEMINI_MODEL.
-- E2E verificado: ticket multi-producto -> 3 items extraidos, auto-categorizados (Insumos,
-  Limpieza), auto-confirmado, a Sheets, sin intervencion. NO requiere billing.
+---
 
-### Arquitectura async (2026-06-04)
-- procesar-ticket (v14, verify_jwt=false): responde {recibido:true} al instante; procesa
-  con Gemini en segundo plano (EdgeRuntime.waitUntil). Auto-confirma tickets limpios
-  (archivo + Sheets + estado confirmado); deja 'pendiente' los que generan alerta para
-  revision admin. Elimina el "stuck en procesando".
-- Frontend subir: "¡Enviado! Gracias" + soporta varias fotos. PIN guarda session_token.
-- Sucursales/empleados: botones Eliminar (fallback a desactivar si tienen datos).
-
-## Agregado (2026-06-04 tarde)
-- Objetivos POR SUCURSAL: selector en /admin/objetivos (global o por sucursal);
-  dashboard usa el de la sucursal con global de respaldo. Tabla objetivos_costo.sucursal_id.
-- /admin/tickets: lista todos los tickets (filtro periodo/sucursal) con foto + empleado +
-  detalle de renglones. "Descargar periodo" -> ZIP con imagenes + tickets.csv (JSZip).
-- Fotos en admin: buckets privados -> URLs FIRMADAS (createSignedUrl). Migracion 011 da
-  RLS SELECT a authenticated en por-revisar/archivo. Antes el admin usaba URL publica (rota).
-- Retencion: migracion 012 + pg_cron mensual (limpiar_imagenes_antiguas) borra fotos con
-  +1 año, conserva los datos. Job 'limpiar-imagenes-tickets' activo.
-- Modelo Gemini fijado a gemini-2.5-flash (eleccion del usuario; cuenta con billing).
-  Override via secret GEMINI_MODEL en Supabase dashboard.
-
-## Pendiente menor / ideas
-- Corner-crop en el frontend (marcar esquinas para quitar ruido a Gemini) — NO hecho;
-  gemini-2.5-flash lee bien las fotos, es mejora opcional.
-- Evaluado markitdown (Microsoft): es para convertir documentos/PDF/Office a Markdown
-  (Python, no Deno). Para fotos de tickets, Gemini vision ya hace OCR+extraccion mejor;
-  markitdown no aporta al flujo actual. Util solo si suben PDFs/facturas digitales.
-
-## Proxima sesion debe
-
-1. Probar en navegador: subir foto real -> "enviado" -> ver en /admin/alertas o dashboard.
-2. Test E2E en navegador con login admin real (alepolch@gmail.com): dashboard, capturar venta, fijar objetivos, exportar Excel, crear sucursal/empleado, descargar QR.
-2. Borrar datos de prueba (TEST / gemini_raw._test=true) cuando ya no se necesiten.
-3. Explorar integracion POS para ventas (hoy es captura manual).
-4. Test E2E del flujo completo de subida (frontend -> edge functions -> sheets).
-5. Generar QR codes para sucursales.
-6. (Opcional) Presets rapidos de periodo (esta semana, etc.) y captura de ventas semanal si se requiere arqueo intra-mes.
+## Pendiente / ideas
+- Marcar esquinas de la foto para recortar ruido a Gemini (opcional; 2.5-flash lee bien).
+- markitdown (Microsoft): util solo si suben PDFs/facturas digitales, no para fotos.
+- Confirmacion manual de tickets pendientes desde el admin (hoy se resuelven via alertas).

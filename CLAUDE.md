@@ -1,13 +1,15 @@
 # Revision de Tickets -- CLAUDE.md
 
 ## Descripcion
-Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tickets de gastos operacionales. Backend en Edge Functions (Deno) procesa imagenes con Gemini 1.5 Flash y vuelca los datos a Google Sheets.
+Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tickets de gastos operacionales. Backend en Edge Functions (Deno) procesa imagenes con Gemini (vision) **en segundo plano**, extrae **multiples productos por ticket**, auto-categoriza cada renglon y vuelca los datos a Google Sheets. Un admin web audita el costo vs ventas **por sucursal**.
+
+> **Estado vivo y "como funciona al momento": ver `PROJECT_STATE.md`.** Este archivo es la guia estable; PROJECT_STATE tiene el detalle actualizado del flujo, tablas y secciones del admin.
 
 ## Stack
-- **Frontend**: Next.js 14 (Vercel), optimizado para movil
+- **Frontend**: Next.js 14 (Vercel), optimizado para movil + panel `/admin`
 - **DB + Storage**: Supabase (`tickets-se`, ref: `dlmqqmvrgkilptawllep`)
-- **Backend IA**: Supabase Edge Functions (Deno/TypeScript) + Gemini 1.5 Flash
-- **Destino datos**: Google Sheets API (service account)
+- **Backend IA**: Supabase Edge Functions (Deno/TypeScript) + **Gemini 2.5-flash** (configurable via secret `GEMINI_MODEL`; el 1.5-flash fue retirado por Google). Procesamiento **async** (`EdgeRuntime.waitUntil`).
+- **Destino datos**: Google Sheets API (service account), una fila por renglon
 - **Repo**: GitHub `ACHAZARO/tickets-se`, monorepo (`/frontend` + `/backend`)
 
 ---
@@ -126,24 +128,24 @@ revision de tickets/
 
 ---
 
-## Flujo principal (happy path)
+## Flujo principal (happy path) — ASYNC, multi-producto
 
 ```
 1. Gerente escanea QR -> /sucursal/[slug]
-2. Ingresa PIN -> Edge Function verificar-pin -> JWT sesion (1hr)
-3. Toma foto del ticket -> preview en pantalla
-4. "Procesar ticket" -> Edge Function procesar-ticket:
-   a. Sube imagen a Storage (por-revisar)
-   b. SHA-256 -> deteccion de duplicados
-   c. Gemini 1.5 Flash extrae: fecha, comercio, producto, cantidad, monto, categoria
-   d. Inserta en registros_tickets (estado: pendiente)
-   e. Retorna datos extraidos al frontend
-5. Gerente revisa datos -> "Confirmar y guardar"
-6. Edge Function confirmar-ticket:
-   a. Mueve imagen: por-revisar -> archivo/YYYY-MM/
-   b. Append fila a Google Sheets (pestana del mes)
-   c. Actualiza registro: estado=confirmado, sheets_row_id
-7. Pantalla de exito -> puede subir otro ticket
+2. Ingresa PIN -> verificar-pin -> session_token (JWT HMAC propio, 1hr) en sessionStorage
+3. Toma/elige UNA O VARIAS fotos -> "Enviar"
+4. procesar-ticket (con Authorization: Bearer session_token):
+   a. Deriva sucursal/empleado del JWT (no confia en el cliente)
+   b. Sube imagen a por-revisar, SHA-256 anti-duplicado
+   c. Inserta registros_tickets (encabezado, estado: pendiente)
+   d. RESPONDE YA {recibido:true}  ->  "¡Enviado! Gracias" (no espera a la IA)
+5. EN SEGUNDO PLANO (EdgeRuntime.waitUntil):
+   a. Gemini 2.5-flash extrae LISTA de renglones + auto-categoria (catalogo de la sucursal como contexto)
+   b. Inserta N ticket_items (un renglon por producto)
+   c. Alertas SOLO por excepcion (ilegible / producto_no_reconocido / sin_unidad / duplicado)
+   d. Si NO hay alertas -> AUTO-CONFIRMA: mueve a archivo/AAAA-MM/, 1 fila por item a Sheets, estado=confirmado
+   e. Si hay alertas -> queda pendiente para revision del admin
+6. Admin (/admin) revisa alertas, corrige por renglon y ensena sinonimos. Audita por sucursal.
 ```
 
 ---
@@ -276,8 +278,13 @@ cd frontend && npx vercel --prod
 
 ---
 
-## Migraciones aplicadas
-- `001_initial_schema` -- 4 tablas, RLS, funcion `verificar_pin`, triggers `updated_at`
+## Migraciones aplicadas (001–013)
+- `001` schema base (sucursales, empleados, registros_tickets, verificar_pin)
+- `002` fix search_path pgcrypto · `003` tablas backoffice · `004` columnas registros · `005` seed categorias
+- `006` auth/RLS admin · `007` RLS read empleados · `008` ventas + objetivos_costo
+- `009` admin sucursales/empleados + RPC admin_guardar_empleado · `010` ticket_items (multi-producto)
+- `011` RLS storage (fotos para admin) · `012` pg_cron limpiar imagenes +1 año
+- `013` categorias y catalogo por sucursal (sucursal_id NULL=global)
 
 ---
 
@@ -292,4 +299,4 @@ cd frontend && npx vercel --prod
 
 ---
 
-**Ultima actualizacion:** 2026-06-02
+**Ultima actualizacion:** 2026-06-04 — multi-producto async, admin por sucursal, pantalla Tickets + descarga, retencion de imagenes, Gemini 2.5-flash. Detalle vivo en `PROJECT_STATE.md`.
