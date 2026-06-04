@@ -29,6 +29,29 @@ type UploadState = 'idle' | 'preview' | 'processing' | 'review' | 'confirming' |
 
 const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
 
+// Reduce la foto antes de subir: las fotos de celular pesan varios MB y por
+// datos moviles la subida se cuelga. Bajamos a ~1600px / JPEG 0.7 (~200-400KB).
+// Tambien le quita ruido a Gemini y abarata el costo.
+async function comprimirImagen(file: File, maxLado = 1600, calidad = 0.7): Promise<Blob> {
+  if (!file.type.startsWith('image/')) return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height))
+    const w = Math.round(bitmap.width * escala)
+    const h = Math.round(bitmap.height * escala)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, w, h)
+    const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', calidad))
+    return blob && blob.size < file.size ? blob : file
+  } catch {
+    return file
+  }
+}
+
 export default function SubirPage({ params }: PageProps) {
   const { slug } = params
   const router = useRouter()
@@ -96,13 +119,28 @@ export default function SubirPage({ params }: PageProps) {
       let ok = 0
       let duplicados = 0
       for (const file of archivos) {
+        const imagen = await comprimirImagen(file)
         const formData = new FormData()
-        formData.append('imagen', file)
-        const res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
-          method: 'POST',
-          headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
-          body: formData,
-        })
+        formData.append('imagen', imagen, 'ticket.jpg')
+        // timeout de seguridad: si la red se cuelga, no dejamos "Enviando" para siempre
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), 45000)
+        let res: Response
+        try {
+          res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
+            method: 'POST',
+            headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+            body: formData,
+            signal: ctrl.signal,
+          })
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            throw new Error('La conexión está lenta. Verifica tu internet e inténtalo de nuevo.')
+          }
+          throw err
+        } finally {
+          clearTimeout(t)
+        }
         const data = await res.json().catch(() => ({}))
         if (res.ok && data.recibido) ok++
         else if (data.duplicado) duplicados++
