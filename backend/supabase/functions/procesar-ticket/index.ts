@@ -149,6 +149,32 @@ async function aprenderComercio(
   } catch (e) { console.error('aprenderComercio:', e) }
 }
 
+// Agrega al catalogo los renglones que ya tienen categoria pero no estaban en
+// el catalogo (producto_catalogo_id null). Asi la IA va aprendiendo sola.
+async function aprenderProductos(
+  supabase: SB, sucursalId: string,
+  items: { descripcion: string; categoria_id: string | null; producto_catalogo_id: string | null; unidad: string | null }[]
+): Promise<void> {
+  const vistos = new Set<string>()
+  for (const it of items) {
+    if (!it.categoria_id || it.producto_catalogo_id) continue
+    const nombre = it.descripcion?.trim()
+    if (!nombre) continue
+    const key = nombre.toLowerCase()
+    if (vistos.has(key)) continue
+    vistos.add(key)
+    try {
+      const { data: ex } = await supabase.from('catalogo_productos').select('id')
+        .ilike('nombre', nombre).or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`).limit(1).maybeSingle()
+      if (ex) continue
+      await supabase.from('catalogo_productos').insert({
+        nombre, sinonimos: [], categoria_id: it.categoria_id,
+        unidad_default: it.unidad ?? null, sucursal_id: sucursalId,
+      })
+    } catch (e) { console.error('aprenderProductos:', e) }
+  }
+}
+
 function parseGemini(text: string): GeminiResult {
   const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   return JSON.parse(clean) as GeminiResult
@@ -248,6 +274,10 @@ async function procesarEnSegundoPlano(opts: {
 
     // Aprende el comercio -> categoria dominante
     await aprenderComercio(supabase, datos.comercio ?? null, sucursalId, itemsToInsert)
+
+    // Auto-aprende productos: agrega al catalogo los renglones que la IA categorizo
+    // pero que NO estaban en el catalogo (el usuario los edita despues si hace falta).
+    await aprenderProductos(supabase, sucursalId, itemsToInsert)
 
     let hayAlerta = false
     const dupId = await detectSmartDuplicate(

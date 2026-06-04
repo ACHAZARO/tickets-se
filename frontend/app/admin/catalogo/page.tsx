@@ -28,6 +28,8 @@ export default function CatalogoPage() {
   // alta de producto: categoriaId del form abierto -> datos
   const [addProd, setAddProd] = useState<null | { categoriaId: string; nombre: string; sinonimos: string; unidad: string }>(null)
   const [savingProd, setSavingProd] = useState(false)
+  // edicion de producto existente
+  const [editProd, setEditProd] = useState<null | { id: string; categoria_id: string; unidad: string; sinonimos: string }>(null)
 
   const fetchData = useCallback(async () => {
     let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
@@ -86,6 +88,19 @@ export default function CatalogoPage() {
     if (!confirm(`¿Eliminar "${p.nombre}" del catálogo?`)) return
     await supabase.from('catalogo_productos').delete().eq('id', p.id)
     setProductos(prev => prev.filter(x => x.id !== p.id))
+  }
+  async function guardarEdicion() {
+    if (!editProd || !editProd.categoria_id) return
+    const sinonimos = editProd.sinonimos ? editProd.sinonimos.split(',').map(s => s.trim()).filter(Boolean) : []
+    await supabase.from('catalogo_productos').update({
+      categoria_id: editProd.categoria_id,
+      unidad_default: editProd.unidad || null,
+      sinonimos,
+    }).eq('id', editProd.id)
+    setProductos(prev => prev.map(x => x.id === editProd.id
+      ? { ...x, categoria_id: editProd.categoria_id, unidad_default: editProd.unidad || null, sinonimos }
+      : x))
+    setEditProd(null)
   }
 
   if (loading) {
@@ -163,17 +178,42 @@ export default function CatalogoPage() {
               ) : (
                 <div className="divide-y divide-zinc-800/50">
                   {prods.map(p => (
-                    <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 ${!p.activo ? 'opacity-50' : ''}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
-                          {p.unidad_default && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.unidad_default}</span>}
-                          {p.veces_matched > 0 && <span className="text-[10px] text-zinc-600">{p.veces_matched}×</span>}
+                    <div key={p.id} className={`px-4 py-2.5 ${!p.activo ? 'opacity-50' : ''}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
+                            {p.unidad_default && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.unidad_default}</span>}
+                            {p.veces_matched > 0 && <span className="text-[10px] text-zinc-600">{p.veces_matched}×</span>}
+                          </div>
+                          {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">tambien: {p.sinonimos.join(', ')}</p>}
                         </div>
-                        {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">tambien: {p.sinonimos.join(', ')}</p>}
+                        <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', ') })}
+                          className="text-xs text-blue-400 hover:text-blue-300">{editProd?.id === p.id ? 'cerrar' : 'editar'}</button>
+                        <button onClick={() => toggleProd(p)} className={`text-xs px-2 py-1 rounded-lg ${p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
+                        <button onClick={() => eliminarProd(p)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
                       </div>
-                      <button onClick={() => toggleProd(p)} className={`text-xs px-2 py-1 rounded-lg ${p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
-                      <button onClick={() => eliminarProd(p)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
+
+                      {editProd?.id === p.id && (
+                        <div className="mt-2 space-y-2 bg-zinc-800/40 rounded-lg p-3">
+                          <label className="block text-[11px] text-zinc-500">Categoría (muévelo si está mal clasificado)</label>
+                          <select value={editProd.categoria_id} onChange={e => setEditProd({ ...editProd, categoria_id: e.target.value })}
+                            className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                            {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
+                          </select>
+                          <input value={editProd.sinonimos} onChange={e => setEditProd({ ...editProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. magna, premium, diesel)"
+                            className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                          <div className="flex gap-2">
+                            <select value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
+                              className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                              <option value="">Unidad</option>
+                              {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                            <button onClick={guardarEdicion} className="flex-1 rounded-lg bg-zinc-100 py-1.5 text-sm font-semibold text-zinc-900">Guardar</button>
+                            <button onClick={() => setEditProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
