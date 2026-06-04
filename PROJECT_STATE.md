@@ -47,8 +47,8 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 | `/admin/tickets` | Lista TODOS los tickets (filtro periodo + sucursal del header) con foto, comercio, total y **quien lo subio**. Detalle con foto + renglones. Boton "Descargar periodo" → ZIP con imagenes + tickets.csv. |
 | `/admin/alertas` | Tickets que necesitan revision (filtra por sucursal). Detalle `/admin/alertas/[id]`: corrige categoria/unidad **por renglon** y **ensena sinonimos** (los guarda en el catalogo). Resuelve o rechaza. |
 | `/admin/ventas` | Captura manual de la venta mensual por sucursal (para el arqueo). |
-| `/admin/catalogo` | Productos conocidos que entrenan a la IA. Por sucursal (global + de la sucursal). Sinonimos, unidad, precio ref. |
-| `/admin/categorias` | CRUD de categorias de gasto. Por sucursal (global + de la sucursal). |
+| `/admin/catalogo` | Catalogo + categorias fusionados. Cada categoria con sus productos. Categoria: renombrar, activar, toggle **Operativo/No operativo** (si suma o no al gasto de operacion). Producto: agregar, **editar (mover de categoria, unidad, sinonimos)**, activar, eliminar. Por sucursal (global + de la sucursal). La IA auto-aprende productos aqui. |
+| `/admin/comercios` | Comercios que la IA aprendio (su categoria habitual). Corregir categoria u olvidar. Por sucursal. |
 | `/admin/objetivos` | % objetivo de costo por categoria. Por sucursal (global de respaldo). |
 | `/admin/sucursales` | CRUD de sucursales y empleados (PIN). Enlace + **QR descargable**. Eliminar (o desactivar si tienen datos). |
 
@@ -75,14 +75,20 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 - Buckets `por-revisar` y `archivo` (PRIVADOS). El admin ve las fotos via **URLs firmadas**
   (createSignedUrl). RLS: SELECT para `authenticated` (migracion 011).
 
-### Migraciones aplicadas: 001–013
+- `comercios` (nombre, sucursal_id, categoria_id, veces) — la IA aprende la categoria habitual de cada comercio.
+### Migraciones aplicadas: 001–016
 
 ---
 
 ## Edge Functions (Deno, verify_jwt=false, auth JWT HMAC propio)
 - `verificar-pin` — PIN → session_token.
-- `procesar-ticket` (v15) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
+- `procesar-ticket` (v20) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
+  Aprende comercios (`aprenderComercio`) y **auto-aprende productos** (`aprenderProductos`): cada renglon
+  que entiende y categoriza, si no existe en el catalogo, lo inserta solo en el catalogo de la sucursal.
+  Prompt usa el nombre del comercio para distinguir (gasolinera→combustible vs gas de cocina) y normaliza
+  abreviaturas/erratas (popt→popote).
 - `confirmar-ticket` — confirmacion manual (1 fila/item a Sheets). (El happy path auto-confirma desde procesar-ticket.)
+- `confirmar-admin` (verify_jwt=true) — el admin confirma un ticket revisado desde Alertas (archiva + Sheets + estado).
 - `enviar-alerta-email` — Resend para alertas criticas.
 - Deploy: via Supabase MCP `deploy_edge_function` (no hay token para el CLI de supabase).
 
@@ -119,7 +125,26 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
 
+## Cambios 2026-06-04 (tanda IA + gasto)
+- **Dashboard sin ventas**: la etapa actual es 100% captura de gasto + entrenar IA + ver
+  distribucion. Donut con tooltip al pasar/tocar (nombre + monto + %). Split
+  **operativo vs no operativo** (compras de equipo no ensucian la operacion). Tabla de
+  categorias con % del gasto y "Productos mas comprados" con **cantidad por periodo**.
+- **IA aprende comercios** (`comercios`): mapea comercio→categoria dominante; se inyecta al
+  prompt como pista fuerte. Pantalla `/admin/comercios` para corregir.
+- **IA auto-aprende productos** (procesar-ticket v20): cada renglon entendido y categorizado
+  que no exista, se inserta al catalogo de la sucursal. El usuario solo edita si algo esta mal.
+- **Editar producto en catalogo**: mover de categoria, cambiar unidad y sinonimos por producto.
+- **Gasolina mal clasificada (→ "Gas" de cocina)**: prompt ahora usa el comercio para distinguir
+  combustible vs gas de cocina. Sembrado: comercio "CENTRO GASOLINERO ANIMAS SA DE CV" →
+  "gasolina y motor" (suc vale) + producto "Gasolina" (sinonimos magna/premium/diesel). Renglones
+  historicos "GAS" de esa gasolinera recategorizados a "gasolina y motor".
+- **Fecha mal leida tiraba tickets fuera del filtro de mes**: ahora si Gemini da fecha invalida
+  se usa la de hoy; fecha/comercio editables en `/admin/tickets`.
+- **Eliminar tickets** + descarga ZIP del periodo + retencion de imagenes +1 año (pg_cron).
+
 ## Pendiente / ideas
+- Re-aprender comercio al confirmar desde Alertas (que las correcciones del admin refuercen el mapa comercio→categoria).
 - Marcar esquinas de la foto para recortar ruido a Gemini (opcional; 2.5-flash lee bien).
 - markitdown (Microsoft): util solo si suben PDFs/facturas digitales, no para fotos.
 - Confirmacion manual de tickets pendientes desde el admin (hoy se resuelven via alertas).
