@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/admin/ventas', label: 'Ventas' },
   { href: '/admin/catalogo', label: 'Catalogo' },
   { href: '/admin/objetivos', label: 'Objetivos' },
+  { href: '/admin/sucursales', label: 'Sucursales' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
