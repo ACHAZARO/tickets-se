@@ -64,17 +64,27 @@ export default function DashboardPage() {
     return { inicio: rangoIni, fin: rangoFin }
   }, [modo, mesSel, rangoIni, rangoFin])
 
-  // Carga estatica
+  // Carga estatica (sucursales)
   useEffect(() => {
     (async () => {
-      const [sucRes, objRes] = await Promise.all([
-        supabase.from('sucursales').select('id, nombre').eq('activa', true).order('nombre'),
-        supabase.from('objetivos_costo').select('categoria_id, pct_objetivo').is('sucursal_id', null).eq('activo', true),
-      ])
-      setSucursales(sucRes.data ?? [])
-      setObjetivos((objRes.data as Objetivo[] | null) ?? [])
+      const { data } = await supabase.from('sucursales').select('id, nombre').eq('activa', true).order('nombre')
+      setSucursales(data ?? [])
     })()
   }, [])
+
+  // Objetivos segun la sucursal seleccionada (especifico de sucursal con global de respaldo)
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('objetivos_costo')
+        .select('categoria_id, pct_objetivo, sucursal_id').eq('activo', true)
+      const rows = (data ?? []) as { categoria_id: string; pct_objetivo: number; sucursal_id: string | null }[]
+      const efectivo = new Map<string, number>()
+      // primero globales, luego sobreescribe con los de la sucursal seleccionada
+      for (const r of rows) if (r.sucursal_id === null) efectivo.set(r.categoria_id, r.pct_objetivo)
+      if (sucursalId) for (const r of rows) if (r.sucursal_id === sucursalId) efectivo.set(r.categoria_id, r.pct_objetivo)
+      setObjetivos(Array.from(efectivo, ([categoria_id, pct_objetivo]) => ({ categoria_id, pct_objetivo })))
+    })()
+  }, [sucursalId])
 
   const fetchArqueo = useCallback(async () => {
     setLoading(true)

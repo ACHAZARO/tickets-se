@@ -29,6 +29,7 @@ interface AlertaDetail {
     fecha_ticket: string | null
     folio_ticket: string | null
     storage_path_original: string | null
+    storage_path_archivo: string | null
     sucursales: { nombre: string } | null
     empleados: { nombre: string } | null
   } | null
@@ -44,13 +45,14 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [sinonimos, setSinonimos] = useState<Record<string, string>>({})
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const { data: a } = await supabase
       .from('alertas_tickets')
       .select(`id, tipo, resuelta, created_at,
         registros_tickets:registro_ticket_id (
-          id, comercio, monto, fecha_ticket, folio_ticket, storage_path_original,
+          id, comercio, monto, fecha_ticket, folio_ticket, storage_path_original, storage_path_archivo,
           sucursales:sucursal_id ( nombre ), empleados:empleado_id ( nombre )
         )`)
       .eq('id', params.id)
@@ -71,6 +73,18 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
     const [catRes, itemsRes] = await Promise.all([catP, itemsP])
     setCategorias(catRes.data ?? [])
     setItems((itemsRes?.data as Item[] | undefined) ?? [])
+
+    // Foto: bucket privado -> URL firmada (archivo si ya se confirmo, si no por-revisar)
+    const reg = alertaData?.registros_tickets
+    const archivo = (reg as { storage_path_archivo?: string | null } | null | undefined)?.storage_path_archivo
+    const bucket = archivo ? 'archivo' : 'por-revisar'
+    const path = archivo ?? reg?.storage_path_original
+    if (path) {
+      const { data: signed } = await supabase.storage.from(bucket).createSignedUrl(path, 3600)
+      setImageUrl(signed?.signedUrl ?? null)
+    } else {
+      setImageUrl(null)
+    }
     setLoading(false)
   }, [params.id])
 
@@ -126,9 +140,6 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
   if (!alerta) return <p className="text-zinc-500 text-center py-12">Alerta no encontrada</p>
 
   const t = alerta.registros_tickets
-  const imageUrl = t?.storage_path_original
-    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/por-revisar/${t.storage_path_original}`
-    : null
   const pendientes = items.filter(i => i.necesita_revision).length
 
   return (
