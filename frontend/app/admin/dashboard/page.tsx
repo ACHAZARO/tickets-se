@@ -17,9 +17,13 @@ interface TicketItemRow {
   unidad: string | null
   monto: number | null
   categoria_id: string | null
+  producto_catalogo_id: string | null
   categorias_gasto: { nombre: string } | null
+  catalogo_productos: { nombre: string } | null
   registros_tickets: { fecha_ticket: string | null; comercio: string | null } | null
 }
+
+interface ProductoAgg { nombre: string; reconocido: boolean; gasto: number; veces: number }
 
 const DONUT_COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635', '#f472b6']
 
@@ -56,6 +60,7 @@ export default function DashboardPage() {
 
   const [arqueo, setArqueo] = useState<ResultadoArqueo | null>(null)
   const [detalle, setDetalle] = useState<TicketDetalle[]>([])
+  const [productosTop, setProductosTop] = useState<ProductoAgg[]>([])
   const [trend, setTrend] = useState<{ mes: string; gasto: number; venta: number }[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -84,7 +89,7 @@ export default function DashboardPage() {
     // Gastos: renglones (ticket_items) de tickets confirmados en el rango
     let tq = supabase
       .from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), registros_tickets!inner(fecha_ticket, comercio, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre), registros_tickets!inner(fecha_ticket, comercio, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
       .gte('registros_tickets.fecha_ticket', inicio)
       .lte('registros_tickets.fecha_ticket', fin)
@@ -102,6 +107,21 @@ export default function DashboardPage() {
       prev.gasto += Number(t.monto ?? 0)
       grupos.set(key, prev)
     }
+
+    // Agrupar por PRODUCTO (sinonimos -> producto del catalogo; ej. Barilla = Pasta).
+    // Si lo reconocio el catalogo usa su nombre canonico; si no, la descripcion cruda.
+    const prods = new Map<string, ProductoAgg>()
+    for (const t of rows) {
+      const reconocido = !!t.catalogo_productos?.nombre
+      const nombre = (t.catalogo_productos?.nombre ?? t.descripcion ?? 'Sin nombre').trim()
+      const key = nombre.toLowerCase()
+      const prev = prods.get(key) ?? { nombre, reconocido, gasto: 0, veces: 0 }
+      prev.gasto += Number(t.monto ?? 0)
+      prev.veces += 1
+      if (reconocido) prev.reconocido = true
+      prods.set(key, prev)
+    }
+    setProductosTop([...prods.values()].sort((a, b) => b.gasto - a.gasto))
 
     // Ventas: meses que toca el rango
     const mesIni = inicio.slice(0, 7) + '-01'
@@ -326,6 +346,41 @@ export default function DashboardPage() {
               <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />Venta</span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-blue-500" />Gasto</span>
             </div>
+          </div>
+
+          {/* Productos mas comprados (suma por producto; sinonimos -> producto del catalogo) */}
+          <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+              <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Productos más comprados</p>
+              <span className="text-xs text-zinc-600">marcas/sinónimos sumados a su producto</span>
+            </div>
+            {productosTop.length === 0 ? (
+              <p className="px-4 py-6 text-center text-zinc-500 text-sm">Sin productos en el periodo</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-zinc-500">
+                    <th className="text-left font-medium px-4 py-2">Producto</th>
+                    <th className="text-right font-medium px-4 py-2">Veces</th>
+                    <th className="text-right font-medium px-4 py-2">Gasto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productosTop.slice(0, 20).map(p => (
+                    <tr key={p.nombre} className="border-t border-zinc-800/50">
+                      <td className="px-4 py-2 text-zinc-200">
+                        {p.nombre}
+                        {p.reconocido
+                          ? <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400">catálogo</span>
+                          : <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">sin catálogo</span>}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-400">{p.veces}</td>
+                      <td className="px-4 py-2 text-right text-zinc-300">{fmt(p.gasto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}
