@@ -36,7 +36,9 @@ export default function SubirPage({ params }: PageProps) {
 
   const [state, setState] = useState<UploadState>('idle')
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [enviadas, setEnviadas] = useState(0)
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
@@ -66,10 +68,11 @@ export default function SubirPage({ params }: PageProps) {
   }, [slug, router])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
 
-    setImageFile(file)
+    setImageFiles(files)
+    setImageFile(files[0])
     setTicketData(null)
     setErrorMsg('')
 
@@ -78,7 +81,7 @@ export default function SubirPage({ params }: PageProps) {
       setImagePreview(reader.result as string)
       setState('preview')
     }
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(files[0])
   }, [])
 
   const handleProcess = useCallback(async () => {
@@ -86,32 +89,36 @@ export default function SubirPage({ params }: PageProps) {
     setState('processing')
     setErrorMsg('')
 
+    const archivos = imageFiles.length ? imageFiles : (imageFile ? [imageFile] : [])
+    if (archivos.length === 0) return
+
     try {
-      const formData = new FormData()
-      formData.append('imagen', imageFile)
-
-      const res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
-        method: 'POST',
-        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
-        body: formData,
-      })
-
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al procesar el ticket')
+      let ok = 0
+      let duplicados = 0
+      for (const file of archivos) {
+        const formData = new FormData()
+        formData.append('imagen', file)
+        const res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
+          method: 'POST',
+          headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+          body: formData,
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data.recibido) ok++
+        else if (data.duplicado) duplicados++
+        else throw new Error(data.error || 'Error al enviar un ticket')
       }
-      if (data.duplicado) {
-        throw new Error('Este ticket ya fue registrado antes.')
+      // El procesamiento con IA corre en segundo plano; el gerente solo confirma envio.
+      setEnviadas(ok)
+      if (ok === 0 && duplicados > 0) {
+        throw new Error('Ese ticket ya fue enviado antes.')
       }
-
-      setRegistroId(data.registro_id ?? null)
-      setTicketData(data.ticket ?? null)
-      setState('review')
+      setState('done')
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
       setState('error')
     }
-  }, [imageFile, sessionToken])
+  }, [imageFile, imageFiles, sessionToken])
 
   const handleConfirm = useCallback(async () => {
     if (!registroId) return
@@ -141,6 +148,8 @@ export default function SubirPage({ params }: PageProps) {
 
   const handleDiscard = useCallback(() => {
     setImageFile(null)
+    setImageFiles([])
+    setEnviadas(0)
     setImagePreview(null)
     setTicketData(null)
     setErrorMsg('')
@@ -177,8 +186,10 @@ export default function SubirPage({ params }: PageProps) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold text-zinc-100">Ticket registrado</h2>
-        <p className="mt-2 text-sm text-zinc-400">Los datos han sido guardados en Google Sheets.</p>
+        <h2 className="text-xl font-semibold text-zinc-100">¡Enviado! Muchas gracias</h2>
+        <p className="mt-2 text-sm text-zinc-400">
+          {enviadas > 1 ? `${enviadas} tickets se están` : 'El ticket se está'} procesando automáticamente. No necesitas hacer nada más.
+        </p>
         <button
           onClick={handleNewTicket}
           className="mt-8 w-full max-w-xs rounded-2xl bg-zinc-800 py-4 text-base font-medium text-zinc-100 active:scale-95 transition-transform"
@@ -226,7 +237,7 @@ export default function SubirPage({ params }: PageProps) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
+        multiple
         onChange={handleFileChange}
         className="hidden"
         aria-hidden="true"
@@ -291,7 +302,7 @@ export default function SubirPage({ params }: PageProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
-                <p className="text-sm font-medium text-zinc-300">Procesando con IA...</p>
+                <p className="text-sm font-medium text-zinc-300">Enviando...</p>
               </div>
             )}
           </div>
@@ -302,7 +313,7 @@ export default function SubirPage({ params }: PageProps) {
                 onClick={handleProcess}
                 className="w-full rounded-2xl bg-zinc-100 py-4 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98]"
               >
-                Procesar ticket
+                {imageFiles.length > 1 ? `Enviar ${imageFiles.length} fotos` : 'Enviar ticket'}
               </button>
               <button
                 onClick={handleDiscard}

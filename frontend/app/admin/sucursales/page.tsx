@@ -64,6 +64,16 @@ export default function SucursalesPage() {
     setSucursales(prev => prev.map(x => x.id === s.id ? { ...x, activa: !x.activa } : x))
   }
 
+  async function eliminarSucursal(s: Sucursal) {
+    if (!confirm(`¿Eliminar la sucursal "${s.nombre}"? Esto no se puede deshacer.`)) return
+    const { error } = await supabase.from('sucursales').delete().eq('id', s.id)
+    if (error) {
+      alert('No se puede eliminar: la sucursal tiene tickets o ventas registradas. Usa "Desactivar" en su lugar.')
+      return
+    }
+    setSucursales(prev => prev.filter(x => x.id !== s.id))
+  }
+
   if (loading) {
     return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
   }
@@ -102,6 +112,7 @@ export default function SucursalesPage() {
               <BtnSec onClick={() => setQrSuc(s)}>QR</BtnSec>
               <BtnSec onClick={() => setSucForm({ id: s.id, nombre: s.nombre, slug: s.slug, direccion: s.direccion ?? '', activa: s.activa })}>Editar</BtnSec>
               <BtnSec onClick={() => toggleActiva(s)}>{s.activa ? 'Desactivar' : 'Activar'}</BtnSec>
+              <button onClick={() => eliminarSucursal(s)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-zinc-700">Eliminar</button>
             </div>
           </div>
         ))}
@@ -223,6 +234,17 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
     setLoading(true); await load(); onChanged()
   }
 
+  async function eliminar(e: Empleado) {
+    if (!confirm(`¿Eliminar al empleado "${e.nombre}"?`)) return
+    const { error } = await supabase.from('empleados').delete().eq('id', e.id)
+    if (error) {
+      // Tiene tickets asociados: solo quitarlo de la sucursal y desactivarlo
+      await supabase.from('sucursal_empleados').delete().eq('empleado_id', e.id).eq('sucursal_id', sucursal.id)
+      await supabase.from('empleados').update({ activo: false }).eq('id', e.id)
+    }
+    setLoading(true); await load(); onChanged()
+  }
+
   return (
     <Overlay onClose={onClose}>
       <div className="flex items-center justify-between">
@@ -255,7 +277,10 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
               {empleados.map(e => (
                 <div key={e.id} className={`flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 ${!e.activo ? 'opacity-50' : ''}`}>
                   <span className="text-sm text-zinc-200">{e.nombre}{!e.activo && <span className="text-xs text-zinc-500"> · inactivo</span>}</span>
-                  <button onClick={() => setEditing({ id: e.id, nombre: e.nombre, pin: '', activo: e.activo })} className="text-xs text-zinc-400 hover:text-zinc-200">editar</button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setEditing({ id: e.id, nombre: e.nombre, pin: '', activo: e.activo })} className="text-xs text-zinc-400 hover:text-zinc-200">editar</button>
+                    <button onClick={() => eliminar(e)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
+                  </div>
                 </div>
               ))}
             </div>

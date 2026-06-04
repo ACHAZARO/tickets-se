@@ -8,6 +8,10 @@ import {
   loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveCategoria,
 } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
+import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
+
+// EdgeRuntime.waitUntil permite seguir procesando despues de responder.
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
 
 interface GeminiItem {
   descripcion?: string
@@ -74,10 +78,12 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// deno-lint-ignore no-explicit-any
+type SB = any
+
 async function detectSmartDuplicate(
-  supabase: ReturnType<typeof createClient>,
-  sucursalId: string, folio: string | null, comercio: string | null,
-  monto: number | null, fecha: string | null
+  supabase: SB, sucursalId: string, folio: string | null,
+  comercio: string | null, monto: number | null, fecha: string | null
 ): Promise<string | null> {
   if (folio) {
     const { data } = await supabase.from('registros_tickets').select('id')
@@ -96,11 +102,9 @@ async function detectSmartDuplicate(
   return null
 }
 
-async function createAlert(
-  supabase: ReturnType<typeof createClient>, registroId: string, tipo: string, duplicadoDeId?: string
-): Promise<void> {
+async function createAlert(supabase: SB, registroId: string, tipo: string, dupId?: string): Promise<void> {
   await supabase.from('alertas_tickets').insert({
-    registro_ticket_id: registroId, tipo, duplicado_de_id: duplicadoDeId ?? null,
+    registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null,
   })
 }
 
@@ -115,14 +119,173 @@ async function notifyAlertEmail(registroId: string, tipo: string): Promise<void>
       },
       body: JSON.stringify({ registro_ticket_id: registroId, tipo }),
     })
-  } catch (err) {
-    console.error('Email notification error:', err)
-  }
+  } catch (err) { console.error('Email notification error:', err) }
 }
 
 function parseGemini(text: string): GeminiResult {
   const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   return JSON.parse(clean) as GeminiResult
+}
+
+async function callGeminiWithFallback(
+  genAI: GoogleGenerativeAI, imagePart: unknown, prompt: string
+): Promise<{ datos: GeminiResult; modelo: string }> {
+  const envModel = Deno.env.get('GEMINI_MODEL')
+  const candidatos = [
+    ...(envModel ? [envModel] : []),
+    'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+    'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-1.5-flash-latest',
+  ].filter((m, i, a) => a.indexOf(m) === i)
+
+  let lastErr = ''
+  for (const mname of candidatos) {
+    try {
+      const model = genAI.getGenerativeModel({ model: mname })
+      // deno-lint-ignore no-explicit-any
+      const result = await model.generateContent([imagePart as any, prompt])
+      return { datos: parseGemini(result.response.text()), modelo: mname }
+    } catch (err) {
+      lastErr = String(err)
+      console.error(`Gemini fallo con ${mname}:`, lastErr.slice(0, 160))
+    }
+  }
+  return { datos: { confianza: 'baja', items: [], _error: lastErr } as GeminiResult, modelo: '' }
+}
+
+// Procesamiento pesado en segundo plano: Gemini + items + alertas + auto-confirma.
+async function procesarEnSegundoPlano(opts: {
+  supabase: SB; registroId: string; sucursalId: string; empleadoId: string
+  imageBytes: ArrayBuffer; mime: string; storagePath: string
+}): Promise<void> {
+  const { supabase, registroId, sucursalId, empleadoId, imageBytes, mime, storagePath } = opts
+  try {
+    const catalog: Catalog = await loadCatalog()
+    const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog))
+    const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
+    const imagePart = { inlineData: { mimeType: mime, data: encodeBase64(imageBytes) } }
+
+    const { datos, modelo } = await callGeminiWithFallback(genAI, imagePart, prompt)
+    ;(datos as Record<string, unknown>)._modelo = modelo
+
+    let rawItems: GeminiItem[] = Array.isArray(datos.items) ? datos.items : []
+    rawItems = rawItems.filter(it => it && (it.descripcion || it.monto != null))
+    const montoTotal = datos.monto_total ?? (rawItems.length
+      ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null : null)
+
+    await supabase.from('registros_tickets').update({
+      fecha_ticket: datos.fecha ?? null,
+      folio_ticket: datos.folio_ticket ?? null,
+      comercio: datos.comercio ?? null,
+      monto: montoTotal,
+      gemini_raw: datos as unknown as Record<string, unknown>,
+    }).eq('id', registroId)
+
+    const matchedIds = new Set<string>()
+    let anySinCategoria = false
+    let anySinUnidad = false
+    const itemsToInsert = (rawItems.length ? rawItems : [
+      { descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null },
+    ]).map(it => {
+      const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
+      const matched = matchProductInCatalog(desc, catalog.products)
+      if (matched) matchedIds.add(matched.id)
+      let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
+      if (!cat && matched) cat = resolveCategoria(matched.categoria_nombre, catalog.categories)
+      const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || null
+      let necesita = false, motivo: string | null = null
+      if (!cat) { necesita = true; motivo = 'sin_categoria'; anySinCategoria = true }
+      else if (!unidad) { necesita = true; motivo = 'sin_unidad'; anySinUnidad = true }
+      return {
+        registro_ticket_id: registroId, descripcion: desc,
+        cantidad: it.cantidad ?? null, unidad, monto: it.monto ?? null,
+        categoria_id: cat?.id ?? null, producto_catalogo_id: matched?.id ?? null,
+        necesita_revision: necesita, motivo_revision: motivo,
+        categoria_nombre: cat?.nombre ?? null,
+      }
+    })
+
+    await supabase.from('ticket_items').insert(
+      itemsToInsert.map(({ categoria_nombre: _omit, ...rest }) => rest)
+    )
+
+    for (const pid of matchedIds) {
+      const prod = catalog.products.find(p => p.id === pid)
+      if (prod) await supabase.from('catalogo_productos')
+        .update({ veces_matched: prod.veces_matched + 1 }).eq('id', pid)
+    }
+
+    let hayAlerta = false
+    const dupId = await detectSmartDuplicate(
+      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, datos.fecha ?? null
+    )
+    if (dupId && dupId !== registroId) {
+      await createAlert(supabase, registroId, 'posible_duplicado', dupId)
+      notifyAlertEmail(registroId, 'posible_duplicado'); hayAlerta = true
+    }
+    if (datos.confianza === 'baja') {
+      await createAlert(supabase, registroId, 'ilegible')
+      notifyAlertEmail(registroId, 'ilegible'); hayAlerta = true
+    }
+    if (anySinCategoria) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
+    if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
+
+    // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.
+    if (!hayAlerta) {
+      await autoConfirmar(supabase, registroId, sucursalId, empleadoId, storagePath, itemsToInsert)
+    }
+  } catch (err) {
+    console.error('Error en procesamiento de fondo:', err)
+  }
+}
+
+async function autoConfirmar(
+  supabase: SB, registroId: string, sucursalId: string, empleadoId: string,
+  storagePath: string, items: { descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categoria_nombre: string | null }[]
+): Promise<void> {
+  try {
+    const now = new Date()
+    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const filename = storagePath.split('/').pop() ?? `${registroId}.jpg`
+    const archivoPath = `${yearMonth}/${filename}`
+
+    const { data: fileData } = await supabase.storage.from('por-revisar').download(storagePath)
+    if (fileData) {
+      await supabase.storage.from('archivo').upload(archivoPath, await fileData.arrayBuffer(), {
+        contentType: fileData.type, upsert: true,
+      })
+      await supabase.storage.from('por-revisar').remove([storagePath])
+    }
+
+    const [{ data: suc }, { data: emp }, { data: reg }] = await Promise.all([
+      supabase.from('sucursales').select('nombre').eq('id', sucursalId).maybeSingle(),
+      supabase.from('empleados').select('nombre').eq('id', empleadoId).maybeSingle(),
+      supabase.from('registros_tickets').select('fecha_ticket, folio_ticket, comercio').eq('id', registroId).maybeSingle(),
+    ])
+
+    let sheetsRowId: string | null = null
+    try {
+      sheetsRowId = await enviarAGoogleSheets({
+        fecha_ticket: reg?.fecha_ticket ?? null,
+        folio_ticket: reg?.folio_ticket ?? null,
+        comercio: reg?.comercio ?? null,
+        sucursal_nombre: suc?.nombre ?? 'Sucursal',
+        empleado_nombre: emp?.nombre ?? 'Desconocido',
+        storage_path: archivoPath,
+        confirmado_en: now.toISOString(),
+        items: items.map(it => ({
+          descripcion: it.descripcion, cantidad: it.cantidad, unidad: it.unidad,
+          monto: it.monto, categoria_gasto: it.categoria_nombre,
+        })),
+      })
+    } catch (e) { console.error('Sheets (no bloqueante):', e) }
+
+    await supabase.from('registros_tickets').update({
+      estado: 'confirmado', storage_path_archivo: archivoPath,
+      confirmado_en: now.toISOString(), sheets_row_id: sheetsRowId,
+    }).eq('id', registroId)
+  } catch (err) {
+    console.error('Error en auto-confirmacion:', err)
+  }
 }
 
 serve(async (req: Request) => {
@@ -136,10 +299,8 @@ serve(async (req: Request) => {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader?.startsWith('Bearer ')) return json({ error: 'Token de sesion requerido' }, 401)
 
-    const jwtSecret = Deno.env.get('JWT_SECRET')!
-    const session = await verifySessionToken(authHeader.slice(7), jwtSecret)
+    const session = await verifySessionToken(authHeader.slice(7), Deno.env.get('JWT_SECRET')!)
     if (!session) return json({ error: 'Token de sesion invalido o expirado' }, 401)
-
     const empleadoId = session.sub
     const slug = session.slug
 
@@ -149,175 +310,46 @@ serve(async (req: Request) => {
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-    // Resolver sucursal desde el slug del token (no se confia en el cliente)
     const { data: suc } = await supabase.from('sucursales')
       .select('id').eq('slug', slug).eq('activa', true).maybeSingle()
     if (!suc) return json({ error: 'Sucursal no encontrada o inactiva' }, 404)
     const sucursalId = suc.id as string
 
     const imageBytes = await imagenFile.arrayBuffer()
+    const mime = imagenFile.type || 'image/jpeg'
     const hashImagen = await sha256Hex(imageBytes)
 
-    // Layer 1: duplicado exacto por hash de imagen
+    // Duplicado exacto por hash (rapido) -> avisa al gerente al instante
     const { data: existing } = await supabase.from('registros_tickets')
       .select('id').eq('hash_imagen', hashImagen).maybeSingle()
     if (existing) return json({ duplicado: true, ticket_original_id: existing.id })
 
-    // Subir imagen
     const extension = imagenFile.name.split('.').pop() ?? 'jpg'
     const storagePath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}.${extension}`
     const { error: uploadError } = await supabase.storage.from('por-revisar')
-      .upload(storagePath, imageBytes, { contentType: imagenFile.type || 'image/jpeg', upsert: false })
+      .upload(storagePath, imageBytes, { contentType: mime, upsert: false })
     if (uploadError) {
       console.error('Storage upload error:', uploadError)
       return json({ error: 'Error al subir la imagen' }, 500)
     }
 
-    // Catalogo como contexto de Gemini
-    const catalog: Catalog = await loadCatalog()
-    const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog))
-
-    const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
-    const modelName = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.0-flash'
-    const model = genAI.getGenerativeModel({ model: modelName })
-    // encodeBase64 maneja imagenes grandes sin desbordar el stack (a diferencia
-    // de String.fromCharCode(...array), que truena con miles de bytes).
-    const imageBase64 = encodeBase64(imageBytes)
-
-    let datos: GeminiResult
-    try {
-      const result = await model.generateContent([
-        { inlineData: { mimeType: imagenFile.type || 'image/jpeg', data: imageBase64 } },
-        prompt,
-      ])
-      datos = parseGemini(result.response.text())
-    } catch (err) {
-      console.error('Gemini error/parse:', err)
-      datos = { confianza: 'baja', items: [], _error: String(err) } as GeminiResult
-    }
-
-    // Normalizar items (robustez ante respuestas incompletas)
-    let rawItems: GeminiItem[] = Array.isArray(datos.items) ? datos.items : []
-    rawItems = rawItems.filter(it => it && (it.descripcion || it.monto != null))
-
-    const montoTotal = datos.monto_total ?? (rawItems.length
-      ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null
-      : null)
-
-    // Header del ticket
+    // Registro encabezado en estado pendiente (Gemini lo completa en background)
     const { data: registro, error: insertError } = await supabase.from('registros_tickets').insert({
-      sucursal_id: sucursalId,
-      empleado_id: empleadoId,
-      hash_imagen: hashImagen,
-      storage_path_original: storagePath,
-      estado: 'pendiente',
-      fecha_ticket: datos.fecha ?? null,
-      folio_ticket: datos.folio_ticket ?? null,
-      comercio: datos.comercio ?? null,
-      monto: montoTotal,
-      gemini_raw: datos as unknown as Record<string, unknown>,
+      sucursal_id: sucursalId, empleado_id: empleadoId,
+      hash_imagen: hashImagen, storage_path_original: storagePath, estado: 'pendiente',
     }).select('id').single()
-
-    if (insertError) {
+    if (insertError || !registro) {
       console.error('Insert error:', insertError)
       return json({ error: 'Error al guardar el registro' }, 500)
     }
     const registroId = registro.id as string
 
-    // Construir e insertar items
-    const matchedIds = new Set<string>()
-    let anySinCategoria = false
-    let anySinUnidad = false
+    // Responde YA al gerente; el procesamiento corre en segundo plano.
+    EdgeRuntime.waitUntil(procesarEnSegundoPlano({
+      supabase, registroId, sucursalId, empleadoId, imageBytes, mime, storagePath,
+    }))
 
-    const itemsToInsert = (rawItems.length ? rawItems : [
-      { descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null },
-    ]).map(it => {
-      const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
-      const matched = matchProductInCatalog(desc, catalog.products)
-      if (matched) matchedIds.add(matched.id)
-
-      // Categoria: la sugerida por Gemini, o la del producto del catalogo
-      let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
-      if (!cat && matched) cat = resolveCategoria(matched.categoria_nombre, catalog.categories)
-
-      // Unidad: la de Gemini o la default del catalogo
-      const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || null
-
-      let necesita = false
-      let motivo: string | null = null
-      if (!cat) { necesita = true; motivo = 'sin_categoria'; anySinCategoria = true }
-      else if (!unidad) { necesita = true; motivo = 'sin_unidad'; anySinUnidad = true }
-
-      return {
-        registro_ticket_id: registroId,
-        descripcion: desc,
-        cantidad: it.cantidad ?? null,
-        unidad,
-        monto: it.monto ?? null,
-        categoria_id: cat?.id ?? null,
-        producto_catalogo_id: matched?.id ?? null,
-        necesita_revision: necesita,
-        motivo_revision: motivo,
-      }
-    })
-
-    const { error: itemsError } = await supabase.from('ticket_items').insert(itemsToInsert)
-    if (itemsError) console.error('ticket_items insert error:', itemsError)
-
-    // Incrementar veces_matched de los productos del catalogo que hicieron match
-    for (const pid of matchedIds) {
-      const prod = catalog.products.find(p => p.id === pid)
-      if (prod) {
-        await supabase.from('catalogo_productos')
-          .update({ veces_matched: prod.veces_matched + 1 }).eq('id', pid)
-      }
-    }
-
-    // Alertas a nivel ticket
-    const alertas: string[] = []
-    const dupId = await detectSmartDuplicate(
-      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, datos.fecha ?? null
-    )
-    if (dupId && dupId !== registroId) {
-      await createAlert(supabase, registroId, 'posible_duplicado', dupId)
-      alertas.push('posible_duplicado'); notifyAlertEmail(registroId, 'posible_duplicado')
-    }
-    if (datos.confianza === 'baja') {
-      await createAlert(supabase, registroId, 'ilegible')
-      alertas.push('ilegible'); notifyAlertEmail(registroId, 'ilegible')
-    }
-    if (anySinCategoria) {
-      await createAlert(supabase, registroId, 'producto_no_reconocido')
-      alertas.push('producto_no_reconocido')
-    }
-    if (anySinUnidad) {
-      await createAlert(supabase, registroId, 'sin_unidad')
-      alertas.push('sin_unidad')
-    }
-
-    const necesitaRevision = anySinCategoria || anySinUnidad || datos.confianza === 'baja'
-
-    return json({
-      duplicado: false,
-      registro_id: registroId,
-      necesita_revision: necesitaRevision,
-      ticket: {
-        comercio: datos.comercio ?? null,
-        fecha: datos.fecha ?? null,
-        folio_ticket: datos.folio_ticket ?? null,
-        monto_total: montoTotal,
-        confianza: datos.confianza ?? 'media',
-        items: itemsToInsert.map(it => ({
-          descripcion: it.descripcion,
-          cantidad: it.cantidad,
-          unidad: it.unidad,
-          monto: it.monto,
-          categoria_id: it.categoria_id,
-          necesita_revision: it.necesita_revision,
-        })),
-      },
-      alertas,
-    })
+    return json({ recibido: true, registro_id: registroId })
   } catch (err) {
     console.error('Unhandled error:', err)
     return json({ error: 'Error interno del servidor' }, 500)
