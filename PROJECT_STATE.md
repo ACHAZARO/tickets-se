@@ -109,6 +109,16 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 
 ---
 
+## Fixes 2026-06-04 (tarde)
+- **PIN: cualquier PIN entraba** (bug de seguridad). La pagina del PIN solo revisaba
+  `res.ok` (verificar-pin responde HTTP 200 con `{valid:false}` para PIN incorrecto).
+  Ahora exige `data.valid===true && data.session_token`. /subir redirige al PIN si la
+  sesion no trae token. Verificado en vivo: PIN incorrecto ya no entra.
+- **"Enviando" colgado**: era `createImageBitmap` (compresion de imagen) colgandose con
+  fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
+  (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
+- NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
 ## Pendiente / ideas
 - Marcar esquinas de la foto para recortar ruido a Gemini (opcional; 2.5-flash lee bien).
 - markitdown (Microsoft): util solo si suben PDFs/facturas digitales, no para fotos.
