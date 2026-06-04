@@ -86,17 +86,35 @@ export function resolveCategoria(
   )
 }
 
+// Normaliza: minusculas, sin acentos, solo letras/numeros/espacios.
+function normaliza(s: string): string {
+  const nfd = s.normalize('NFD')
+  let out = ''
+  for (const ch of nfd) {
+    const code = ch.charCodeAt(0)
+    if (code >= 0x300 && code <= 0x36f) continue // diacriticos
+    out += /[a-zA-Z0-9 ]/.test(ch) ? ch : ' '
+  }
+  return out.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
 export function matchProductInCatalog(
   producto: string | null,
   products: CatalogProduct[]
 ): CatalogProduct | null {
   if (!producto) return null
-  const lower = producto.toLowerCase()
-  return products.find(p =>
-    p.nombre.toLowerCase() === lower ||
-    p.sinonimos.some(s => s.toLowerCase() === lower) ||
-    p.nombre.toLowerCase().includes(lower) ||
-    lower.includes(p.nombre.toLowerCase()) ||
-    p.sinonimos.some(s => lower.includes(s.toLowerCase()))
-  ) ?? null
+  const d = normaliza(producto)
+  if (!d) return null
+  const dTokens = d.split(' ').filter(t => t.length >= 3)
+  for (const p of products) {
+    const candidatos = [p.nombre, ...p.sinonimos].map(normaliza).filter(Boolean)
+    for (const c of candidatos) {
+      if (d === c) return p
+      if (d.includes(c) || c.includes(d)) return p
+      // coincidencia por palabra: un token del catalogo (>=4) aparece en la descripcion
+      const cTokens = c.split(' ').filter(t => t.length >= 4)
+      if (cTokens.some(ct => dTokens.includes(ct) || d.includes(ct))) return p
+    }
+  }
+  return null
 }

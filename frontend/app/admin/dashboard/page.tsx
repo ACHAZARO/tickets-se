@@ -17,7 +17,7 @@ interface ItemRow {
   registros_tickets: { id: string; fecha_ticket: string | null; comercio: string | null } | null
 }
 interface CatAgg { id: string; nombre: string; gasto: number; operativo: boolean }
-interface ProductoAgg { nombre: string; reconocido: boolean; gasto: number; veces: number }
+interface ProductoAgg { nombre: string; reconocido: boolean; gasto: number; veces: number; cantidad: number; unidad: string | null; unidadMixta: boolean }
 
 const COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635', '#f472b6', '#94a3b8']
 
@@ -108,8 +108,11 @@ export default function DashboardPage() {
       const reconocido = !!t.catalogo_productos?.nombre
       const nombre = (t.catalogo_productos?.nombre ?? t.descripcion ?? 'Sin nombre').trim()
       const key = nombre.toLowerCase()
-      const prev = pmap.get(key) ?? { nombre, reconocido, gasto: 0, veces: 0 }
+      const prev = pmap.get(key) ?? { nombre, reconocido, gasto: 0, veces: 0, cantidad: 0, unidad: null as string | null, unidadMixta: false }
       prev.gasto += Number(t.monto ?? 0); prev.veces += 1; if (reconocido) prev.reconocido = true
+      prev.cantidad += Number(t.cantidad ?? 0)
+      const u = t.unidad?.trim() || null
+      if (u) { if (prev.unidad && prev.unidad !== u) prev.unidadMixta = true; else if (!prev.unidad) prev.unidad = u }
       pmap.set(key, prev)
     }
     setProductosTop([...pmap.values()].sort((a, b) => b.gasto - a.gasto))
@@ -326,14 +329,17 @@ export default function DashboardPage() {
               <p className="px-4 py-6 text-center text-zinc-500 text-sm">Sin productos en el periodo</p>
             ) : (
               <table className="w-full text-sm">
-                <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Producto</th><th className="text-right font-medium px-4 py-2">Veces</th><th className="text-right font-medium px-4 py-2">Gasto</th></tr></thead>
+                <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Producto</th><th className="text-right font-medium px-4 py-2">Cantidad</th><th className="text-right font-medium px-4 py-2">Veces</th><th className="text-right font-medium px-4 py-2">Gasto</th></tr></thead>
                 <tbody>
-                  {productosTop.slice(0, 25).map(p => (
+                  {productosTop.slice(0, 40).map(p => (
                     <tr key={p.nombre} className="border-t border-zinc-800/50">
                       <td className="px-4 py-2 text-zinc-200">{p.nombre}
                         {p.reconocido
                           ? <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400">catálogo</span>
                           : <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">sin catálogo</span>}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-400">
+                        {p.cantidad > 0 ? `${p.cantidad.toLocaleString('es-MX', { maximumFractionDigits: 2 })}${p.unidadMixta ? '' : p.unidad ? ' ' + p.unidad : ''}` : '—'}
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">{p.veces}</td>
                       <td className="px-4 py-2 text-right text-zinc-300">{fmt2(p.gasto)}</td>

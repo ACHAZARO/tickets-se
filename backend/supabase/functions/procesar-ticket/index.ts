@@ -52,9 +52,11 @@ ${catalogContext}
 
 Reglas importantes:
 - Crea un objeto dentro de "items" por CADA producto o renglon del ticket. No agrupes varios productos en uno.
-- Asigna a cada renglon la categoria mas adecuada de la lista de categorias validas. Si de plano ninguna aplica, usa null en "categoria".
+- Asigna a cada renglon la categoria MAS ESPECIFICA que aplique de la lista de categorias validas. Si de plano ninguna aplica, usa null en "categoria".
+- USA EL NOMBRE DEL COMERCIO para decidir la categoria. Ejemplos: en una gasolinera o "centro gasolinero", palabras como "gas", "magna", "premium", "diesel" son COMBUSTIBLE para auto (categoria de gasolina/combustible), NO gas de cocina. En cambio "Gas LP", "gas de cocina" o un comercio tipo "Gas de Xalapa" si es gas de cocina.
+- Si un renglon esta abreviado, cortado o con error de dedo pero se parece a un producto conocido (ej. "popt" o "popote", "azuc" o "azucar", "serv" o "servilletas"), trátalo como ese producto conocido: usa su nombre, su categoria y su unidad.
+- Si un producto coincide con uno de los productos conocidos (o uno de sus sinonimos/marcas), usa su nombre, categoria y unidad.
 - Si es una nota escrita a mano sin precio por renglon, deja "monto" en null en los items y pon el total en "monto_total".
-- Si un producto coincide con uno de los productos conocidos, usa su categoria y unidad.
 - Incluye tambien el texto escrito a mano en tu analisis.
 Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
 }
