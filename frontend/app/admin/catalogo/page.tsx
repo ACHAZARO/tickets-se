@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 
-interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null }
+interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
 interface Producto {
   id: string
   nombre: string
@@ -30,7 +30,7 @@ export default function CatalogoPage() {
   const [savingProd, setSavingProd] = useState(false)
 
   const fetchData = useCallback(async () => {
-    let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id').order('orden')
+    let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
     let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id').order('nombre')
     catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
     prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
@@ -59,6 +59,10 @@ export default function CatalogoPage() {
   async function toggleCat(c: Categoria) {
     await supabase.from('categorias_gasto').update({ activa: !c.activa }).eq('id', c.id)
     setCategorias(prev => prev.map(x => x.id === c.id ? { ...x, activa: !x.activa } : x))
+  }
+  async function toggleOperativo(c: Categoria) {
+    await supabase.from('categorias_gasto').update({ cuenta_operativo: !c.cuenta_operativo }).eq('id', c.id)
+    setCategorias(prev => prev.map(x => x.id === c.id ? { ...x, cuenta_operativo: !x.cuenta_operativo } : x))
   }
 
   async function guardarProducto() {
@@ -124,6 +128,11 @@ export default function CatalogoPage() {
                 </div>
                 <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
                   className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap">+ producto</button>
+                <button onClick={() => toggleOperativo(c)}
+                  title={c.cuenta_operativo ? 'Cuenta en el gasto de operación' : 'NO cuenta en operación (ej. equipo)'}
+                  className={`text-xs px-2 py-1 rounded-lg whitespace-nowrap ${c.cuenta_operativo ? 'bg-blue-900/40 text-blue-300' : 'bg-zinc-800 text-zinc-500'}`}>
+                  {c.cuenta_operativo ? 'Operativo' : 'No operativo'}
+                </button>
                 <button onClick={() => toggleCat(c)}
                   className={`text-xs px-2 py-1 rounded-lg ${c.activa ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
                   {c.activa ? 'Activa' : 'Inactiva'}

@@ -8,12 +8,10 @@ import type { User } from '@supabase/supabase-js'
 import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
 
 const NAV_ITEMS = [
-  { href: '/admin/dashboard', label: 'Arqueo' },
+  { href: '/admin/dashboard', label: 'Gasto' },
   { href: '/admin/tickets', label: 'Tickets' },
   { href: '/admin/alertas', label: 'Alertas' },
-  { href: '/admin/ventas', label: 'Ventas' },
   { href: '/admin/catalogo', label: 'Catalogo' },
-  { href: '/admin/objetivos', label: 'Objetivos' },
   { href: '/admin/sucursales', label: 'Sucursales' },
 ]
 
