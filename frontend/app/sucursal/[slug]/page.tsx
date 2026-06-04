@@ -72,16 +72,18 @@ export default function PinPage({ params }: PageProps) {
         body: JSON.stringify({ slug, pin }),
       })
 
-      if (res.ok) {
-        // Store auth token or just navigate — Edge Function returns employee id
-        const data = await res.json()
-        // Store minimal session in sessionStorage for the upload page
+      const data = await res.json().catch(() => ({}))
+      // Solo entra si el PIN es VALIDO y vino el token de sesion.
+      // verificar-pin responde HTTP 200 con {valid:false} cuando el PIN es
+      // incorrecto, asi que NO basta con res.ok.
+      if (res.ok && data.valid === true && data.session_token) {
         sessionStorage.setItem(
           `auth_${slug}`,
           JSON.stringify({ empleadoId: data.empleado_id, sessionToken: data.session_token, timestamp: Date.now() })
         )
         router.push(`/sucursal/${slug}/subir`)
       } else {
+        // PIN incorrecto o sucursal invalida
         setState('error')
         setPin('')
         triggerShake()

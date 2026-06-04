@@ -83,8 +83,14 @@ export default function SubirPage({ params }: PageProps) {
         router.replace(`/sucursal/${slug}`)
         return
       }
+      // Sin token de sesion valido -> de vuelta al PIN (no se confia en una sesion incompleta)
+      if (!parsed.sessionToken || !parsed.empleadoId) {
+        sessionStorage.removeItem(`auth_${slug}`)
+        router.replace(`/sucursal/${slug}`)
+        return
+      }
       setEmpleadoId(parsed.empleadoId)
-      setSessionToken(parsed.sessionToken ?? null)
+      setSessionToken(parsed.sessionToken)
     } catch {
       router.replace(`/sucursal/${slug}`)
     }
