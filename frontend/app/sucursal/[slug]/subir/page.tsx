@@ -119,7 +119,11 @@ export default function SubirPage({ params }: PageProps) {
       let ok = 0
       let duplicados = 0
       for (const file of archivos) {
-        const imagen = await comprimirImagen(file)
+        // La compresion no puede colgar el envio: si tarda >8s, usa la original.
+        const imagen = await Promise.race<Blob>([
+          comprimirImagen(file),
+          new Promise<Blob>(resolve => setTimeout(() => resolve(file), 8000)),
+        ])
         const formData = new FormData()
         formData.append('imagen', imagen, 'ticket.jpg')
         // timeout de seguridad: si la red se cuelga, no dejamos "Enviando" para siempre
