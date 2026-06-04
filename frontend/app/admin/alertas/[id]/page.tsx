@@ -13,6 +13,7 @@ interface Item {
   unidad: string | null
   monto: number | null
   categoria_id: string | null
+  producto_catalogo_id: string | null
   necesita_revision: boolean
   motivo_revision: string | null
 }
@@ -30,6 +31,7 @@ interface AlertaDetail {
     folio_ticket: string | null
     storage_path_original: string | null
     storage_path_archivo: string | null
+    sucursal_id: string | null
     sucursales: { nombre: string } | null
     empleados: { nombre: string } | null
   } | null
@@ -52,7 +54,7 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
       .from('alertas_tickets')
       .select(`id, tipo, resuelta, created_at,
         registros_tickets:registro_ticket_id (
-          id, comercio, monto, fecha_ticket, folio_ticket, storage_path_original, storage_path_archivo,
+          id, comercio, monto, fecha_ticket, folio_ticket, storage_path_original, storage_path_archivo, sucursal_id,
           sucursales:sucursal_id ( nombre ), empleados:empleado_id ( nombre )
         )`)
       .eq('id', params.id)
@@ -66,7 +68,7 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
     if (alertaData?.registros_tickets?.id) {
       itemsP = supabase
         .from('ticket_items')
-        .select('id, descripcion, cantidad, unidad, monto, categoria_id, necesita_revision, motivo_revision')
+        .select('id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision')
         .eq('registro_ticket_id', alertaData.registros_tickets.id)
         .order('created_at')
     }
@@ -97,29 +99,67 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
   async function guardarItem(it: Item) {
     setSaving(true)
     const necesita = !it.categoria_id || !it.unidad
+    let productoId = it.producto_catalogo_id
+
+    // APRENDER: si tiene categoria y no esta ligado a un producto del catalogo,
+    // lo agregamos (global) para que la IA lo reconozca la proxima.
+    if (it.categoria_id && !it.producto_catalogo_id && it.descripcion.trim()) {
+      const syn = sinonimos[it.id]?.trim()
+      const sucId = alerta?.registros_tickets?.sucursal_id ?? null
+      // evita duplicar: busca uno con el mismo nombre (global o de la sucursal)
+      const { data: existente } = await supabase.from('catalogo_productos')
+        .select('id').ilike('nombre', it.descripcion.trim())
+        .or(`sucursal_id.is.null,sucursal_id.eq.${sucId ?? '00000000-0000-0000-0000-000000000000'}`)
+        .limit(1).maybeSingle()
+      if (existente) {
+        productoId = existente.id
+      } else {
+        const { data: nuevo } = await supabase.from('catalogo_productos').insert({
+          nombre: it.descripcion.trim(),
+          sinonimos: syn ? syn.split(',').map(s => s.trim()).filter(Boolean) : [],
+          categoria_id: it.categoria_id,
+          unidad_default: it.unidad || null,
+          sucursal_id: sucId,
+        }).select('id').single()
+        productoId = nuevo?.id ?? null
+      }
+    } else if (it.producto_catalogo_id) {
+      // ya esta en catalogo: si escribio sinonimos, los agrega al producto existente
+      const syn = sinonimos[it.id]?.trim()
+      if (syn) {
+        const { data: prod } = await supabase.from('catalogo_productos').select('sinonimos').eq('id', it.producto_catalogo_id).single()
+        const nuevos = syn.split(',').map(s => s.trim()).filter(Boolean)
+        const merged = Array.from(new Set([...((prod?.sinonimos as string[]) ?? []), ...nuevos]))
+        await supabase.from('catalogo_productos').update({ sinonimos: merged }).eq('id', it.producto_catalogo_id)
+      }
+    }
+
     await supabase.from('ticket_items').update({
       categoria_id: it.categoria_id || null,
       unidad: it.unidad || null,
+      producto_catalogo_id: productoId,
       necesita_revision: necesita,
       motivo_revision: necesita ? (!it.categoria_id ? 'sin_categoria' : 'sin_unidad') : null,
     }).eq('id', it.id)
 
-    const syn = sinonimos[it.id]?.trim()
-    if (syn && it.categoria_id) {
-      await supabase.from('catalogo_productos').insert({
-        nombre: it.descripcion,
-        sinonimos: syn.split(',').map(s => s.trim()).filter(Boolean),
-        categoria_id: it.categoria_id,
-        unidad_default: it.unidad || null,
-      })
-    }
     setSaving(false)
+    setSinonimos(prev => ({ ...prev, [it.id]: '' }))
     await load()
   }
 
   async function resolver() {
-    if (!alerta) return
+    if (!alerta?.registros_tickets) return
     setSaving(true)
+    // 1) confirma el ticket (estado=confirmado + archiva + Sheets) para que entre al arqueo
+    const { error } = await supabase.functions.invoke('confirmar-admin', {
+      body: { registro_id: alerta.registros_tickets.id },
+    })
+    if (error) {
+      setSaving(false)
+      alert('No se pudo confirmar el ticket: ' + error.message)
+      return
+    }
+    // 2) marca la alerta como resuelta
     await supabase.from('alertas_tickets').update({ resuelta: true }).eq('id', alerta.id)
     router.push('/admin/alertas')
   }
