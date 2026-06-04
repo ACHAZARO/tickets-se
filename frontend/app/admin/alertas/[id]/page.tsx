@@ -35,7 +35,7 @@ interface AlertaDetail {
   } | null
 }
 
-const UNIDADES = ['kg', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
+const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
 
 export default function AlertaDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()

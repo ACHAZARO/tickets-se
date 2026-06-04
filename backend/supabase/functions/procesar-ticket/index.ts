@@ -41,7 +41,7 @@ function buildGeminiPrompt(catalogContext: string): string {
     {
       "descripcion": "texto del producto tal como aparece",
       "cantidad": numero o null,
-      "unidad": "kg, pz, ml, lt, caja, bulto, paquete, rollo, galon u otro, o null si no se indica",
+      "unidad": "kg, g (gramos), pz, ml, lt, caja, bulto, paquete, rollo, galon u otro, o null si no se indica",
       "monto": numero decimal del precio de ese renglon o null,
       "categoria": "una de las categorias validas listadas abajo, o null si ninguna aplica"
     }

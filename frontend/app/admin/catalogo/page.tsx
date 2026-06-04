@@ -21,7 +21,7 @@ interface Producto {
   categorias_gasto: { nombre: string } | null
 }
 
-const UNIDADES = ['kg', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
+const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
 
 interface FormState {
   nombre: string
