@@ -193,6 +193,18 @@ En `main`. Spec: docs/superpowers/specs/2026-06-04-multiproducto-ia-design.md.
 - Frontend subir: "¡Enviado! Gracias" + soporta varias fotos. PIN guarda session_token.
 - Sucursales/empleados: botones Eliminar (fallback a desactivar si tienen datos).
 
+## Agregado (2026-06-04 tarde)
+- Objetivos POR SUCURSAL: selector en /admin/objetivos (global o por sucursal);
+  dashboard usa el de la sucursal con global de respaldo. Tabla objetivos_costo.sucursal_id.
+- /admin/tickets: lista todos los tickets (filtro periodo/sucursal) con foto + empleado +
+  detalle de renglones. "Descargar periodo" -> ZIP con imagenes + tickets.csv (JSZip).
+- Fotos en admin: buckets privados -> URLs FIRMADAS (createSignedUrl). Migracion 011 da
+  RLS SELECT a authenticated en por-revisar/archivo. Antes el admin usaba URL publica (rota).
+- Retencion: migracion 012 + pg_cron mensual (limpiar_imagenes_antiguas) borra fotos con
+  +1 año, conserva los datos. Job 'limpiar-imagenes-tickets' activo.
+- Modelo Gemini fijado a gemini-2.5-flash (eleccion del usuario; cuenta con billing).
+  Override via secret GEMINI_MODEL en Supabase dashboard.
+
 ## Pendiente menor / ideas
 - Corner-crop en el frontend (marcar esquinas para quitar ruido a Gemini) — NO hecho;
   gemini-2.5-flash lee bien las fotos, es mejora opcional.
