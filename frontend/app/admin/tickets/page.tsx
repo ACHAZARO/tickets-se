@@ -92,6 +92,13 @@ export default function TicketsPage() {
     setTickets(prev => prev.filter(x => x.id !== t.id))
   }
 
+  async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
+    const v = valor || null
+    await supabase.from('registros_tickets').update({ [campo]: v }).eq('id', id)
+    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, [campo]: v } } : d)
+    setTickets(prev => prev.map(x => x.id === id ? { ...x, [campo]: v } as Ticket : x))
+  }
+
   async function abrirDetalle(t: Ticket) {
     const { data } = await supabase.from('ticket_items')
       .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre)')
@@ -197,8 +204,20 @@ export default function TicketsPage() {
               <button onClick={() => setDetalle(null)} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">×</button>
             </div>
             <p className="text-xs text-zinc-500">
-              {detalle.ticket.sucursales?.nombre} · subido por <span className="text-zinc-300">{detalle.ticket.empleados?.nombre ?? 'Desconocido'}</span> · {detalle.ticket.fecha_ticket}
+              {detalle.ticket.sucursales?.nombre} · subido por <span className="text-zinc-300">{detalle.ticket.empleados?.nombre ?? 'Desconocido'}</span>
             </p>
+            <div className="flex flex-wrap gap-2">
+              <div>
+                <label className="text-[10px] text-zinc-500 block">Comercio</label>
+                <input defaultValue={detalle.ticket.comercio ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'comercio', e.target.value)}
+                  className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-sm text-zinc-100 w-48" />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 block">Fecha</label>
+                <input type="date" defaultValue={detalle.ticket.fecha_ticket ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'fecha_ticket', e.target.value)}
+                  className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-sm text-zinc-100" />
+              </div>
+            </div>
             {detalle.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={detalle.url} alt="Ticket" className="w-full max-h-[50vh] object-contain rounded-xl bg-zinc-950" />

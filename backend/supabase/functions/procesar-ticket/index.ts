@@ -199,8 +199,13 @@ async function procesarEnSegundoPlano(opts: {
     const montoTotal = datos.monto_total ?? (rawItems.length
       ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null : null)
 
+    // Si Gemini no leyo una fecha valida, usar la fecha de subida (hoy) para que
+    // el ticket NO quede invisible en el arqueo/lista (filtrados por fecha).
+    const hoy = new Date().toISOString().slice(0, 10)
+    const fechaTicket = (datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) ? datos.fecha : hoy
+
     await supabase.from('registros_tickets').update({
-      fecha_ticket: datos.fecha ?? null,
+      fecha_ticket: fechaTicket,
       folio_ticket: datos.folio_ticket ?? null,
       comercio: datos.comercio ?? null,
       monto: montoTotal,
@@ -246,7 +251,7 @@ async function procesarEnSegundoPlano(opts: {
 
     let hayAlerta = false
     const dupId = await detectSmartDuplicate(
-      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, datos.fecha ?? null
+      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket
     )
     if (dupId && dupId !== registroId) {
       await createAlert(supabase, registroId, 'posible_duplicado', dupId)
