@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
 
 interface Categoria {
   id: string
@@ -41,6 +42,7 @@ const EMPTY_FORM: FormState = {
 }
 
 export default function CatalogoPage() {
+  const { sucursalId } = useSucursal()
   const [productos, setProductos] = useState<Producto[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,17 +52,19 @@ export default function CatalogoPage() {
   const [saving, setSaving] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const [prodRes, catRes] = await Promise.all([
-      supabase
-        .from('catalogo_productos')
-        .select('id, nombre, sinonimos, categoria_id, unidad_default, precio_referencia, veces_matched, activo, categorias_gasto:categoria_id ( nombre )')
-        .order('nombre'),
-      supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden'),
-    ])
+    let prodQ = supabase
+      .from('catalogo_productos')
+      .select('id, nombre, sinonimos, categoria_id, unidad_default, precio_referencia, veces_matched, activo, categorias_gasto:categoria_id ( nombre )')
+      .order('nombre')
+    let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
+    // global + sucursal seleccionada
+    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
+    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
+    const [prodRes, catRes] = await Promise.all([prodQ, catQ])
     setProductos((prodRes.data as unknown as Producto[]) ?? [])
     setCategorias(catRes.data ?? [])
     setLoading(false)
-  }, [])
+  }, [sucursalId])
 
   useEffect(() => {
     fetchData()
@@ -104,7 +108,7 @@ export default function CatalogoPage() {
     }
 
     if (editingId === 'new') {
-      await supabase.from('catalogo_productos').insert(payload)
+      await supabase.from('catalogo_productos').insert({ ...payload, sucursal_id: sucursalId || null })
     } else {
       await supabase.from('catalogo_productos').update(payload).eq('id', editingId)
     }

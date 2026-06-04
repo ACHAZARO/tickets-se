@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
 import {
   calcularArqueo, prorratearVentas, rangoDeMes,
   type GastoCategoria, type VentaMes, type Objetivo, type ResultadoArqueo,
@@ -46,9 +47,8 @@ const fmt = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigi
 type Modo = 'mes' | 'rango'
 
 export default function DashboardPage() {
-  const [sucursales, setSucursales] = useState<Sucursal[]>([])
+  const { sucursalId, sucursales } = useSucursal()
   const [objetivos, setObjetivos] = useState<Objetivo[]>([])
-  const [sucursalId, setSucursalId] = useState('')
   const [modo, setModo] = useState<Modo>('mes')
   const [mesSel, setMesSel] = useState(MESES_SEL[0])
   const [rangoIni, setRangoIni] = useState(rangoDeMes(MESES_SEL[0]).inicio)
@@ -63,14 +63,6 @@ export default function DashboardPage() {
     if (modo === 'mes') return rangoDeMes(mesSel)
     return { inicio: rangoIni, fin: rangoFin }
   }, [modo, mesSel, rangoIni, rangoFin])
-
-  // Carga estatica (sucursales)
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from('sucursales').select('id, nombre').eq('activa', true).order('nombre')
-      setSucursales(data ?? [])
-    })()
-  }, [])
 
   // Objetivos segun la sucursal seleccionada (especifico de sucursal con global de respaldo)
   useEffect(() => {
@@ -231,11 +223,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <select value={sucursalId} onChange={e => setSucursalId(e.target.value)}
-          className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100">
-          <option value="">Todas las sucursales</option>
-          {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
       </div>
 
       {loading || !arqueo ? (

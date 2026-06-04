@@ -159,7 +159,7 @@ async function procesarEnSegundoPlano(opts: {
 }): Promise<void> {
   const { supabase, registroId, sucursalId, empleadoId, imageBytes, mime, storagePath } = opts
   try {
-    const catalog: Catalog = await loadCatalog()
+    const catalog: Catalog = await loadCatalog(sucursalId)
     const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog))
     const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
     const imagePart = { inlineData: { mimeType: mime, data: encodeBase64(imageBytes) } }

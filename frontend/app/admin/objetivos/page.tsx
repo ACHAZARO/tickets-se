@@ -2,29 +2,21 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
 
 interface Categoria { id: string; nombre: string }
-interface Sucursal { id: string; nombre: string }
 interface ObjetivoRow { id: string; categoria_id: string; pct_objetivo: number }
 
 export default function ObjetivosPage() {
+  const { sucursalId, sucursales } = useSucursal()
   const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [sucursales, setSucursales] = useState<Sucursal[]>([])
-  const [sucursalId, setSucursalId] = useState('') // '' = global (todas)
   const [objetivos, setObjetivos] = useState<Record<string, { id?: string; pct: string }>>({})
   const [loading, setLoading] = useState(true)
   const [savingCat, setSavingCat] = useState<string | null>(null)
 
-  // Carga inicial de catalogos
   useEffect(() => {
-    (async () => {
-      const [catRes, sucRes] = await Promise.all([
-        supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden'),
-        supabase.from('sucursales').select('id, nombre').eq('activa', true).order('nombre'),
-      ])
-      setCategorias(catRes.data ?? [])
-      setSucursales(sucRes.data ?? [])
-    })()
+    supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
+      .then(({ data }) => setCategorias(data ?? []))
   }, [])
 
   // Carga objetivos del alcance (global o sucursal) seleccionado
@@ -76,19 +68,11 @@ export default function ObjetivosPage() {
         <p className="text-sm text-zinc-500 mt-1">% máximo de la venta que debería representar cada categoría. El dashboard marca en rojo cuando se excede.</p>
       </div>
 
-      <div>
-        <label className="text-xs text-zinc-500 block mb-1">Aplicar objetivos a</label>
-        <select value={sucursalId} onChange={e => setSucursalId(e.target.value)}
-          className="w-full md:w-72 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-2.5 text-sm text-zinc-100">
-          <option value="">Todas las sucursales (global)</option>
-          {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
-        <p className="text-xs text-zinc-600 mt-1">
-          {sucursalId
-            ? 'Estos objetivos aplican solo a esta sucursal y tienen prioridad sobre el global.'
-            : 'Estos objetivos aplican a todas las sucursales que no tengan uno propio.'}
-        </p>
-      </div>
+      <p className="text-xs text-zinc-600">
+        {sucursalId
+          ? 'Editando objetivos de la sucursal seleccionada en el menú de arriba (tienen prioridad sobre el global).'
+          : 'Editando objetivos globales (aplican a las sucursales que no tengan uno propio). Cambia la sucursal arriba para definir objetivos específicos.'}
+      </p>
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>

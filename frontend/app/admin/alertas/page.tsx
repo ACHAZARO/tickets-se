@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
 
 interface Alerta {
   id: string
@@ -31,6 +32,7 @@ const TIPO_CONFIG: Record<string, { label: string; color: string }> = {
 type FilterType = 'all' | 'pending' | 'resolved'
 
 export default function AlertasPage() {
+  const { sucursalId } = useSucursal()
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('pending')
@@ -40,8 +42,8 @@ export default function AlertasPage() {
       .from('alertas_tickets')
       .select(`
         id, tipo, resuelta, created_at,
-        registros_tickets:registro_ticket_id (
-          comercio, monto, fecha_ticket, producto, storage_path_original,
+        registros_tickets:registro_ticket_id!inner (
+          comercio, monto, fecha_ticket, producto, storage_path_original, sucursal_id,
           sucursales:sucursal_id ( nombre )
         )
       `)
@@ -50,11 +52,12 @@ export default function AlertasPage() {
 
     if (filter === 'pending') query = query.eq('resuelta', false)
     if (filter === 'resolved') query = query.eq('resuelta', true)
+    if (sucursalId) query = query.eq('registros_tickets.sucursal_id', sucursalId)
 
     const { data } = await query
     setAlertas((data as unknown as Alerta[]) ?? [])
     setLoading(false)
-  }, [filter])
+  }, [filter, sucursalId])
 
   useEffect(() => {
     setLoading(true)

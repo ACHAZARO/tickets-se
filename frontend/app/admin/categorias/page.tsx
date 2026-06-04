@@ -2,25 +2,31 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
 
 interface Categoria {
   id: string
   nombre: string
   orden: number
   activa: boolean
+  sucursal_id: string | null
 }
 
 export default function CategoriasPage() {
+  const { sucursalId } = useSucursal()
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
   const [nueva, setNueva] = useState('')
   const [saving, setSaving] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const { data } = await supabase.from('categorias_gasto').select('id, nombre, orden, activa').order('orden')
-    setCategorias(data ?? [])
+    let q = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id').order('orden')
+    // global (sucursal_id null) + las de la sucursal seleccionada
+    q = sucursalId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : q.is('sucursal_id', null)
+    const { data } = await q
+    setCategorias((data as Categoria[] | null) ?? [])
     setLoading(false)
-  }, [])
+  }, [sucursalId])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -28,7 +34,8 @@ export default function CategoriasPage() {
     if (!nueva.trim()) return
     setSaving(true)
     const maxOrden = categorias.reduce((m, c) => Math.max(m, c.orden), 0)
-    const { error } = await supabase.from('categorias_gasto').insert({ nombre: nueva.trim(), orden: maxOrden + 1 })
+    const { error } = await supabase.from('categorias_gasto')
+      .insert({ nombre: nueva.trim(), orden: maxOrden + 1, sucursal_id: sucursalId || null })
     setSaving(false)
     if (!error) { setNueva(''); setLoading(true); fetchData() }
   }
@@ -55,7 +62,12 @@ export default function CategoriasPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-zinc-100">Categorías de gasto</h2>
-        <p className="text-sm text-zinc-500 mt-1">La IA clasifica cada renglón en estas categorías. Agrega las que necesites.</p>
+        <p className="text-sm text-zinc-500 mt-1">
+          La IA clasifica cada renglón en estas categorías.{' '}
+          {sucursalId
+            ? 'Estás viendo las globales + las de esta sucursal. Lo que agregues será solo de esta sucursal.'
+            : 'Estás viendo las globales (aplican a todas). Elige una sucursal arriba para agregar categorías propias.'}
+        </p>
       </div>
 
       <div className="flex gap-2">
@@ -72,6 +84,9 @@ export default function CategoriasPage() {
           <div key={c.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${!c.activa ? 'opacity-50' : ''}`}>
             <input value={c.nombre} onChange={e => renombrar(c, e.target.value)} onBlur={() => guardarNombre(c)}
               className="flex-1 bg-transparent text-sm text-zinc-100 outline-none focus:bg-zinc-800 rounded px-2 py-1" />
+            {c.sucursal_id === null
+              ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">global</span>
+              : <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400">sucursal</span>}
             <button onClick={() => toggleActiva(c)}
               className={`text-xs font-medium px-2 py-1 rounded-lg ${c.activa ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
               {c.activa ? 'Activa' : 'Inactiva'}

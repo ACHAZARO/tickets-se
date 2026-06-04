@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
 
 interface Sucursal { id: string; nombre: string }
 interface Item { descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null }
@@ -41,8 +42,7 @@ function pathBucket(t: Ticket): { bucket: string; path: string } | null {
 }
 
 export default function TicketsPage() {
-  const [sucursales, setSucursales] = useState<Sucursal[]>([])
-  const [sucursalId, setSucursalId] = useState('')
+  const { sucursalId } = useSucursal()
   const [desde, setDesde] = useState(primerDiaMesISO())
   const [hasta, setHasta] = useState(hoyISO())
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -50,11 +50,6 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true)
   const [detalle, setDetalle] = useState<{ ticket: Ticket; items: Item[]; url: string | null } | null>(null)
   const [descargando, setDescargando] = useState(false)
-
-  useEffect(() => {
-    supabase.from('sucursales').select('id, nombre').eq('activa', true).order('nombre')
-      .then(({ data }) => setSucursales(data ?? []))
-  }, [])
 
   const fetchTickets = useCallback(async () => {
     setLoading(true)
@@ -151,11 +146,6 @@ export default function TicketsPage() {
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
             className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100" />
         </div>
-        <select value={sucursalId} onChange={e => setSucursalId(e.target.value)}
-          className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100">
-          <option value="">Todas las sucursales</option>
-          {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
       </div>
 
       {loading ? (

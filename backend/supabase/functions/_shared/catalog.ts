@@ -20,22 +20,24 @@ export interface Catalog {
   categories: CatalogCategory[]
 }
 
-export async function loadCatalog(): Promise<Catalog> {
+// Carga el catalogo aplicable a una sucursal: lo global (sucursal_id NULL)
+// mas lo especifico de esa sucursal. Sin sucursalId, solo lo global.
+export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
+  const scope = sucursalId ? `sucursal_id.is.null,sucursal_id.eq.${sucursalId}` : null
 
-  const { data: categories } = await supabase
-    .from('categorias_gasto')
-    .select('id, nombre')
-    .eq('activa', true)
-    .order('orden')
+  let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
+  catQ = scope ? catQ.or(scope) : catQ.is('sucursal_id', null)
+  const { data: categories } = await catQ
 
-  const { data: products } = await supabase
-    .from('catalogo_productos')
+  let prodQ = supabase.from('catalogo_productos')
     .select('id, nombre, sinonimos, unidad_default, precio_referencia, veces_matched, categorias_gasto:categoria_id(nombre)')
     .eq('activo', true)
+  prodQ = scope ? prodQ.or(scope) : prodQ.is('sucursal_id', null)
+  const { data: products } = await prodQ
 
   return {
     categories: categories ?? [],

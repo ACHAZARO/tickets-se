@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Arqueo' },
@@ -58,11 +59,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!user) return null
 
   return (
+    <SucursalProvider>
     <div className="min-h-screen min-h-[100dvh] flex flex-col">
-      <header className="border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6">
+      <header className="border-b border-zinc-800 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-6 flex-wrap">
           <h1 className="text-base font-semibold text-zinc-100">Tickets SE</h1>
-          <nav className="flex gap-1">
+          <nav className="flex gap-1 flex-wrap">
             {NAV_ITEMS.map(item => (
               <Link
                 key={item.href}
@@ -78,16 +80,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             ))}
           </nav>
         </div>
-        <button
-          onClick={() => supabase.auth.signOut().then(() => router.replace('/admin/login'))}
-          className="text-sm text-zinc-500 hover:text-zinc-300"
-        >
-          Salir
-        </button>
+        <div className="flex items-center gap-3">
+          <SucursalSelector />
+          <button
+            onClick={() => supabase.auth.signOut().then(() => router.replace('/admin/login'))}
+            className="text-sm text-zinc-500 hover:text-zinc-300"
+          >
+            Salir
+          </button>
+        </div>
       </header>
       <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full">
         {children}
       </main>
     </div>
+    </SucursalProvider>
   )
 }
