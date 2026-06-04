@@ -8,13 +8,21 @@ interface PageProps {
   params: { slug: string }
 }
 
+interface TicketItem {
+  descripcion: string | null
+  cantidad: number | null
+  unidad: string | null
+  monto: number | null
+  necesita_revision?: boolean
+}
+
 interface TicketData {
   fecha: string | null
   comercio: string | null
-  monto: number | null
-  moneda: string | null
-  categoria: string | null
-  descripcion: string | null
+  folio_ticket: string | null
+  monto_total: number | null
+  confianza: string | null
+  items: TicketItem[]
 }
 
 type UploadState = 'idle' | 'preview' | 'processing' | 'review' | 'confirming' | 'done' | 'error'
@@ -32,6 +40,8 @@ export default function SubirPage({ params }: PageProps) {
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
+  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const [registroId, setRegistroId] = useState<string | null>(null)
 
   // Guard: verify session exists
   useEffect(() => {
@@ -49,6 +59,7 @@ export default function SubirPage({ params }: PageProps) {
         return
       }
       setEmpleadoId(parsed.empleadoId)
+      setSessionToken(parsed.sessionToken ?? null)
     } catch {
       router.replace(`/sucursal/${slug}`)
     }
@@ -78,50 +89,55 @@ export default function SubirPage({ params }: PageProps) {
     try {
       const formData = new FormData()
       formData.append('imagen', imageFile)
-      formData.append('slug', slug)
-      if (empleadoId) formData.append('empleadoId', empleadoId)
 
       const res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
         method: 'POST',
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
         body: formData,
       })
 
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || 'Error al procesar el ticket')
+        throw new Error(data.error || 'Error al procesar el ticket')
+      }
+      if (data.duplicado) {
+        throw new Error('Este ticket ya fue registrado antes.')
       }
 
-      const data = await res.json()
-      setTicketData(data.ticket ?? data)
+      setRegistroId(data.registro_id ?? null)
+      setTicketData(data.ticket ?? null)
       setState('review')
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
       setState('error')
     }
-  }, [imageFile, slug, empleadoId])
+  }, [imageFile, sessionToken])
 
   const handleConfirm = useCallback(async () => {
-    if (!ticketData) return
+    if (!registroId) return
     setState('confirming')
 
     try {
       const res = await fetch(`${EDGE_FUNCTIONS_URL}/confirmar-ticket`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, empleadoId, ticketData }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
+        body: JSON.stringify({ registro_id: registroId }),
       })
 
       if (!res.ok) {
-        throw new Error('Error al confirmar el ticket')
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Error al confirmar el ticket')
       }
 
       setState('done')
-      sessionStorage.removeItem(`auth_${slug}`)
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Error al confirmar')
       setState('error')
     }
-  }, [ticketData, slug, empleadoId])
+  }, [registroId, sessionToken])
 
   const handleDiscard = useCallback(() => {
     setImageFile(null)
@@ -135,14 +151,15 @@ export default function SubirPage({ params }: PageProps) {
   const handleNewTicket = useCallback(() => {
     handleDiscard()
     // Restore session for another ticket
+    setRegistroId(null)
     const session = sessionStorage.getItem(`auth_${slug}`)
     if (!session && empleadoId) {
       sessionStorage.setItem(
         `auth_${slug}`,
-        JSON.stringify({ empleadoId, timestamp: Date.now() })
+        JSON.stringify({ empleadoId, sessionToken, timestamp: Date.now() })
       )
     }
-  }, [handleDiscard, slug, empleadoId])
+  }, [handleDiscard, slug, empleadoId, sessionToken])
 
   // Done screen
   if (state === 'done') {
@@ -321,18 +338,47 @@ export default function SubirPage({ params }: PageProps) {
             </p>
             <dl className="space-y-3">
               <DataRow label="Comercio" value={ticketData.comercio} />
+              <DataRow label="Fecha" value={ticketData.fecha} />
+              <DataRow label="Folio" value={ticketData.folio_ticket} />
               <DataRow
-                label="Monto"
+                label="Total"
                 value={
-                  ticketData.monto != null
-                    ? `${ticketData.moneda ?? '$'} ${ticketData.monto.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
+                  ticketData.monto_total != null
+                    ? `$ ${ticketData.monto_total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
                     : null
                 }
               />
-              <DataRow label="Fecha" value={ticketData.fecha} />
-              <DataRow label="Categoría" value={ticketData.categoria} />
-              <DataRow label="Descripción" value={ticketData.descripcion} />
             </dl>
+          </div>
+
+          {/* Items */}
+          <div className="rounded-2xl bg-zinc-900 p-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">
+              Productos ({ticketData.items?.length ?? 0})
+            </p>
+            {(!ticketData.items || ticketData.items.length === 0) ? (
+              <p className="text-sm text-zinc-500">No se detectaron productos.</p>
+            ) : (
+              <ul className="divide-y divide-zinc-800/60">
+                {ticketData.items.map((it, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm text-zinc-100 truncate">{it.descripcion ?? 'Producto'}</p>
+                      <p className="text-xs text-zinc-500">
+                        {it.cantidad ?? ''} {it.unidad ?? ''}
+                        {it.necesita_revision && <span className="ml-1 text-amber-400">· por revisar</span>}
+                      </p>
+                    </div>
+                    <span className="text-sm text-zinc-300 whitespace-nowrap">
+                      {it.monto != null ? `$ ${Number(it.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {ticketData.confianza === 'baja' && (
+              <p className="mt-3 text-xs text-amber-400">La IA tuvo baja confianza; el admin revisará este ticket.</p>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 mt-auto">

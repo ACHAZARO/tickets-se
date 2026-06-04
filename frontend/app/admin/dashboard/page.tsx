@@ -10,17 +10,14 @@ import type { TicketDetalle } from '@/lib/export-xlsx'
 
 interface Sucursal { id: string; nombre: string }
 
-interface TicketRow {
-  id: string
-  fecha_ticket: string | null
-  comercio: string | null
-  producto: string | null
+interface TicketItemRow {
+  descripcion: string | null
   cantidad: number | null
   unidad: string | null
   monto: number | null
   categoria_id: string | null
-  categoria_gasto: string | null
   categorias_gasto: { nombre: string } | null
+  registros_tickets: { fecha_ticket: string | null; comercio: string | null } | null
 }
 
 const DONUT_COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635', '#f472b6']
@@ -82,23 +79,23 @@ export default function DashboardPage() {
   const fetchArqueo = useCallback(async () => {
     setLoading(true)
 
-    // Gastos: tickets confirmados en el rango
+    // Gastos: renglones (ticket_items) de tickets confirmados en el rango
     let tq = supabase
-      .from('registros_tickets')
-      .select('id, fecha_ticket, comercio, producto, cantidad, unidad, monto, categoria_id, categoria_gasto, categorias_gasto:categoria_id(nombre)')
-      .eq('estado', 'confirmado')
-      .gte('fecha_ticket', inicio)
-      .lte('fecha_ticket', fin)
-    if (sucursalId) tq = tq.eq('sucursal_id', sucursalId)
-    const { data: tickets } = await tq
+      .from('ticket_items')
+      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), registros_tickets!inner(fecha_ticket, comercio, estado, sucursal_id)')
+      .eq('registros_tickets.estado', 'confirmado')
+      .gte('registros_tickets.fecha_ticket', inicio)
+      .lte('registros_tickets.fecha_ticket', fin)
+    if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
+    const { data: itemsData } = await tq
 
-    const rows = (tickets as unknown as TicketRow[]) ?? []
+    const rows = (itemsData as unknown as TicketItemRow[]) ?? []
 
     // Agrupar gasto por categoria
     const grupos = new Map<string, GastoCategoria>()
     for (const t of rows) {
       const key = t.categoria_id ?? 'sin'
-      const nombre = t.categorias_gasto?.nombre ?? t.categoria_gasto ?? 'Sin categoría'
+      const nombre = t.categorias_gasto?.nombre ?? 'Sin categoría'
       const prev = grupos.get(key) ?? { categoria_id: key, categoria_nombre: nombre, gasto: 0 }
       prev.gasto += Number(t.monto ?? 0)
       grupos.set(key, prev)
@@ -115,10 +112,10 @@ export default function DashboardPage() {
 
     setArqueo(calcularArqueo([...grupos.values()], venta, objetivos, estimado))
     setDetalle(rows.map(t => ({
-      fecha_ticket: t.fecha_ticket,
-      comercio: t.comercio,
-      producto: t.producto,
-      categoria: t.categorias_gasto?.nombre ?? t.categoria_gasto,
+      fecha_ticket: t.registros_tickets?.fecha_ticket ?? null,
+      comercio: t.registros_tickets?.comercio ?? null,
+      producto: t.descripcion,
+      categoria: t.categorias_gasto?.nombre ?? null,
       cantidad: t.cantidad,
       unidad: t.unidad,
       monto: t.monto != null ? Number(t.monto) : null,

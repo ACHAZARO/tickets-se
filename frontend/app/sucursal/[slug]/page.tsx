@@ -78,7 +78,7 @@ export default function PinPage({ params }: PageProps) {
         // Store minimal session in sessionStorage for the upload page
         sessionStorage.setItem(
           `auth_${slug}`,
-          JSON.stringify({ empleadoId: data.empleado_id, timestamp: Date.now() })
+          JSON.stringify({ empleadoId: data.empleado_id, sessionToken: data.session_token, timestamp: Date.now() })
         )
         router.push(`/sucursal/${slug}/subir`)
       } else {
