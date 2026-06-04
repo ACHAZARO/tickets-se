@@ -122,10 +122,26 @@ Todo en branch `feat/fase2-admin-panel` (mergeada Fase 1 a main antes de iniciar
 - Seteado `rootDirectory: frontend` via API (monorepo: el Next.js no esta en la raiz). Sin esto, los builds por Git push fallarian al buildear desde la raiz del repo.
 - Remote local corregido: owner en mayusculas `ACHAZARO` (antes `achazaro` daba aviso "repository moved" 301).
 
+## Fase 3 Auditoria de costos — COMPLETADA (2026-06-03)
+
+En `main` (commits 3d8ce11, e890194). Spec en docs/superpowers/specs/2026-06-03-fase3-auditoria-costos-design.md.
+Concepto: NO es presupuesto plano — el gasto esperado es % de la venta. Auditoria
+(arqueo) semanal/mensual: gasto real de tickets confirmados vs ventas.
+- [x] Migracion 008: tablas `ventas` (mensual por sucursal) y `objetivos_costo` (% por categoria), RLS admin.
+- [x] `lib/arqueo.ts`: logica pura (prorrateo de ventas por dias en rango libre, % por categoria, semaforo). Verificada con casos.
+- [x] `/admin/dashboard`: arqueo con selector mes/rango libre, filtro sucursal, tarjetas, tabla con semaforo, dona (conic-gradient) y tendencia 6 meses (SVG/CSS, sin libreria de charts). Export a Excel (SheetJS, import dinamico).
+- [x] `/admin/ventas`: captura manual mensual por sucursal, copiar mes anterior.
+- [x] `/admin/objetivos`: % objetivo de costo por categoria.
+- [x] Nav actualizado, /admin -> /admin/dashboard. Build limpio, deploy auto verificado (rutas 200).
+- Modelo de periodo A+C: ventas mensuales (robusto) + selector de rango libre con venta prorrateada (marcada "estimada").
+- Ventas hoy: captura manual. POS pendiente de explorar (no cambia el modelo).
+- Datos de prueba sembrados en prod (junio 2026, marcados TEST/_test): 3 tickets confirmados, venta 30000, 3 objetivos. Borrables.
+
 ## Proxima sesion debe
 
-1. Merge branch feat/fase2-admin-panel a main (pendiente decision usuario)
-2. Test E2E del admin panel: login real, resolver una alerta, agregar producto al catalogo
-3. Fase 3: Google Sheets dashboard con graficos y presupuestos
-4. Test E2E del flujo completo (frontend -> edge functions -> sheets)
-5. Generar QR codes para sucursales
+1. Test E2E en navegador con login admin real: dashboard, capturar venta, fijar objetivos, exportar Excel.
+2. Borrar datos de prueba (TEST / gemini_raw._test=true) cuando ya no se necesiten.
+3. Explorar integracion POS para ventas (hoy es captura manual).
+4. Test E2E del flujo completo de subida (frontend -> edge functions -> sheets).
+5. Generar QR codes para sucursales.
+6. (Opcional) Presets rapidos de periodo (esta semana, etc.) y captura de ventas semanal si se requiere arqueo intra-mes.
