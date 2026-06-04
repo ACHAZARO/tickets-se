@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0'
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts'
+import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import {
   loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveCategoria,
@@ -177,8 +178,11 @@ serve(async (req: Request) => {
     const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog))
 
     const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-    const imageBase64 = btoa(String.fromCharCode(...new Uint8Array(imageBytes)))
+    const modelName = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.0-flash'
+    const model = genAI.getGenerativeModel({ model: modelName })
+    // encodeBase64 maneja imagenes grandes sin desbordar el stack (a diferencia
+    // de String.fromCharCode(...array), que truena con miles de bytes).
+    const imageBase64 = encodeBase64(imageBytes)
 
     let datos: GeminiResult
     try {
@@ -189,7 +193,7 @@ serve(async (req: Request) => {
       datos = parseGemini(result.response.text())
     } catch (err) {
       console.error('Gemini error/parse:', err)
-      datos = { confianza: 'baja', items: [] }
+      datos = { confianza: 'baja', items: [], _error: String(err) } as GeminiResult
     }
 
     // Normalizar items (robustez ante respuestas incompletas)
