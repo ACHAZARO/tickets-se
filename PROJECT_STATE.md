@@ -105,10 +105,20 @@ Todo en branch `feat/fase1-backoffice-backend`:
 - [x] enviar-alerta-email: notificaciones via Resend para alertas criticas
 - [x] 4 edge functions desplegadas y activas
 
+## Fase 2 Admin Panel — COMPLETADA (2026-06-03)
+
+Todo en branch `feat/fase2-admin-panel` (mergeada Fase 1 a main antes de iniciar):
+- [x] Task 10: Login admin (`/admin/login`) + auth guard client-side + layout con nav (bc55f34)
+- [x] Task 11: Dashboard de alertas (`/admin/alertas`) con contadores, filtros y lista con thumbnails (871d45b)
+- [x] Task 12: Detalle de alerta (`/admin/alertas/[id]`) con foto, correccion de datos, aprobar/rechazar y alta al catalogo (3e68d1e)
+- [x] Task 13: Catalogo de productos (`/admin/catalogo`) — tabla editable con alta, edicion en panel, busqueda y toggle activo (7ea3ee0)
+- Auth: Supabase Auth client-side (sessionStorage del SDK), single admin user. Sin @supabase/ssr.
+- Typecheck (tsc --noEmit) limpio en todo el frontend.
+
 ## Proxima sesion debe
 
-1. Merge branch feat/fase1-backoffice-backend a main
-2. Fase 2: Web /admin (login, dashboard alertas, correccion tickets, catalogo)
+1. Merge branch feat/fase2-admin-panel a main (pendiente decision usuario)
+2. Test E2E del admin panel: login real, resolver una alerta, agregar producto al catalogo
 3. Fase 3: Google Sheets dashboard con graficos y presupuestos
-4. Configurar Resend API key cuando se cree cuenta
-5. Test E2E del flujo completo (frontend -> edge functions -> sheets)
+4. Test E2E del flujo completo (frontend -> edge functions -> sheets)
+5. Generar QR codes para sucursales
