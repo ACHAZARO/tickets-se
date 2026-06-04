@@ -137,9 +137,36 @@ Concepto: NO es presupuesto plano — el gasto esperado es % de la venta. Audito
 - Ventas hoy: captura manual. POS pendiente de explorar (no cambia el modelo).
 - Datos de prueba sembrados en prod (junio 2026, marcados TEST/_test): 3 tickets confirmados, venta 30000, 3 objetivos. Borrables.
 
+## Admin de sucursales/empleados — COMPLETADO (2026-06-04)
+
+En `main` (commit e74d040). Migracion 009.
+- [x] `/admin/sucursales`: CRUD de sucursales (nombre, slug auto-generado, direccion, toggle activa).
+- [x] Enlace copiable (`/sucursal/{slug}`) y QR descargable (lib `qrcode`) por sucursal.
+- [x] Gestion de empleados por sucursal: alta/edicion (nombre + PIN + activo).
+- [x] Migracion 009: RLS admin para sucursales/empleados/sucursal_empleados + RPC
+  `admin_guardar_empleado` (SECURITY DEFINER, hashea PIN con pgcrypto). Verificado:
+  bcrypt OK bajo authenticated, anon recibe permission denied.
+- Nav admin actualizado con "Sucursales".
+
+## Fix login admin (2026-06-04)
+- Usuario alepolch@gmail.com no podia entrar. Causa doble (creado por SQL directo):
+  (1) faltaba registro en `auth.identities` (provider email); (2) columnas de token
+  (`email_change`, `confirmation_token`, etc.) en NULL — GoTrue truena al convertir
+  NULL->string ("Database error querying schema"). Arreglado: identity insertada +
+  columnas puestas en ''. Login verificado OK contra /auth/v1/token.
+- LECCION: crear usuarios admin desde Supabase Dashboard / Admin API, NO por SQL directo.
+
+## PENDIENTE GRANDE: Multi-producto + auto-categorizacion IA
+Spec completo en docs/superpowers/specs/2026-06-04-multiproducto-ia-design.md (APROBADO).
+Casi todos los tickets son multi-producto; el diseno actual (1 producto/ticket) es inservible.
+Refactor profundo: tabla `ticket_items`, prompt Gemini multi-item + auto-categoria, alerta
+solo por excepciones, revision por renglon + enseñar sinonimos, Sheets 1 fila/item, dashboard
+desde ticket_items. Hacer por capas. Incluye feature C (CRUD de categorias, pieza chica).
+
 ## Proxima sesion debe
 
-1. Test E2E en navegador con login admin real: dashboard, capturar venta, fijar objetivos, exportar Excel.
+1. Implementar multi-producto (seguir spec 2026-06-04-multiproducto-ia-design.md, orden por capas).
+2. Test E2E en navegador con login admin real (alepolch@gmail.com): dashboard, capturar venta, fijar objetivos, exportar Excel, crear sucursal/empleado, descargar QR.
 2. Borrar datos de prueba (TEST / gemini_raw._test=true) cuando ya no se necesiten.
 3. Explorar integracion POS para ventas (hoy es captura manual).
 4. Test E2E del flujo completo de subida (frontend -> edge functions -> sheets).
