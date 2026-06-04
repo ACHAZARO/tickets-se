@@ -114,6 +114,13 @@ Todo en branch `feat/fase2-admin-panel` (mergeada Fase 1 a main antes de iniciar
 - [x] Task 13: Catalogo de productos (`/admin/catalogo`) — tabla editable con alta, edicion en panel, busqueda y toggle activo (7ea3ee0)
 - Auth: Supabase Auth client-side (sessionStorage del SDK), single admin user. Sin @supabase/ssr.
 - Typecheck (tsc --noEmit) limpio en todo el frontend.
+- Deploy a produccion verificado: /admin/login, /admin/alertas, /admin/catalogo responden 200.
+
+## Fix infra deploy (2026-06-03)
+- El proyecto Vercel NUNCA estuvo conectado a Git: todos los deploys eran manuales por CLI desde frontend/. El CLAUDE.md asumia auto-deploy que no existia.
+- Conectado `vercel git connect` a `ACHAZARO/tickets-se`, production branch `main`.
+- Seteado `rootDirectory: frontend` via API (monorepo: el Next.js no esta en la raiz). Sin esto, los builds por Git push fallarian al buildear desde la raiz del repo.
+- Remote local corregido: owner en mayusculas `ACHAZARO` (antes `achazaro` daba aviso "repository moved" 301).
 
 ## Proxima sesion debe
 
