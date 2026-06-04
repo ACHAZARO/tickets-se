@@ -163,9 +163,33 @@ Refactor profundo: tabla `ticket_items`, prompt Gemini multi-item + auto-categor
 solo por excepciones, revision por renglon + enseñar sinonimos, Sheets 1 fila/item, dashboard
 desde ticket_items. Hacer por capas. Incluye feature C (CRUD de categorias, pieza chica).
 
+## Multi-producto + IA robusta — IMPLEMENTADO (2026-06-04)
+
+En `main`. Spec: docs/superpowers/specs/2026-06-04-multiproducto-ia-design.md.
+- [x] Migracion 010: tabla `ticket_items` (renglones). registros_tickets = encabezado.
+- [x] procesar-ticket (v13): prompt multi-item, auto-categoriza cada renglon, inserta N
+  ticket_items, alerta SOLO por excepciones. Deriva sucursal/empleado del JWT. Parsing robusto.
+- [x] confirmar-ticket + google-sheets: una fila por item en el Sheet.
+- [x] Frontend subir: ARREGLADO el contrato roto con el backend (mandaba sin token y con
+  campos viejos). Ahora manda Authorization Bearer con session_token, solo imagen, confirma
+  con registro_id. Muestra lista de renglones. PIN page ahora guarda session_token.
+- [x] dashboard arqueo: gasto por categoria desde ticket_items.
+- [x] /admin/alertas/[id]: revision por renglon (corrige categoria/unidad, ensena sinonimos).
+- [x] /admin/categorias: CRUD de categorias (feature C).
+- Migracion 009 ya existia (sucursales/empleados).
+
+### BLOQUEO CRITICO: Gemini requiere billing
+- gemini-1.5-flash fue RETIRADO por Google (404). El codigo usa gemini-2.0-flash, configurable
+  via secret `GEMINI_MODEL` (cambiar sin redeploy).
+- La API key de Gemini da 429 "free tier limit: 0" -> el proyecto Google NO tiene cuota free.
+  **ACCION DEL USUARIO**: habilitar billing en el proyecto Google de la GEMINI_API_KEY (o usar
+  una key con cuota). Sin esto, Gemini no procesa (el codigo NO falla: marca ilegible + item de
+  respaldo). En cuanto haya billing, todo el flujo funciona sin tocar codigo.
+- Edge functions deben tener verify_jwt=false (usan JWT propio HMAC). Ya configurado.
+
 ## Proxima sesion debe
 
-1. Implementar multi-producto (seguir spec 2026-06-04-multiproducto-ia-design.md, orden por capas).
+1. (USUARIO) Habilitar billing de Gemini y probar subida real de un ticket multi-producto.
 2. Test E2E en navegador con login admin real (alepolch@gmail.com): dashboard, capturar venta, fijar objetivos, exportar Excel, crear sucursal/empleado, descargar QR.
 2. Borrar datos de prueba (TEST / gemini_raw._test=true) cuando ya no se necesiten.
 3. Explorar integracion POS para ventas (hoy es captura manual).
