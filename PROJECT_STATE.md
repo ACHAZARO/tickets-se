@@ -178,18 +178,31 @@ En `main`. Spec: docs/superpowers/specs/2026-06-04-multiproducto-ia-design.md.
 - [x] /admin/categorias: CRUD de categorias (feature C).
 - Migracion 009 ya existia (sucursales/empleados).
 
-### BLOQUEO CRITICO: Gemini requiere billing
-- gemini-1.5-flash fue RETIRADO por Google (404). El codigo usa gemini-2.0-flash, configurable
-  via secret `GEMINI_MODEL` (cambiar sin redeploy).
-- La API key de Gemini da 429 "free tier limit: 0" -> el proyecto Google NO tiene cuota free.
-  **ACCION DEL USUARIO**: habilitar billing en el proyecto Google de la GEMINI_API_KEY (o usar
-  una key con cuota). Sin esto, Gemini no procesa (el codigo NO falla: marca ilegible + item de
-  respaldo). En cuanto haya billing, todo el flujo funciona sin tocar codigo.
-- Edge functions deben tener verify_jwt=false (usan JWT propio HMAC). Ya configurado.
+### Gemini FUNCIONANDO (2026-06-04) — verificado E2E
+- gemini-1.5-flash fue RETIRADO (404) y gemini-2.0-flash da 429 free-tier limit 0.
+  SOLUCION: fallback de modelos en procesar-ticket; **gemini-2.5-flash SI tiene cuota free**
+  y es el primero de la lista -> acierta al primer intento. Override via secret GEMINI_MODEL.
+- E2E verificado: ticket multi-producto -> 3 items extraidos, auto-categorizados (Insumos,
+  Limpieza), auto-confirmado, a Sheets, sin intervencion. NO requiere billing.
+
+### Arquitectura async (2026-06-04)
+- procesar-ticket (v14, verify_jwt=false): responde {recibido:true} al instante; procesa
+  con Gemini en segundo plano (EdgeRuntime.waitUntil). Auto-confirma tickets limpios
+  (archivo + Sheets + estado confirmado); deja 'pendiente' los que generan alerta para
+  revision admin. Elimina el "stuck en procesando".
+- Frontend subir: "¡Enviado! Gracias" + soporta varias fotos. PIN guarda session_token.
+- Sucursales/empleados: botones Eliminar (fallback a desactivar si tienen datos).
+
+## Pendiente menor / ideas
+- Corner-crop en el frontend (marcar esquinas para quitar ruido a Gemini) — NO hecho;
+  gemini-2.5-flash lee bien las fotos, es mejora opcional.
+- Evaluado markitdown (Microsoft): es para convertir documentos/PDF/Office a Markdown
+  (Python, no Deno). Para fotos de tickets, Gemini vision ya hace OCR+extraccion mejor;
+  markitdown no aporta al flujo actual. Util solo si suben PDFs/facturas digitales.
 
 ## Proxima sesion debe
 
-1. (USUARIO) Habilitar billing de Gemini y probar subida real de un ticket multi-producto.
+1. Probar en navegador: subir foto real -> "enviado" -> ver en /admin/alertas o dashboard.
 2. Test E2E en navegador con login admin real (alepolch@gmail.com): dashboard, capturar venta, fijar objetivos, exportar Excel, crear sucursal/empleado, descargar QR.
 2. Borrar datos de prueba (TEST / gemini_raw._test=true) cuando ya no se necesiten.
 3. Explorar integracion POS para ventas (hoy es captura manual).
