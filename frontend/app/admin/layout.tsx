@@ -7,8 +7,11 @@ import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 const NAV_ITEMS = [
+  { href: '/admin/dashboard', label: 'Arqueo' },
   { href: '/admin/alertas', label: 'Alertas' },
+  { href: '/admin/ventas', label: 'Ventas' },
   { href: '/admin/catalogo', label: 'Catalogo' },
+  { href: '/admin/objetivos', label: 'Objetivos' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
