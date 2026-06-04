@@ -48,6 +48,8 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
   const [saving, setSaving] = useState(false)
   const [sinonimos, setSinonimos] = useState<Record<string, string>>({})
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [fecha, setFecha] = useState('')
+  const [comercio, setComercio] = useState('')
 
   const load = useCallback(async () => {
     const { data: a } = await supabase
@@ -62,6 +64,8 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
 
     const alertaData = a as unknown as AlertaDetail | null
     setAlerta(alertaData)
+    setFecha(alertaData?.registros_tickets?.fecha_ticket ?? '')
+    setComercio(alertaData?.registros_tickets?.comercio ?? '')
 
     const catP = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
     let itemsP
@@ -205,8 +209,18 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
           <div className="rounded-2xl bg-zinc-900 p-4 space-y-1">
             <InfoRow label="Sucursal" value={t?.sucursales?.nombre} />
             <InfoRow label="Empleado" value={t?.empleados?.nombre} />
-            <InfoRow label="Comercio" value={t?.comercio} />
-            <InfoRow label="Fecha" value={t?.fecha_ticket} />
+            <div className="flex justify-between items-center gap-3 py-0.5">
+              <span className="text-sm text-zinc-500">Comercio</span>
+              <input value={comercio} onChange={e => setComercio(e.target.value)}
+                onBlur={() => t && supabase.from('registros_tickets').update({ comercio: comercio || null }).eq('id', t.id)}
+                className="text-sm text-zinc-100 text-right bg-zinc-800 rounded px-2 py-1 max-w-[180px]" />
+            </div>
+            <div className="flex justify-between items-center gap-3 py-0.5">
+              <span className="text-sm text-zinc-500">Fecha</span>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+                onBlur={() => t && supabase.from('registros_tickets').update({ fecha_ticket: fecha || null }).eq('id', t.id)}
+                className="text-sm text-zinc-100 text-right bg-zinc-800 rounded px-2 py-1" />
+            </div>
             <InfoRow label="Folio" value={t?.folio_ticket} />
             <InfoRow label="Total" value={t?.monto != null ? `$${t.monto}` : null} />
           </div>
