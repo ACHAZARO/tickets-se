@@ -124,6 +124,31 @@ async function notifyAlertEmail(registroId: string, tipo: string): Promise<void>
   } catch (err) { console.error('Email notification error:', err) }
 }
 
+// Aprende el comercio: lo asocia a la categoria dominante de sus renglones.
+async function aprenderComercio(
+  supabase: SB, comercio: string | null, sucursalId: string,
+  items: { categoria_id: string | null }[]
+): Promise<void> {
+  const nombre = comercio?.trim()
+  if (!nombre) return
+  const conteo = new Map<string, number>()
+  for (const it of items) if (it.categoria_id) conteo.set(it.categoria_id, (conteo.get(it.categoria_id) ?? 0) + 1)
+  let dominante: string | null = null, max = 0
+  for (const [cat, n] of conteo) if (n > max) { max = n; dominante = cat }
+  try {
+    const { data: ex } = await supabase.from('comercios').select('id, veces')
+      .ilike('nombre', nombre).eq('sucursal_id', sucursalId).maybeSingle()
+    if (ex) {
+      await supabase.from('comercios').update({
+        veces: (ex.veces as number) + 1,
+        ...(dominante ? { categoria_id: dominante } : {}),
+      }).eq('id', ex.id)
+    } else {
+      await supabase.from('comercios').insert({ nombre, sucursal_id: sucursalId, categoria_id: dominante })
+    }
+  } catch (e) { console.error('aprenderComercio:', e) }
+}
+
 function parseGemini(text: string): GeminiResult {
   const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   return JSON.parse(clean) as GeminiResult
@@ -215,6 +240,9 @@ async function procesarEnSegundoPlano(opts: {
       if (prod) await supabase.from('catalogo_productos')
         .update({ veces_matched: prod.veces_matched + 1 }).eq('id', pid)
     }
+
+    // Aprende el comercio -> categoria dominante
+    await aprenderComercio(supabase, datos.comercio ?? null, sucursalId, itemsToInsert)
 
     let hayAlerta = false
     const dupId = await detectSmartDuplicate(

@@ -15,9 +15,15 @@ export interface CatalogCategory {
   nombre: string
 }
 
+export interface CatalogComercio {
+  nombre: string
+  categoria_nombre: string
+}
+
 export interface Catalog {
   products: CatalogProduct[]
   categories: CatalogCategory[]
+  comercios: CatalogComercio[]
 }
 
 // Carga el catalogo aplicable a una sucursal: lo global (sucursal_id NULL)
@@ -39,6 +45,12 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
   prodQ = scope ? prodQ.or(scope) : prodQ.is('sucursal_id', null)
   const { data: products } = await prodQ
 
+  let comQ = supabase.from('comercios')
+    .select('nombre, categorias_gasto:categoria_id(nombre)')
+    .not('categoria_id', 'is', null).order('veces', { ascending: false }).limit(60)
+  comQ = scope ? comQ.or(scope) : comQ.is('sucursal_id', null)
+  const { data: comercios } = await comQ
+
   return {
     categories: categories ?? [],
     products: (products ?? []).map((p: Record<string, unknown>) => ({
@@ -50,14 +62,22 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
       precio_referencia: p.precio_referencia as number | null,
       veces_matched: (p.veces_matched as number) ?? 0,
     })),
+    comercios: (comercios ?? []).map((c: Record<string, unknown>) => ({
+      nombre: c.nombre as string,
+      categoria_nombre: (c.categorias_gasto as { nombre: string })?.nombre ?? '',
+    })).filter((c: CatalogComercio) => c.categoria_nombre),
   }
 }
 
 export function buildCatalogPromptContext(catalog: Catalog): string {
   const catList = catalog.categories.map(c => c.nombre).join(', ')
 
+  const comercioBlock = catalog.comercios.length > 0
+    ? `\n\nComercios conocidos (su categoria habitual; usalo como pista fuerte para clasificar):\n${catalog.comercios.map(c => `- ${c.nombre} -> ${c.categoria_nombre}`).join('\n')}`
+    : ''
+
   if (catalog.products.length === 0) {
-    return `Categorias validas: ${catList}\n\nNo hay productos en el catalogo aun. Clasifica libremente usando las categorias anteriores.`
+    return `Categorias validas: ${catList}${comercioBlock}\n\nNo hay productos en el catalogo aun. Clasifica usando las categorias y los comercios conocidos.`
   }
 
   const prodLines = catalog.products.map(p => {
@@ -66,7 +86,7 @@ export function buildCatalogPromptContext(catalog: Catalog): string {
     return `- ${p.nombre}${synonyms} | categoria: ${p.categoria_nombre}${unit}`
   }).join('\n')
 
-  return `Categorias validas: ${catList}\n\nProductos conocidos (usa estos para clasificar si aplican):\n${prodLines}`
+  return `Categorias validas: ${catList}${comercioBlock}\n\nProductos conocidos (usa estos para clasificar si aplican):\n${prodLines}`
 }
 
 export function resolveCategoria(
