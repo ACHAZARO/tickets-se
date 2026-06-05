@@ -50,6 +50,13 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true)
   const [detalle, setDetalle] = useState<{ ticket: Ticket; items: Item[]; url: string | null } | null>(null)
   const [descargando, setDescargando] = useState(false)
+  const [comercioFiltro, setComercioFiltro] = useState('')
+
+  // Permite llegar con ?comercio=NOMBRE desde la pantalla de Comercios.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('comercio')
+    if (q) setComercioFiltro(q)
+  }, [])
 
   const fetchTickets = useCallback(async () => {
     setLoading(true)
@@ -107,14 +114,14 @@ export default function TicketsPage() {
   }
 
   async function descargarPeriodo() {
-    if (tickets.length === 0) return
+    if (ticketsFiltrados.length === 0) return
     setDescargando(true)
     try {
       const JSZip = (await import('jszip')).default
       const zip = new JSZip()
       const csv = ['Fecha,Comercio,Sucursal,Empleado,Total,Estado,Archivo']
       let i = 0
-      for (const t of tickets) {
+      for (const t of ticketsFiltrados) {
         i++
         const safe = (s: string | null) => (s ?? '').replace(/[^\w-]+/g, '_').slice(0, 30)
         const base = `${t.fecha_ticket ?? 'sinfecha'}_${safe(t.comercio)}_${t.id.slice(0, 6)}`
@@ -142,13 +149,18 @@ export default function TicketsPage() {
     }
   }
 
+  const comerciosUnicos = [...new Set(tickets.map(t => t.comercio).filter((c): c is string => !!c))].sort()
+  const ticketsFiltrados = comercioFiltro
+    ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro)
+    : tickets
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-xl font-semibold text-zinc-100">Tickets</h2>
-        <button onClick={descargarPeriodo} disabled={descargando || tickets.length === 0}
+        <button onClick={descargarPeriodo} disabled={descargando || ticketsFiltrados.length === 0}
           className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
-          {descargando ? 'Preparando ZIP...' : `Descargar periodo (${tickets.length})`}
+          {descargando ? 'Preparando ZIP...' : `Descargar periodo (${ticketsFiltrados.length})`}
         </button>
       </div>
 
@@ -163,15 +175,23 @@ export default function TicketsPage() {
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
             className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100" />
         </div>
+        <div>
+          <label className="text-xs text-zinc-500 block mb-1">Comercio</label>
+          <select value={comercioFiltro} onChange={e => setComercioFiltro(e.target.value)}
+            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 max-w-[220px]">
+            <option value="">Todos</option>
+            {comerciosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
-      ) : tickets.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">No hay tickets en este periodo</p>
+      ) : ticketsFiltrados.length === 0 ? (
+        <p className="text-zinc-500 text-center py-12">No hay tickets {comercioFiltro ? `de "${comercioFiltro}"` : 'en este periodo'}</p>
       ) : (
         <div className="space-y-2">
-          {tickets.map(t => {
+          {ticketsFiltrados.map(t => {
             const url = urlDe(t)
             return (
               <button key={t.id} onClick={() => abrirDetalle(t)}

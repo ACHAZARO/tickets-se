@@ -56,7 +56,8 @@ Reglas importantes:
 - USA EL NOMBRE DEL COMERCIO para decidir la categoria. Ejemplos: en una gasolinera o "centro gasolinero", palabras como "gas", "magna", "premium", "diesel" son COMBUSTIBLE para auto (categoria de gasolina/combustible), NO gas de cocina. En cambio "Gas LP", "gas de cocina" o un comercio tipo "Gas de Xalapa" si es gas de cocina.
 - Si un renglon esta abreviado, cortado o con error de dedo pero se parece a un producto conocido (ej. "popt" o "popote", "azuc" o "azucar", "serv" o "servilletas"), trátalo como ese producto conocido: usa su nombre, su categoria y su unidad.
 - Si un producto coincide con uno de los productos conocidos (o uno de sus sinonimos/marcas), usa su nombre, categoria y unidad.
-- Si es una nota escrita a mano sin precio por renglon, deja "monto" en null en los items y pon el total en "monto_total".
+- Si una nota tiene UN SOLO producto y un total (ej. "alitas 50 pzas $850"), pon ese total como el "monto" de ese producto Y en "monto_total".
+- Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
 - Incluye tambien el texto escrito a mano en tu analisis.
 Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
 }
@@ -124,27 +125,21 @@ async function notifyAlertEmail(registroId: string, tipo: string): Promise<void>
   } catch (err) { console.error('Email notification error:', err) }
 }
 
-// Aprende el comercio: lo asocia a la categoria dominante de sus renglones.
+// Registra el comercio (sin forzar categoria: un comercio puede vender de varias,
+// ej. Costco). Las categorias se infieren por observacion en loadCatalog.
+// El admin puede fijar manualmente una categoria (categoria_id) como override.
 async function aprenderComercio(
-  supabase: SB, comercio: string | null, sucursalId: string,
-  items: { categoria_id: string | null }[]
+  supabase: SB, comercio: string | null, sucursalId: string
 ): Promise<void> {
   const nombre = comercio?.trim()
   if (!nombre) return
-  const conteo = new Map<string, number>()
-  for (const it of items) if (it.categoria_id) conteo.set(it.categoria_id, (conteo.get(it.categoria_id) ?? 0) + 1)
-  let dominante: string | null = null, max = 0
-  for (const [cat, n] of conteo) if (n > max) { max = n; dominante = cat }
   try {
     const { data: ex } = await supabase.from('comercios').select('id, veces')
       .ilike('nombre', nombre).eq('sucursal_id', sucursalId).maybeSingle()
     if (ex) {
-      await supabase.from('comercios').update({
-        veces: (ex.veces as number) + 1,
-        ...(dominante ? { categoria_id: dominante } : {}),
-      }).eq('id', ex.id)
+      await supabase.from('comercios').update({ veces: (ex.veces as number) + 1 }).eq('id', ex.id)
     } else {
-      await supabase.from('comercios').insert({ nombre, sucursal_id: sucursalId, categoria_id: dominante })
+      await supabase.from('comercios').insert({ nombre, sucursal_id: sucursalId })
     }
   } catch (e) { console.error('aprenderComercio:', e) }
 }
@@ -262,6 +257,13 @@ async function procesarEnSegundoPlano(opts: {
       }
     })
 
+    // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total
+    // a ese renglon (notas a mano: "alitas 50 pzas $850").
+    const conMonto = itemsToInsert.filter(it => it.monto != null && Number(it.monto) > 0)
+    if (montoTotal != null && conMonto.length === 0 && itemsToInsert.length === 1) {
+      itemsToInsert[0].monto = montoTotal
+    }
+
     await supabase.from('ticket_items').insert(
       itemsToInsert.map(({ categoria_nombre: _omit, ...rest }) => rest)
     )
@@ -272,8 +274,8 @@ async function procesarEnSegundoPlano(opts: {
         .update({ veces_matched: prod.veces_matched + 1 }).eq('id', pid)
     }
 
-    // Aprende el comercio -> categoria dominante
-    await aprenderComercio(supabase, datos.comercio ?? null, sucursalId, itemsToInsert)
+    // Registra el comercio (las categorias se infieren por observacion; puede tener varias)
+    await aprenderComercio(supabase, datos.comercio ?? null, sucursalId)
 
     // Auto-aprende productos: agrega al catalogo los renglones que la IA categorizo
     // pero que NO estaban en el catalogo (el usuario los edita despues si hace falta).

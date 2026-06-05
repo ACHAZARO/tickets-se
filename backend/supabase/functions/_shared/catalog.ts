@@ -17,7 +17,10 @@ export interface CatalogCategory {
 
 export interface CatalogComercio {
   nombre: string
-  categoria_nombre: string
+  // categoria fijada manualmente por el admin (override fuerte). null = no forzada.
+  categoriaForzada: string | null
+  // categorias que la IA ya ha visto en ese comercio (puede ser mas de una; ej. Costco).
+  categoriasObservadas: string[]
 }
 
 export interface Catalog {
@@ -25,6 +28,9 @@ export interface Catalog {
   categories: CatalogCategory[]
   comercios: CatalogComercio[]
 }
+
+// deno-lint-ignore no-explicit-any
+type AnyRow = Record<string, any>
 
 // Carga el catalogo aplicable a una sucursal: lo global (sucursal_id NULL)
 // mas lo especifico de esa sucursal. Sin sucursalId, solo lo global.
@@ -47,13 +53,32 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
 
   let comQ = supabase.from('comercios')
     .select('nombre, categorias_gasto:categoria_id(nombre)')
-    .not('categoria_id', 'is', null).order('veces', { ascending: false }).limit(60)
+    .order('veces', { ascending: false }).limit(80)
   comQ = scope ? comQ.or(scope) : comQ.is('sucursal_id', null)
   const { data: comercios } = await comQ
 
+  // Categorias observadas por comercio (a partir de los renglones ya clasificados).
+  const observadas = new Map<string, Map<string, number>>()
+  if (sucursalId) {
+    const { data: tiData } = await supabase.from('ticket_items')
+      .select('categorias_gasto:categoria_id(nombre), registros_tickets!inner(comercio, sucursal_id)')
+      .not('categoria_id', 'is', null)
+      .eq('registros_tickets.sucursal_id', sucursalId)
+      .limit(2000)
+    for (const row of (tiData ?? []) as AnyRow[]) {
+      const com = (row.registros_tickets?.comercio ?? '').trim()
+      const cat = row.categorias_gasto?.nombre
+      if (!com || !cat) continue
+      const key = com.toLowerCase()
+      if (!observadas.has(key)) observadas.set(key, new Map())
+      const m = observadas.get(key)!
+      m.set(cat, (m.get(cat) ?? 0) + 1)
+    }
+  }
+
   return {
     categories: categories ?? [],
-    products: (products ?? []).map((p: Record<string, unknown>) => ({
+    products: (products ?? []).map((p: AnyRow) => ({
       id: p.id as string,
       nombre: p.nombre as string,
       sinonimos: (p.sinonimos as string[]) ?? [],
@@ -62,18 +87,32 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
       precio_referencia: p.precio_referencia as number | null,
       veces_matched: (p.veces_matched as number) ?? 0,
     })),
-    comercios: (comercios ?? []).map((c: Record<string, unknown>) => ({
-      nombre: c.nombre as string,
-      categoria_nombre: (c.categorias_gasto as { nombre: string })?.nombre ?? '',
-    })).filter((c: CatalogComercio) => c.categoria_nombre),
+    comercios: (comercios ?? []).map((c: AnyRow) => {
+      const obs = observadas.get((c.nombre as string).toLowerCase())
+      const categoriasObservadas = obs
+        ? [...obs.entries()].sort((a, b) => b[1] - a[1]).map(([nombre]) => nombre)
+        : []
+      return {
+        nombre: c.nombre as string,
+        categoriaForzada: (c.categorias_gasto as { nombre: string })?.nombre ?? null,
+        categoriasObservadas,
+      }
+    }),
   }
 }
 
 export function buildCatalogPromptContext(catalog: Catalog): string {
   const catList = catalog.categories.map(c => c.nombre).join(', ')
 
-  const comercioBlock = catalog.comercios.length > 0
-    ? `\n\nComercios conocidos (su categoria habitual; usalo como pista fuerte para clasificar):\n${catalog.comercios.map(c => `- ${c.nombre} -> ${c.categoria_nombre}`).join('\n')}`
+  const comerciosUtiles = catalog.comercios.filter(
+    c => c.categoriaForzada || c.categoriasObservadas.length > 0
+  )
+  const comercioBlock = comerciosUtiles.length > 0
+    ? `\n\nComercios conocidos (pista para clasificar; un comercio puede vender de varias categorias):\n${comerciosUtiles.map(c => {
+        if (c.categoriaForzada) return `- ${c.nombre} -> casi siempre: ${c.categoriaForzada}`
+        if (c.categoriasObservadas.length === 1) return `- ${c.nombre} -> normalmente: ${c.categoriasObservadas[0]}`
+        return `- ${c.nombre} -> vende de varias categorias (${c.categoriasObservadas.join(', ')}); clasifica cada producto por si mismo`
+      }).join('\n')}`
     : ''
 
   if (catalog.products.length === 0) {
