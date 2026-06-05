@@ -5,7 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 
 interface Sucursal { id: string; nombre: string }
-interface Item { descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null }
+interface Item { id: string; descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categoria_id: string | null; categorias_gasto: { nombre: string } | null }
+
+const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
 interface Ticket {
   id: string
   comercio: string | null
@@ -57,6 +59,15 @@ export default function TicketsPage() {
   const [detalle, setDetalle] = useState<{ ticket: Ticket; items: Item[]; url: string | null } | null>(null)
   const [descargando, setDescargando] = useState(false)
   const [comercioFiltro, setComercioFiltro] = useState('')
+  const [cats, setCats] = useState<{ id: string; nombre: string }[]>([])
+  const [editarItems, setEditarItems] = useState(false)
+  const [savedItem, setSavedItem] = useState<string | null>(null)
+
+  useEffect(() => {
+    let q = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
+    q = sucursalId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : q.is('sucursal_id', null)
+    q.then(({ data }) => setCats(data ?? []))
+  }, [sucursalId])
 
   // Permite llegar con ?comercio=NOMBRE desde la pantalla de Comercios.
   useEffect(() => {
@@ -113,10 +124,36 @@ export default function TicketsPage() {
   }
 
   async function abrirDetalle(t: Ticket) {
+    setEditarItems(false)
     const { data } = await supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre)')
-      .eq('registro_ticket_id', t.id).order('created_at')
+      .select('id, descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre)')
+      .eq('registro_ticket_id', t.id).order('created_at').order('id')
     setDetalle({ ticket: t, items: (data as unknown as Item[]) ?? [], url: urlDe(t) })
+  }
+
+  function setItemField(itemId: string, field: 'categoria_id' | 'unidad' | 'monto' | 'descripcion', value: string) {
+    setDetalle(d => {
+      if (!d) return d
+      return { ...d, items: d.items.map(it => {
+        if (it.id !== itemId) return it
+        if (field === 'monto') return { ...it, monto: value.trim() === '' ? null : Number(value) }
+        return { ...it, [field]: value || null }
+      }) }
+    })
+  }
+
+  async function guardarItemTicket(it: Item) {
+    const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
+    await supabase.from('ticket_items').update({
+      descripcion: it.descripcion,
+      categoria_id: it.categoria_id || null,
+      unidad: it.unidad || null,
+      monto: it.monto,
+      necesita_revision: !it.categoria_id || !it.unidad,
+    }).eq('id', it.id)
+    setDetalle(d => d ? { ...d, items: d.items.map(x => x.id === it.id ? { ...x, categorias_gasto: nombreCat ? { nombre: nombreCat } : null } : x) } : d)
+    setSavedItem(it.id)
+    setTimeout(() => setSavedItem(s => s === it.id ? null : s), 2000)
   }
 
   async function descargarPeriodo() {
@@ -251,16 +288,48 @@ export default function TicketsPage() {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={detalle.url} alt="Ticket" className="w-full max-h-[50vh] object-contain rounded-xl bg-zinc-950" />
             )}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Renglones ({detalle.items.length})</p>
+              {detalle.items.length > 0 && (
+                <button onClick={() => setEditarItems(v => !v)} className="text-xs text-blue-400 hover:text-blue-300">
+                  {editarItems ? 'Listo' : 'Editar renglones'}
+                </button>
+              )}
+            </div>
             <div className="rounded-xl bg-zinc-800/50 divide-y divide-zinc-800">
               {detalle.items.length === 0 ? (
                 <p className="px-3 py-3 text-sm text-zinc-500">Sin renglones</p>
-              ) : detalle.items.map((it, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              ) : !editarItems ? detalle.items.map(it => (
+                <div key={it.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                   <div className="min-w-0">
                     <p className="text-zinc-100 truncate">{it.descripcion}</p>
                     <p className="text-xs text-zinc-500">{it.cantidad ?? ''} {it.unidad ?? ''} · {it.categorias_gasto?.nombre ?? 'sin categoría'}</p>
                   </div>
                   <span className="text-zinc-300 whitespace-nowrap">{fmt(it.monto)}</span>
+                </div>
+              )) : detalle.items.map(it => (
+                <div key={it.id} className="px-3 py-2.5 space-y-2">
+                  <input value={it.descripcion} onChange={e => setItemField(it.id, 'descripcion', e.target.value)}
+                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)}
+                      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                      <option value="">Sin categoría</option>
+                      {cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                    <select value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)}
+                      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                      <option value="">Unidad</option>
+                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)}
+                      placeholder="precio" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => guardarItemTicket(it)}
+                      className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-100 hover:bg-zinc-600">Guardar</button>
+                    {savedItem === it.id && <span className="text-xs text-emerald-400">✓ Guardado</span>}
+                  </div>
                 </div>
               ))}
             </div>
