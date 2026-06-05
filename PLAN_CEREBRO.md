@@ -11,28 +11,23 @@
 > - Comercio → Categorías: **varias** (Costco vende de todo)
 > - Comercio → Productos: varias (observado automáticamente)
 
-Estado: PLAN aprobado (paneles ligados, hacer todo por fases). Última actualización: 2026-06-05.
+Estado: EN EJECUCIÓN (paneles ligados). Hechas: Fase 0, Fase 1, Fase 3 + fix renglón. Pendientes: Fase 2, Fase 4, Fase 5. Última actualización: 2026-06-05.
 
 ---
 
-## FASE 0 — Cimientos de datos (migración 017 + edge function)
-Sin esto, los huérfanos no tienen nodo y el ruteo retroactivo no existe.
+## FASE 0 — Cimientos de datos (migración 017) ✅ HECHA
+- [x] **Migración 017**: `catalogo_productos.categoria_id` ahora **NULLABLE**.
+- [x] **RPC `ligar_huerfano(p_nombre, p_categoria_id, p_sucursal_id, p_unidad, p_sinonimos)`**:
+  crea/actualiza el producto y **rellena hacia atrás** los renglones sin categoría que
+  coincidan (por producto o por nombre): set `categoria_id`, `producto_catalogo_id`, `unidad`,
+  recalcula `necesita_revision`. Es el "se va solito a su categoría", también retroactivo.
+- Nota: se descartó materializar nodos huérfanos en `catalogo_productos` al ingestar
+  (evita ruido tipo "TOTAL"/"VARIOS"); los huérfanos viven como `ticket_items` sin categoría.
 
-- [ ] **Migración 017**: `catalogo_productos.categoria_id` pasa a **NULLABLE** (producto huérfano = nodo sin categoría aún).
-- [ ] **RPC `ligar_producto_categoria(p_producto_id, p_categoria_id, p_unidad)`** (SECURITY DEFINER):
-  1. set `categoria_id` (+ `unidad_default`) en el producto.
-  2. **Back-fill**: a TODOS los `ticket_items` con ese `producto_catalogo_id` (y los que hagan match por nombre y estén sin categoría) → set `categoria_id`, `unidad`, `necesita_revision=false`, limpia `motivo_revision`.
-  3. Resuelve alertas `producto_no_reconocido`/`sin_categoria` que ya no apliquen.
-  → Esto es el "se va solito a su categoría", también hacia atrás.
-- [ ] **procesar-ticket v22**: cuando un renglón quede SIN categoría, crear/asegurar un
-  **producto huérfano** (`categoria_id` null) y ligar el `ticket_items.producto_catalogo_id`,
-  para que aparezca como nodo en el cerebro y en la cola de huérfanos.
-
-## FASE 1 — Editar y BORRAR categorías (fundamental)
-- [ ] En `/admin/catalogo`: botón **borrar categoría** con guarda:
-  - si tiene productos o renglones → pedir **reasignar a otra categoría** (mueve productos+items) antes de borrar; o cancelar.
-  - si está vacía → borrar directo.
-- [ ] Editar (renombrar / operativo / activa) ya existe → dejar consistente.
+## FASE 1 — Editar y BORRAR categorías ✅ HECHA
+- [x] `/admin/catalogo`: botón **borrar** con reasignación segura (mueve productos+renglones a
+  otra categoría antes de borrar; limpia override de comercios; si está vacía, borra directo).
+- [x] Editar (renombrar / operativo / activa) ya existía + edición por producto.
 
 ## FASE 2 — Unidades en todo + tabla de compras filtrable
 - [ ] Dashboard "Productos más comprados": **filtro por artículo** (buscador + selector) y por categoría.
@@ -40,10 +35,10 @@ Sin esto, los huérfanos no tienen nodo y el ruteo retroactivo no existe.
 - [ ] Asegurar que cada `ticket_items` lleve unidad (default desde el producto si la IA no la trae).
 - [ ] Totales por artículo en el periodo (cantidad + gasto), exportables.
 
-## FASE 3 — Cola de huérfanos
-- [ ] Pantalla que junta productos huérfanos (`categoria_id` null) + renglones sin categoría.
-- [ ] Ligar **de corrido**: categoría + unidad + sinónimos en un flujo rápido → llama `ligar_producto_categoria` (back-fill).
-- [ ] Reemplaza el ir alerta-por-alerta para el caso "producto no reconocido".
+## FASE 3 — Cola de huérfanos ✅ HECHA
+- [x] `/admin/huerfanos`: agrupa renglones sin categoría por producto (veces/gasto/comercios).
+- [x] Ligar de corrido (categoría + unidad + sinónimos) → `ligar_huerfano` con back-fill.
+- [x] Entrada en el nav del admin.
 
 ## FASE 4 — Tablero "Cerebro" (`/admin/cerebro`, paneles ligados)
 3 columnas con resaltado cruzado:
