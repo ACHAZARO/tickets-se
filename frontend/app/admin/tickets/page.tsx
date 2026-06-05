@@ -33,6 +33,11 @@ function primerDiaMesISO(): string {
 function hoyISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
+function diaSiguienteISO(d: string): string {
+  const dt = new Date(d + 'T00:00:00')
+  dt.setDate(dt.getDate() + 1)
+  return dt.toISOString().slice(0, 10)
+}
 const fmt = (n: number | null) => n != null ? '$' + Number(n).toLocaleString('es-MX', { maximumFractionDigits: 2 }) : '—'
 
 function pathBucket(t: Ticket): { bucket: string; path: string } | null {
@@ -42,7 +47,8 @@ function pathBucket(t: Ticket): { bucket: string; path: string } | null {
 }
 
 export default function TicketsPage() {
-  const { sucursalId } = useSucursal()
+  const { sucursalId, sucursales } = useSucursal()
+  const nombreSucursal = sucursalId ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? 'sucursal') : 'Todas las sucursales'
   const [desde, setDesde] = useState(primerDiaMesISO())
   const [hasta, setHasta] = useState(hoyISO())
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -62,8 +68,8 @@ export default function TicketsPage() {
     setLoading(true)
     let q = supabase.from('registros_tickets')
       .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
-      .gte('fecha_ticket', desde).lte('fecha_ticket', hasta)
-      .order('fecha_ticket', { ascending: false }).limit(500)
+      .gte('created_at', desde).lt('created_at', diaSiguienteISO(hasta))
+      .order('created_at', { ascending: false }).limit(500)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
     const { data } = await q
     const rows = (data as unknown as Ticket[]) ?? []
@@ -157,7 +163,10 @@ export default function TicketsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-xl font-semibold text-zinc-100">Tickets</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-zinc-100">Tickets</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">{nombreSucursal} · por fecha de subida</p>
+        </div>
         <button onClick={descargarPeriodo} disabled={descargando || ticketsFiltrados.length === 0}
           className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
           {descargando ? 'Preparando ZIP...' : `Descargar periodo (${ticketsFiltrados.length})`}

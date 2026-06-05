@@ -62,6 +62,8 @@ export default function SubirPage({ params }: PageProps) {
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [enviadas, setEnviadas] = useState(0)
+  const [duplicadas, setDuplicadas] = useState(0)
+  const [fallidas, setFallidas] = useState(0)
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
@@ -121,10 +123,12 @@ export default function SubirPage({ params }: PageProps) {
     const archivos = imageFiles.length ? imageFiles : (imageFile ? [imageFile] : [])
     if (archivos.length === 0) return
 
-    try {
-      let ok = 0
-      let duplicados = 0
-      for (const file of archivos) {
+    let ok = 0
+    let duplicados = 0
+    let fallidos = 0
+    // Cada foto es independiente: si una falla, NO se cancelan las demas.
+    for (const file of archivos) {
+      try {
         // La compresion no puede colgar el envio: si tarda >8s, usa la original.
         const imagen = await Promise.race<Blob>([
           comprimirImagen(file),
@@ -143,28 +147,30 @@ export default function SubirPage({ params }: PageProps) {
             body: formData,
             signal: ctrl.signal,
           })
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') {
-            throw new Error('La conexión está lenta. Verifica tu internet e inténtalo de nuevo.')
-          }
-          throw err
         } finally {
           clearTimeout(t)
         }
         const data = await res.json().catch(() => ({}))
         if (res.ok && data.recibido) ok++
         else if (data.duplicado) duplicados++
-        else throw new Error(data.error || 'Error al enviar un ticket')
+        else fallidos++
+      } catch {
+        fallidos++
       }
-      // El procesamiento con IA corre en segundo plano; el gerente solo confirma envio.
-      setEnviadas(ok)
-      if (ok === 0 && duplicados > 0) {
-        throw new Error('Ese ticket ya fue enviado antes.')
-      }
-      setState('done')
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
+    }
+    // El procesamiento con IA corre en segundo plano; el gerente solo confirma envio.
+    setEnviadas(ok)
+    setDuplicadas(duplicados)
+    setFallidas(fallidos)
+    if (ok === 0) {
+      setErrorMsg(
+        duplicados > 0 && fallidos === 0
+          ? 'Ese ticket ya fue enviado antes.'
+          : 'No se pudo enviar. Revisa tu internet e inténtalo de nuevo.'
+      )
       setState('error')
+    } else {
+      setState('done')
     }
   }, [imageFile, imageFiles, sessionToken])
 
@@ -198,6 +204,8 @@ export default function SubirPage({ params }: PageProps) {
     setImageFile(null)
     setImageFiles([])
     setEnviadas(0)
+    setDuplicadas(0)
+    setFallidas(0)
     setImagePreview(null)
     setTicketData(null)
     setErrorMsg('')
@@ -238,6 +246,12 @@ export default function SubirPage({ params }: PageProps) {
         <p className="mt-2 text-sm text-zinc-400">
           {enviadas > 1 ? `${enviadas} tickets se están` : 'El ticket se está'} procesando automáticamente. No necesitas hacer nada más.
         </p>
+        {(duplicadas > 0 || fallidas > 0) && (
+          <p className="mt-2 text-xs text-amber-400">
+            {duplicadas > 0 && `${duplicadas} ya estaba(n) subido(s). `}
+            {fallidas > 0 && `${fallidas} no se pudo(eron) enviar; vuelve a intentarlas.`}
+          </p>
+        )}
         <button
           onClick={handleNewTicket}
           className="mt-8 w-full max-w-xs rounded-2xl bg-zinc-800 py-4 text-base font-medium text-zinc-100 active:scale-95 transition-transform"
