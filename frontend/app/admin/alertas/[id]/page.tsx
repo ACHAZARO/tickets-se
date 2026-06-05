@@ -74,7 +74,7 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
         .from('ticket_items')
         .select('id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision')
         .eq('registro_ticket_id', alertaData.registros_tickets.id)
-        .order('created_at')
+        .order('created_at').order('id')
     }
     const [catRes, itemsRes] = await Promise.all([catP, itemsP])
     setCategorias(catRes.data ?? [])
@@ -138,17 +138,22 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
       }
     }
 
+    const motivo = necesita ? (!it.categoria_id ? 'sin_categoria' : 'sin_unidad') : null
     await supabase.from('ticket_items').update({
       categoria_id: it.categoria_id || null,
       unidad: it.unidad || null,
       producto_catalogo_id: productoId,
       necesita_revision: necesita,
-      motivo_revision: necesita ? (!it.categoria_id ? 'sin_categoria' : 'sin_unidad') : null,
+      motivo_revision: motivo,
     }).eq('id', it.id)
 
-    setSaving(false)
+    // Actualiza solo este renglon en memoria (NO recargar: evita que la lista se
+    // rebaraje y el renglon "salte/desaparezca").
+    setItems(prev => prev.map(x => x.id === it.id
+      ? { ...x, categoria_id: it.categoria_id || null, unidad: it.unidad || null, producto_catalogo_id: productoId, necesita_revision: necesita, motivo_revision: motivo }
+      : x))
     setSinonimos(prev => ({ ...prev, [it.id]: '' }))
-    await load()
+    setSaving(false)
   }
 
   async function resolver() {
