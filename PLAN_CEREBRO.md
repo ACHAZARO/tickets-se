@@ -56,6 +56,17 @@ COMERCIOS          CATEGORÍAS              PRODUCTOS
 - [ ] Agregar la entrada "Cerebro" al nav del admin.
 - [ ] (Opcional posterior) vista "mapa" de solo-lectura tipo grafo.
 
+## FASE 6 — Alertas de precio (la finalidad: saber cuánto y en qué gastamos)
+- [ ] Guardar precio unitario por producto al confirmar (usar `precio_referencia` + historial).
+- [ ] Al procesar un ticket, comparar el precio nuevo vs el de referencia del producto;
+  si sube/baja más de X% → alerta `precio_anomalo` para avisar al admin.
+- [ ] En el dashboard, ver evolución de precio por producto.
+
+## FASE 7 — Equivalencias / inventario
+- [ ] Equivalencias por producto: "1 cono de huevo = 30 huevos", "1 caja = 24 pz".
+  Permite convertir compras a unidades base y, eventualmente, descontar inventario.
+- [ ] Rellenar inventario automáticamente desde las compras confirmadas.
+
 ## FASE 5 — Afinar el ruteo (cumplir la meta)
 - [ ] Revisar `matchProductInCatalog` con datos reales (precisión de typos/sinónimos).
 - [ ] (Opcional) tabla explícita `comercio_productos` para confirmar/quitar producto de un comercio.
