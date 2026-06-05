@@ -30,6 +30,9 @@ export default function CatalogoPage() {
   const [savingProd, setSavingProd] = useState(false)
   // edicion de producto existente
   const [editProd, setEditProd] = useState<null | { id: string; categoria_id: string; unidad: string; sinonimos: string }>(null)
+  // borrado de categoria (con reasignacion si tiene contenido)
+  const [delCat, setDelCat] = useState<null | { cat: Categoria; nProd: number; nItems: number; destino: string }>(null)
+  const [borrando, setBorrando] = useState(false)
 
   const fetchData = useCallback(async () => {
     let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
@@ -65,6 +68,27 @@ export default function CatalogoPage() {
   async function toggleOperativo(c: Categoria) {
     await supabase.from('categorias_gasto').update({ cuenta_operativo: !c.cuenta_operativo }).eq('id', c.id)
     setCategorias(prev => prev.map(x => x.id === c.id ? { ...x, cuenta_operativo: !x.cuenta_operativo } : x))
+  }
+
+  async function pedirBorrarCat(c: Categoria) {
+    const nProd = productos.filter(p => p.categoria_id === c.id).length
+    const { count } = await supabase.from('ticket_items').select('id', { count: 'exact', head: true }).eq('categoria_id', c.id)
+    setDelCat({ cat: c, nProd, nItems: count ?? 0, destino: '' })
+  }
+  async function confirmarBorrarCat() {
+    if (!delCat) return
+    const { cat, nProd, nItems, destino } = delCat
+    if ((nProd > 0 || nItems > 0) && !destino) return // hay que reasignar
+    setBorrando(true)
+    if (destino) {
+      if (nProd > 0) await supabase.from('catalogo_productos').update({ categoria_id: destino }).eq('categoria_id', cat.id)
+      if (nItems > 0) await supabase.from('ticket_items').update({ categoria_id: destino }).eq('categoria_id', cat.id)
+    }
+    await supabase.from('comercios').update({ categoria_id: null }).eq('categoria_id', cat.id)
+    const { error } = await supabase.from('categorias_gasto').delete().eq('id', cat.id)
+    setBorrando(false)
+    if (error) { alert('No se pudo borrar: ' + error.message); return }
+    setDelCat(null); setLoading(true); fetchData()
   }
 
   async function guardarProducto() {
@@ -152,6 +176,8 @@ export default function CatalogoPage() {
                   className={`text-xs px-2 py-1 rounded-lg ${c.activa ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
                   {c.activa ? 'Activa' : 'Inactiva'}
                 </button>
+                <button onClick={() => pedirBorrarCat(c)} title="Borrar categoría"
+                  className="text-xs text-red-400 hover:text-red-300 px-1">borrar</button>
               </div>
 
               {addProd?.categoriaId === c.id && (
@@ -222,6 +248,39 @@ export default function CatalogoPage() {
           )
         })}
       </div>
+
+      {delCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !borrando && setDelCat(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-zinc-100">Borrar &ldquo;{delCat.cat.nombre}&rdquo;</h3>
+            {(delCat.nProd > 0 || delCat.nItems > 0) ? (
+              <>
+                <p className="text-sm text-zinc-400">
+                  Esta categoría tiene {delCat.nProd > 0 && <b>{delCat.nProd} producto(s)</b>}{delCat.nProd > 0 && delCat.nItems > 0 && ' y '}{delCat.nItems > 0 && <b>{delCat.nItems} renglón(es)</b>}. Para no perder gastos, muévelos a otra categoría antes de borrar.
+                </p>
+                <div>
+                  <label className="text-xs text-zinc-500 block mb-1">Mover todo a:</label>
+                  <select value={delCat.destino} onChange={e => setDelCat({ ...delCat, destino: e.target.value })}
+                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-2 text-sm text-zinc-100">
+                    <option value="">Elige categoría destino…</option>
+                    {categorias.filter(k => k.id !== delCat.cat.id).map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-400">Esta categoría está vacía. Se puede borrar directamente.</p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={confirmarBorrarCat} disabled={borrando || ((delCat.nProd > 0 || delCat.nItems > 0) && !delCat.destino)}
+                className="flex-1 rounded-xl bg-red-600/90 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50">
+                {borrando ? 'Borrando…' : 'Borrar categoría'}
+              </button>
+              <button onClick={() => setDelCat(null)} disabled={borrando}
+                className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
