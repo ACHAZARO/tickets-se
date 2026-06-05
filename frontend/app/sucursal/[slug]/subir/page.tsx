@@ -32,7 +32,7 @@ const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
 // Reduce la foto antes de subir: las fotos de celular pesan varios MB y por
 // datos moviles la subida se cuelga. Bajamos a ~1600px / JPEG 0.7 (~200-400KB).
 // Tambien le quita ruido a Gemini y abarata el costo.
-async function comprimirImagen(file: File, maxLado = 1600, calidad = 0.7): Promise<Blob> {
+async function comprimirImagen(file: File, maxLado = 1500, calidad = 0.65): Promise<Blob> {
   if (!file.type.startsWith('image/')) return file
   try {
     const bitmap = await createImageBitmap(file)
@@ -64,6 +64,7 @@ export default function SubirPage({ params }: PageProps) {
   const [enviadas, setEnviadas] = useState(0)
   const [duplicadas, setDuplicadas] = useState(0)
   const [fallidas, setFallidas] = useState(0)
+  const [progreso, setProgreso] = useState({ actual: 0, total: 0 })
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
@@ -123,41 +124,53 @@ export default function SubirPage({ params }: PageProps) {
     const archivos = imageFiles.length ? imageFiles : (imageFile ? [imageFile] : [])
     if (archivos.length === 0) return
 
-    let ok = 0
-    let duplicados = 0
-    let fallidos = 0
-    // Cada foto es independiente: si una falla, NO se cancelan las demas.
-    for (const file of archivos) {
-      try {
-        // La compresion no puede colgar el envio: si tarda >8s, usa la original.
-        const imagen = await Promise.race<Blob>([
-          comprimirImagen(file),
-          new Promise<Blob>(resolve => setTimeout(() => resolve(file), 8000)),
-        ])
+    // Envia UNA foto con reintentos. Devuelve el resultado para contarlo.
+    async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail'> {
+      // La compresion no puede colgar el envio: si tarda >8s, usa la original.
+      const imagen = await Promise.race<Blob>([
+        comprimirImagen(file),
+        new Promise<Blob>(resolve => setTimeout(() => resolve(file), 8000)),
+      ])
+      // Hasta 3 intentos por foto (la red movil falla intermitente).
+      for (let intento = 1; intento <= 3; intento++) {
         const formData = new FormData()
         formData.append('imagen', imagen, 'ticket.jpg')
-        // timeout de seguridad: si la red se cuelga, no dejamos "Enviando" para siempre
         const ctrl = new AbortController()
-        const t = setTimeout(() => ctrl.abort(), 45000)
-        let res: Response
+        const t = setTimeout(() => ctrl.abort(), 60000)
         try {
-          res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
+          const res = await fetch(`${EDGE_FUNCTIONS_URL}/procesar-ticket`, {
             method: 'POST',
             headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
             body: formData,
             signal: ctrl.signal,
           })
+          const data = await res.json().catch(() => ({}))
+          if (res.ok && data.recibido) return 'ok'
+          if (data.duplicado) return 'dup'
+          // error del servidor: no tiene caso reintentar el mismo contenido
+          return 'fail'
+        } catch {
+          // fallo de red/timeout: reintenta tras una pausa corta
+          if (intento < 3) await new Promise(r => setTimeout(r, 1500 * intento))
         } finally {
           clearTimeout(t)
         }
-        const data = await res.json().catch(() => ({}))
-        if (res.ok && data.recibido) ok++
-        else if (data.duplicado) duplicados++
-        else fallidos++
-      } catch {
-        fallidos++
       }
+      return 'fail'
     }
+
+    let ok = 0
+    let duplicados = 0
+    let fallidos = 0
+    // Cada foto es independiente y secuencial: si una falla, NO se cancelan las demas.
+    for (let i = 0; i < archivos.length; i++) {
+      setProgreso({ actual: i + 1, total: archivos.length })
+      const r = await enviarUna(archivos[i])
+      if (r === 'ok') ok++
+      else if (r === 'dup') duplicados++
+      else fallidos++
+    }
+    setProgreso({ actual: 0, total: 0 })
     // El procesamiento con IA corre en segundo plano; el gerente solo confirma envio.
     setEnviadas(ok)
     setDuplicadas(duplicados)
@@ -206,6 +219,7 @@ export default function SubirPage({ params }: PageProps) {
     setEnviadas(0)
     setDuplicadas(0)
     setFallidas(0)
+    setProgreso({ actual: 0, total: 0 })
     setImagePreview(null)
     setTicketData(null)
     setErrorMsg('')
@@ -364,7 +378,9 @@ export default function SubirPage({ params }: PageProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
-                <p className="text-sm font-medium text-zinc-300">Enviando...</p>
+                <p className="text-sm font-medium text-zinc-300">
+                  {progreso.total > 1 ? `Enviando ${progreso.actual} de ${progreso.total}...` : 'Enviando...'}
+                </p>
               </div>
             )}
           </div>
