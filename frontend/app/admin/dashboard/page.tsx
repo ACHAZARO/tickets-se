@@ -13,11 +13,11 @@ interface ItemRow {
   monto: number | null
   categoria_id: string | null
   categorias_gasto: { nombre: string } | null
-  catalogo_productos: { nombre: string } | null
+  catalogo_productos: { nombre: string; contiene_cantidad: number | null; contiene_unidad: string | null } | null
   registros_tickets: { id: string; fecha_ticket: string | null; comercio: string | null } | null
 }
 interface CatAgg { id: string; nombre: string; gasto: number; operativo: boolean }
-interface ProductoAgg { nombre: string; reconocido: boolean; gasto: number; veces: number; cantidad: number; unidad: string | null; unidadMixta: boolean }
+interface ProductoAgg { nombre: string; reconocido: boolean; gasto: number; veces: number; cantidad: number; unidad: string | null; unidadMixta: boolean; base: number; baseUnidad: string | null }
 
 const COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635', '#f472b6', '#94a3b8']
 
@@ -81,7 +81,7 @@ export default function DashboardPage() {
 
     // items confirmados en el rango
     let tq = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, contiene_cantidad, contiene_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
       .gte('registros_tickets.fecha_ticket', inicio).lte('registros_tickets.fecha_ticket', fin)
     if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
@@ -109,11 +109,16 @@ export default function DashboardPage() {
       const reconocido = !!t.catalogo_productos?.nombre
       const nombre = (t.catalogo_productos?.nombre ?? t.descripcion ?? 'Sin nombre').trim()
       const key = nombre.toLowerCase()
-      const prev = pmap.get(key) ?? { nombre, reconocido, gasto: 0, veces: 0, cantidad: 0, unidad: null as string | null, unidadMixta: false }
+      const prev = pmap.get(key) ?? { nombre, reconocido, gasto: 0, veces: 0, cantidad: 0, unidad: null as string | null, unidadMixta: false, base: 0, baseUnidad: null as string | null }
       prev.gasto += Number(t.monto ?? 0); prev.veces += 1; if (reconocido) prev.reconocido = true
-      prev.cantidad += Number(t.cantidad ?? 0)
+      const cant = Number(t.cantidad ?? 0)
+      prev.cantidad += cant
       const u = t.unidad?.trim() || null
       if (u) { if (prev.unidad && prev.unidad !== u) prev.unidadMixta = true; else if (!prev.unidad) prev.unidad = u }
+      // equivalencia -> unidades base (ej. cono -> huevos)
+      const cc = t.catalogo_productos?.contiene_cantidad
+      const cu = t.catalogo_productos?.contiene_unidad
+      if (cc && cu && cant > 0) { prev.base += cant * Number(cc); prev.baseUnidad = cu }
       pmap.set(key, prev)
     }
     setProductosTop([...pmap.values()].sort((a, b) => b.gasto - a.gasto))
@@ -349,6 +354,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">
                         {p.cantidad > 0 ? `${p.cantidad.toLocaleString('es-MX', { maximumFractionDigits: 2 })}${p.unidadMixta ? '' : p.unidad ? ' ' + p.unidad : ''}` : '—'}
+                        {p.base > 0 && p.baseUnidad && <span className="block text-[10px] text-zinc-600">= {p.base.toLocaleString('es-MX', { maximumFractionDigits: 0 })} {p.baseUnidad}</span>}
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">{p.veces}</td>
                       <td className="px-4 py-2 text-right text-zinc-300">{fmt2(p.gasto)}</td>

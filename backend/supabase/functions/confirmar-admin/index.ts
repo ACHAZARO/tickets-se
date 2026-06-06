@@ -49,7 +49,7 @@ serve(async (req: Request) => {
     // Items + nombres para Sheets
     const [{ data: itemsData }, { data: suc }, { data: emp }] = await Promise.all([
       supabase.from('ticket_items')
-        .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id ( nombre )')
+        .select('descripcion, cantidad, unidad, monto, producto_catalogo_id, categorias_gasto:categoria_id ( nombre )')
         .eq('registro_ticket_id', registro_id),
       supabase.from('sucursales').select('nombre').eq('id', reg.sucursal_id).maybeSingle(),
       supabase.from('empleados').select('nombre').eq('id', reg.empleado_id).maybeSingle(),
@@ -86,6 +86,27 @@ serve(async (req: Request) => {
       confirmado_en: now.toISOString(),
       ...(sheetsRowId ? { sheets_row_id: sheetsRowId } : {}),
     }).eq('id', registro_id)
+
+    // Registra precios de los renglones que se ligaron a un producto durante la revision
+    // (al ingest no tenian producto, por eso no se registro su precio entonces).
+    if (reg.estado !== 'confirmado') {
+      const vistos = new Set<string>()
+      for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
+        const pid = it.producto_catalogo_id as string | null
+        const monto = Number(it.monto)
+        const cant = Number(it.cantidad)
+        if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+        vistos.add(pid)
+        const unit = monto / cant
+        try {
+          await supabase.from('precio_historial').insert({
+            producto_catalogo_id: pid, sucursal_id: reg.sucursal_id,
+            registro_ticket_id: registro_id, precio_unitario: unit, fecha: reg.fecha_ticket ?? null,
+          })
+          await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
+        } catch (e) { console.error('precio (confirmar-admin):', e) }
+      }
+    }
 
     return json({ ok: true })
   } catch (err) {
