@@ -84,7 +84,9 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 
 ## Edge Functions (Deno, verify_jwt=false, auth JWT HMAC propio)
 - `verificar-pin` — PIN → session_token.
-- `procesar-ticket` (v20) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
+- `procesar-ticket` (v24) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
+  Aprende comercios/productos, registra precios (alerta `precio_anomalo` vs promedio) y matchea con
+  PRECISION (sinonimos <4 chars solo exactos; match por token completo, no substring).
   Aprende comercios (`aprenderComercio`) y **auto-aprende productos** (`aprenderProductos`): cada renglon
   que entiende y categoriza, si no existe en el catalogo, lo inserta solo en el catalogo de la sucursal.
   Prompt usa el nombre del comercio para distinguir (gasolinera→combustible vs gas de cocina) y normaliza
@@ -126,6 +128,21 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
+## Cambios 2026-06-06 — pulido y precisión
+- **Matcher de productos preciso** (procesar-ticket v24 + catalog.ts): sinónimos/nombres de <4
+  chars (gas, 1, ala) solo coinciden EXACTO; el match por palabra es por token completo, no
+  substring. Antes "gas" o "1" como sinónimo arrastraba renglones equivocados. Datos limpiados.
+- **Sinónimos al renombrar**: en la revisión, lo que leyó la IA originalmente queda como sinónimo
+  del producto final aunque solo renombres (no solo al "vincular"). Dedup case-insensitive.
+- **Reporte (Excel) multi-hoja** en dashboard: Resumen, Categorías, Comercios, Productos, Detalle.
+- **Catálogo**: renombrar producto (el nombre viejo → sinónimo) + equivalencias.
+- **Cerebro liga**: forzar categoría de comercio; equivalencia al ligar contenedores.
+- **Tickets**: botón "Confirmar ticket" para pendientes (los empuja al arqueo + resuelve alertas).
+- **Precios/Entradas** leen la fuente real (renglones confirmados) → muestran TODO.
+- Se elimina la página `/admin/huerfanos` (ahora viven en el Cerebro). Nav: Entradas (antes Inventario).
+- Pendiente conocido: `consumo_inventario` (migración 019) quedó sin UI tras renombrar a Entradas;
+  disponible para una futura pantalla de stock real.
 
 ## Cambios 2026-06-05 (b) — precios visibles, inventario y pulido
 - **procesar-ticket v23**: alerta de precio compara vs PROMEDIO de hasta 5 compras previas,

@@ -112,7 +112,7 @@ export default function PreciosPage() {
       {loading ? (
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
       ) : filtrados.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">{prods.length === 0 ? 'Aún no hay precios registrados. Se llenan cuando un renglón ligado a un producto trae cantidad y monto.' : 'Sin coincidencias'}</p>
+        <p className="text-zinc-500 text-center py-12">{prods.length === 0 ? 'Aún no hay precios: aparecen cuando hay tickets confirmados con cantidad y monto por renglón.' : 'Sin coincidencias'}</p>
       ) : (
         <div className="rounded-2xl bg-zinc-900 overflow-hidden">
           <table className="w-full text-sm">

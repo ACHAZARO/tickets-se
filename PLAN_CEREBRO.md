@@ -11,7 +11,7 @@
 > - Comercio → Categorías: **varias** (Costco vende de todo)
 > - Comercio → Productos: varias (observado automáticamente)
 
-Estado: ✅ COMPLETO. Todas las fases (0–7) implementadas y desplegadas. Última actualización: 2026-06-05.
+Estado: ✅ COMPLETO + pulido (matcher preciso, reporte multi-hoja, Entradas, Cerebro liga). Última actualización: 2026-06-06.
 
 Resumen de lo entregado:
 - Fase 0 ✅ migración 017 (categoría nullable + RPC ligar_huerfano con back-fill)
@@ -77,8 +77,9 @@ COMERCIOS          CATEGORÍAS              PRODUCTOS
   Permite convertir compras a unidades base y, eventualmente, descontar inventario.
 - [ ] Rellenar inventario automáticamente desde las compras confirmadas.
 
-## FASE 5 — Afinar el ruteo (cumplir la meta)
-- [ ] Revisar `matchProductInCatalog` con datos reales (precisión de typos/sinónimos).
+## FASE 5 — Afinar el ruteo (cumplir la meta) ✅ HECHA (2026-06-06)
+- [x] `matchProductInCatalog` preciso: sinónimos/nombres <4 chars solo exactos; match por token
+      completo (no substring). Aprendizaje de sinónimos también al renombrar en la revisión.
 - [ ] (Opcional) tabla explícita `comercio_productos` para confirmar/quitar producto de un comercio.
 - [ ] Métrica: % de renglones auto-ruteados sin revisión (que suba con el tiempo).
 
