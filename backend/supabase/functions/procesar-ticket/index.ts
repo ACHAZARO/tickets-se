@@ -170,6 +170,37 @@ async function aprenderProductos(
   }
 }
 
+// Registra el precio unitario (monto/cantidad) de cada renglon ligado a un producto,
+// guarda historial y detecta saltos fuertes vs el precio de referencia.
+async function registrarPrecios(
+  supabase: SB,
+  items: { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null }[],
+  catalog: Catalog, sucursalId: string, registroId: string, fecha: string
+): Promise<boolean> {
+  let anomalia = false
+  for (const it of items) {
+    const pid = it.producto_catalogo_id
+    const monto = Number(it.monto)
+    const cant = Number(it.cantidad)
+    if (!pid || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+    const unit = monto / cant
+    const prod = catalog.products.find(p => p.id === pid)
+    try {
+      await supabase.from('precio_historial').insert({
+        producto_catalogo_id: pid, sucursal_id: sucursalId,
+        registro_ticket_id: registroId, precio_unitario: unit, fecha,
+      })
+      const ref = prod?.precio_referencia ?? null
+      if (ref && ref > 0) {
+        const ratio = unit / ref
+        if (ratio > 1.4 || ratio < 0.6) anomalia = true // +40% o -40%
+      }
+      await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
+    } catch (e) { console.error('registrarPrecios:', e) }
+  }
+  return anomalia
+}
+
 function parseGemini(text: string): GeminiResult {
   const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   return JSON.parse(clean) as GeminiResult
@@ -281,6 +312,9 @@ async function procesarEnSegundoPlano(opts: {
     // pero que NO estaban en el catalogo (el usuario los edita despues si hace falta).
     await aprenderProductos(supabase, sucursalId, itemsToInsert)
 
+    // Precios: guarda historial y detecta saltos fuertes vs referencia.
+    const precioAnomalo = await registrarPrecios(supabase, itemsToInsert, catalog, sucursalId, registroId, fechaTicket)
+
     let hayAlerta = false
     const dupId = await detectSmartDuplicate(
       supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket
@@ -295,6 +329,10 @@ async function procesarEnSegundoPlano(opts: {
     }
     if (anySinCategoria) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
     if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
+    if (precioAnomalo) {
+      await createAlert(supabase, registroId, 'precio_anomalo')
+      notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
+    }
 
     // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.
     if (!hayAlerta) {
