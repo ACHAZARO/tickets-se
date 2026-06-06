@@ -164,15 +164,16 @@ export function matchProductInCatalog(
   if (!producto) return null
   const d = normaliza(producto)
   if (!d) return null
-  const dTokens = d.split(' ').filter(t => t.length >= 3)
+  const dTokens = d.split(' ').filter(t => t.length >= 4)
   for (const p of products) {
     const candidatos = [p.nombre, ...p.sinonimos].map(normaliza).filter(Boolean)
     for (const c of candidatos) {
-      if (d === c) return p
+      if (d === c) return p                 // coincidencia exacta: siempre
+      if (c.length < 4) continue            // candidatos cortos (gas, 1, ala): SOLO exacto, evita falsos positivos
       if (d.includes(c) || c.includes(d)) return p
-      // coincidencia por palabra: un token del catalogo (>=4) aparece en la descripcion
+      // coincidencia por palabra completa (token >=4), no por substring
       const cTokens = c.split(' ').filter(t => t.length >= 4)
-      if (cTokens.some(ct => dTokens.includes(ct) || d.includes(ct))) return p
+      if (cTokens.some(ct => dTokens.includes(ct))) return p
     }
   }
   return null
