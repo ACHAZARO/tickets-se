@@ -24,6 +24,12 @@ export default function CerebroPage() {
   const [loading, setLoading] = useState(true)
   const [sel, setSel] = useState<Sel>(null)
   const [guardando, setGuardando] = useState<string | null>(null)
+  const [bCom, setBCom] = useState('')
+  const [bCat, setBCat] = useState('')
+  const [bProd, setBProd] = useState('')
+  // ligado masivo: categoría destino para aplicar a varios huérfanos marcados
+  const [marcados, setMarcados] = useState<Set<string>>(new Set())
+  const [catMasiva, setCatMasiva] = useState('')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -100,6 +106,26 @@ export default function CerebroPage() {
     fetchData() // refresca para que aparezca como producto del catalogo
   }
 
+  async function ligarMarcados() {
+    if (!catMasiva || marcados.size === 0) return
+    setGuardando('__masivo__')
+    const objetivo = huerfanos.filter(h => marcados.has(h.nombre))
+    for (const h of objetivo) {
+      const sinonimos = h.sinonimos ? h.sinonimos.split(',').map(s => s.trim()).filter(Boolean) : []
+      await supabase.rpc('ligar_huerfano', {
+        p_nombre: h.nombre, p_categoria_id: catMasiva,
+        p_sucursal_id: sucursalId || null, p_unidad: h.unidad || null, p_sinonimos: sinonimos,
+      })
+    }
+    setGuardando(null)
+    setHuerfanos(prev => prev.filter(x => !marcados.has(x.nombre)))
+    setMarcados(new Set()); setCatMasiva('')
+    fetchData()
+  }
+  function toggleMarcado(nombre: string) {
+    setMarcados(prev => { const n = new Set(prev); if (n.has(nombre)) n.delete(nombre); else n.add(nombre); return n })
+  }
+
   // --- Derivados de selección ---
   const catNombre = (id: string | null) => categorias.find(c => c.id === id)?.nombre ?? 'sin categoría'
   const comercioActivoKey = sel?.tipo === 'comercio' ? (comercios.find(c => c.id === sel.id)?.nombre ?? '').toLowerCase() : null
@@ -153,9 +179,13 @@ export default function CerebroPage() {
         {/* COMERCIOS */}
         <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
           <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">Comercios ({comercios.length})</div>
-          <div className="divide-y divide-zinc-800/50 max-h-[70vh] overflow-y-auto">
+          <div className="p-2 border-b border-zinc-800/50">
+            <input value={bCom} onChange={e => setBCom(e.target.value)} placeholder="Buscar comercio…"
+              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600" />
+          </div>
+          <div className="divide-y divide-zinc-800/50 max-h-[60vh] overflow-y-auto">
             {comercios.length === 0 && <p className="px-4 py-4 text-xs text-zinc-600">Aún no hay comercios.</p>}
-            {comercios.map(c => {
+            {comercios.filter(c => !bCom || c.nombre.toLowerCase().includes(bCom.toLowerCase())).map(c => {
               const activo = sel?.tipo === 'comercio' && sel.id === c.id
               const resaltado = comerciosResaltados?.has(c.nombre.toLowerCase())
               const apagado = comerciosResaltados && !resaltado
@@ -174,8 +204,12 @@ export default function CerebroPage() {
         {/* CATEGORIAS */}
         <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
           <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">Categorías ({categorias.length})</div>
-          <div className="divide-y divide-zinc-800/50 max-h-[70vh] overflow-y-auto">
-            {categorias.map(c => {
+          <div className="p-2 border-b border-zinc-800/50">
+            <input value={bCat} onChange={e => setBCat(e.target.value)} placeholder="Buscar categoría…"
+              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600" />
+          </div>
+          <div className="divide-y divide-zinc-800/50 max-h-[60vh] overflow-y-auto">
+            {categorias.filter(c => !bCat || c.nombre.toLowerCase().includes(bCat.toLowerCase())).map(c => {
               const activo = sel?.tipo === 'categoria' && sel.id === c.id
               const resaltado = catsResaltadas?.has(c.id)
               const apagado = catsResaltadas && !resaltado
@@ -197,14 +231,35 @@ export default function CerebroPage() {
           <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">
             Productos {sel ? '(filtrados)' : `(${productos.length})`}
           </div>
-          <div className="max-h-[70vh] overflow-y-auto">
+          <div className="p-2 border-b border-zinc-800/50">
+            <input value={bProd} onChange={e => setBProd(e.target.value)} placeholder="Buscar producto…"
+              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600" />
+          </div>
+          {marcados.size > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-950/20 border-b border-amber-800/30">
+              <span className="text-xs text-amber-300">{marcados.size} marcados →</span>
+              <select value={catMasiva} onChange={e => setCatMasiva(e.target.value)}
+                className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                <option value="">Categoría para todos…</option>
+                {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+              <button onClick={ligarMarcados} disabled={!catMasiva || guardando === '__masivo__'}
+                className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-900 disabled:opacity-50">
+                {guardando === '__masivo__' ? '…' : 'Ligar'}
+              </button>
+            </div>
+          )}
+          <div className="max-h-[60vh] overflow-y-auto">
             {/* Huérfanos */}
-            {huerfanosFiltrados.length > 0 && (
+            {huerfanosFiltrados.filter(h => !bProd || h.nombre.toLowerCase().includes(bProd.toLowerCase())).length > 0 && (
               <div className="border-b border-amber-800/30">
-                <p className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wider text-amber-400">Huérfanos ({huerfanosFiltrados.length})</p>
-                {huerfanosFiltrados.slice(0, 60).map(h => (
+                <p className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wider text-amber-400">Huérfanos — marca varios y asigna en lote, o liga uno por uno</p>
+                {huerfanosFiltrados.filter(h => !bProd || h.nombre.toLowerCase().includes(bProd.toLowerCase())).slice(0, 80).map(h => (
                   <div key={h.nombre} className="px-4 py-2.5 space-y-2 border-t border-zinc-800/40">
-                    <p className="text-sm text-zinc-100">{h.nombre} <span className="text-[10px] text-zinc-600">{h.veces}×</span></p>
+                    <label className="flex items-center gap-2 text-sm text-zinc-100">
+                      <input type="checkbox" checked={marcados.has(h.nombre)} onChange={() => toggleMarcado(h.nombre)} className="accent-amber-500" />
+                      {h.nombre} <span className="text-[10px] text-zinc-600">{h.veces}×</span>
+                    </label>
                     <div className="flex flex-wrap gap-1.5">
                       <select value={h.categoria_id} onChange={e => setHuerfanoCampo(h.nombre, 'categoria_id', e.target.value)}
                         className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
@@ -227,9 +282,9 @@ export default function CerebroPage() {
             )}
 
             {/* Productos del catálogo */}
-            {productosFiltrados.length === 0 && huerfanosFiltrados.length === 0 ? (
+            {productosFiltrados.filter(p => !bProd || p.nombre.toLowerCase().includes(bProd.toLowerCase())).length === 0 && huerfanosFiltrados.length === 0 ? (
               <p className="px-4 py-4 text-xs text-zinc-600">Sin productos {sel ? 'para esta selección' : ''}.</p>
-            ) : productosFiltrados.map(p => (
+            ) : productosFiltrados.filter(p => !bProd || p.nombre.toLowerCase().includes(bProd.toLowerCase())).map(p => (
               <div key={p.id} className="px-4 py-2.5 border-t border-zinc-800/40 flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-100 truncate">{p.nombre}</p>
