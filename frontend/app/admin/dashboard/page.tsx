@@ -63,6 +63,7 @@ export default function DashboardPage() {
   const [detalle, setDetalle] = useState<TicketDetalle[]>([])
   const [productosTop, setProductosTop] = useState<ProductoAgg[]>([])
   const [trend, setTrend] = useState<{ mes: string; gasto: number }[]>([])
+  const [comerciosAgg, setComerciosAgg] = useState<{ nombre: string; gasto: number; tickets: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [hover, setHover] = useState<number | null>(null)
   const [prodFiltro, setProdFiltro] = useState('')
@@ -102,6 +103,17 @@ export default function DashboardPage() {
     }
     setCats([...cmap.values()].sort((a, b) => b.gasto - a.gasto))
     setNTickets(tickets.size)
+
+    // por comercio (gasto + tickets distintos) para el reporte
+    const commap = new Map<string, { nombre: string; gasto: number; tickets: Set<string> }>()
+    for (const t of rows) {
+      const nombre = t.registros_tickets?.comercio?.trim() || 'Sin comercio'
+      const prev = commap.get(nombre) ?? { nombre, gasto: 0, tickets: new Set<string>() }
+      prev.gasto += Number(t.monto ?? 0)
+      if (t.registros_tickets?.id) prev.tickets.add(t.registros_tickets.id)
+      commap.set(nombre, prev)
+    }
+    setComerciosAgg([...commap.values()].map(c => ({ nombre: c.nombre, gasto: c.gasto, tickets: c.tickets.size })).sort((a, b) => b.gasto - a.gasto))
 
     // por producto (sinonimos -> producto canonico)
     const pmap = new Map<string, ProductoAgg>()
@@ -187,12 +199,19 @@ export default function DashboardPage() {
   }, [operativas, gastoOperativo])
 
   async function exportar() {
-    const { exportGastoXlsx } = await import('@/lib/export-xlsx')
+    const { exportReporteMensual } = await import('@/lib/export-xlsx')
     const categorias: ResumenCategoria[] = cats.map(c => ({
       nombre: c.nombre, gasto: c.gasto, operativo: c.operativo,
       pct: gastoOperativo > 0 && c.operativo ? (c.gasto / gastoOperativo) * 100 : 0,
     }))
-    exportGastoXlsx({ periodo: periodoLabel, sucursal: sucursalLabel, gastoOperativo, gastoNoOperativo, categorias, detalle })
+    const productos = productosTop.map(p => ({
+      nombre: p.nombre, cantidad: p.cantidad, unidad: p.unidadMixta ? null : p.unidad,
+      base: p.base, baseUnidad: p.baseUnidad, veces: p.veces, gasto: p.gasto, reconocido: p.reconocido,
+    }))
+    exportReporteMensual({
+      periodo: periodoLabel, sucursal: sucursalLabel, gastoOperativo, gastoNoOperativo,
+      nTickets, categorias, comercios: comerciosAgg, productos, detalle,
+    })
   }
 
   return (
@@ -201,7 +220,7 @@ export default function DashboardPage() {
         <h2 className="text-xl font-semibold text-zinc-100">Gasto · {sucursalLabel}</h2>
         <button onClick={exportar} disabled={cats.length === 0}
           className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
-          Exportar Excel
+          Reporte (Excel)
         </button>
       </div>
 

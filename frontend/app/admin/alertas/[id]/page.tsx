@@ -50,6 +50,7 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
+  const [origDesc, setOrigDesc] = useState<Record<string, string>>({}) // descripcion que leyó la IA, por item
   const [editando, setEditando] = useState<Set<string>>(new Set())
   const [sinonimos, setSinonimos] = useState<Record<string, string>>({})
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -87,7 +88,9 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
     const [catRes, prodRes, itemsRes] = await Promise.all([catP, prodP, itemsP])
     setCategorias(catRes.data ?? [])
     setCatalogo((prodRes.data as ProdCat[] | null) ?? [])
-    setItems((itemsRes?.data as Item[] | undefined) ?? [])
+    const itemsCargados = (itemsRes?.data as Item[] | undefined) ?? []
+    setItems(itemsCargados)
+    setOrigDesc(prev => { const m = { ...prev }; for (const it of itemsCargados) if (!(it.id in m)) m[it.id] = it.descripcion; return m })
 
     const reg = alertaData?.registros_tickets
     const archivo = (reg as { storage_path_archivo?: string | null } | null | undefined)?.storage_path_archivo
@@ -130,40 +133,41 @@ export default function AlertaDetailPage({ params }: { params: { id: string } })
     const sucId = alerta?.registros_tickets?.sucursal_id ?? null
     const synManual = (sinonimos[it.id]?.trim() ?? '')
     const synList = synManual ? synManual.split(',').map(s => s.trim()).filter(Boolean) : []
+    const original = (origDesc[it.id] ?? '').trim() // lo que leyó la IA (ej. "caca")
 
-    if (productoId) {
-      // Vinculado a un producto existente: lo que la IA leyo (descripcion) se guarda
-      // como SINONIMO de ese producto -> "choco" pasa a significar "Pan danes de chocolate".
-      const prod = catalogo.find(p => p.id === productoId)
-      const extra = [...synList]
-      if (prod && it.descripcion.trim() && it.descripcion.trim().toLowerCase() !== prod.nombre.toLowerCase()) {
-        extra.push(it.descripcion.trim())
-      }
-      if (extra.length) {
-        const { data: cur } = await supabase.from('catalogo_productos').select('sinonimos').eq('id', productoId).single()
-        const merged = Array.from(new Set([...((cur?.sinonimos as string[]) ?? []), ...extra]))
-        await supabase.from('catalogo_productos').update({ sinonimos: merged }).eq('id', productoId)
-      }
-    } else if (it.categoria_id && it.descripcion.trim()) {
-      // No vinculado pero ya tiene categoria: lo agregamos al catalogo para aprenderlo.
+    // Si no está vinculado pero ya tiene categoría, busca el producto por el nombre
+    // ACTUAL (ej. "cacahuate") o lo crea. Así el renglón queda ligado a un producto real.
+    if (!productoId && it.categoria_id && it.descripcion.trim()) {
       const { data: existente } = await supabase.from('catalogo_productos')
         .select('id').ilike('nombre', it.descripcion.trim())
         .or(`sucursal_id.is.null,sucursal_id.eq.${sucId ?? '00000000-0000-0000-0000-000000000000'}`)
         .limit(1).maybeSingle()
       if (existente) {
         productoId = existente.id
-        if (synList.length) {
-          const { data: cur } = await supabase.from('catalogo_productos').select('sinonimos').eq('id', productoId).single()
-          const merged = Array.from(new Set([...((cur?.sinonimos as string[]) ?? []), ...synList]))
-          await supabase.from('catalogo_productos').update({ sinonimos: merged }).eq('id', productoId)
-        }
       } else {
         const { data: nuevo } = await supabase.from('catalogo_productos').insert({
-          nombre: it.descripcion.trim(), sinonimos: synList,
+          nombre: it.descripcion.trim(), sinonimos: [],
           categoria_id: it.categoria_id, unidad_default: it.unidad || null, sucursal_id: sucId,
         }).select('id').single()
         productoId = nuevo?.id ?? null
       }
+    }
+
+    // APRENDIZAJE de sinónimos: al producto final se le agregan lo que el usuario
+    // escribió + lo que la IA leyó originalmente (ej. "caca") + la descripción actual,
+    // siempre que difieran del nombre del producto. Dedup case-insensitive.
+    if (productoId) {
+      const { data: cur } = await supabase.from('catalogo_productos').select('nombre, sinonimos').eq('id', productoId).single()
+      const finalName = (cur?.nombre as string) ?? it.descripcion.trim()
+      const candidatos = [...synList, original, it.descripcion.trim()]
+      const seen = new Map<string, string>()
+      for (const s of ((cur?.sinonimos as string[]) ?? [])) if (s.trim()) seen.set(s.trim().toLowerCase(), s.trim())
+      for (const s of candidatos) {
+        const t = s.trim()
+        if (t && t.toLowerCase() !== finalName.toLowerCase() && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t)
+      }
+      const merged = [...seen.values()]
+      await supabase.from('catalogo_productos').update({ sinonimos: merged }).eq('id', productoId)
     }
 
     const motivo = necesita ? (!it.categoria_id ? 'sin_categoria' : 'sin_unidad') : null
