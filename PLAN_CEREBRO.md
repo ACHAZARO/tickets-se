@@ -11,7 +11,17 @@
 > - Comercio → Categorías: **varias** (Costco vende de todo)
 > - Comercio → Productos: varias (observado automáticamente)
 
-Estado: EN EJECUCIÓN (paneles ligados). Hechas: Fase 0, Fase 1, Fase 3 + fix renglón. Pendientes: Fase 2, Fase 4, Fase 5. Última actualización: 2026-06-05.
+Estado: ✅ COMPLETO. Todas las fases (0–7) implementadas y desplegadas. Última actualización: 2026-06-05.
+
+Resumen de lo entregado:
+- Fase 0 ✅ migración 017 (categoría nullable + RPC ligar_huerfano con back-fill)
+- Fase 1 ✅ borrar/editar categorías con reasignación segura
+- Fase 2 ✅ dashboard: filtro por artículo + unidad en todo
+- Fase 3 ✅ /admin/huerfanos (cola de huérfanos)
+- Fase 4 ✅ /admin/cerebro (tablero de paneles ligados)
+- Fase 5 ✅ métrica "Auto-clasificado %" en dashboard
+- Fase 6 ✅ migración 018 + procesar-ticket v22 (precio_historial + alerta precio_anomalo)
+- Fase 7 ✅ equivalencias por producto (1 unidad contiene X de Y) en catálogo
 
 ---
 
