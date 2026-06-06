@@ -76,7 +76,8 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (createSignedUrl). RLS: SELECT para `authenticated` (migracion 011).
 
 - `comercios` (nombre, sucursal_id, categoria_id, veces) — la IA aprende la categoria habitual de cada comercio.
-### Migraciones aplicadas: 001–016
+### Migraciones aplicadas: 001–018
+  (017 = categoría nullable + RPC ligar_huerfano; 018 = precio_historial + equivalencias)
 
 ---
 
@@ -124,6 +125,21 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
+## Cambios 2026-06-05 (Cerebro completo + precios)
+- **procesar-ticket v22**: registra precio unitario por renglón (precio_historial),
+  detecta saltos >40% vs referencia → alerta `precio_anomalo`. Liga total a producto en
+  notas de un solo renglón. Subida múltiple con reintentos + progreso.
+- **Nuevas pantallas admin**: `/admin/huerfanos` (cola sin categoría, RPC ligar_huerfano con
+  back-fill) y `/admin/cerebro` (tablero de 3 paneles ligados Comercios/Categorías/Productos
+  con resaltado cruzado, ligar huérfanos, mover producto).
+- **Catálogo**: borrar categoría con reasignación; editar producto (mover categoría, unidad,
+  sinónimos) y **equivalencias** (1 unidad contiene X de Y).
+- **Revisión de alertas**: precio/cantidad editables, vincular renglón a producto existente
+  (el texto mal leído queda como sinónimo), guardado con feedback + renglón listo se colapsa.
+- **Tickets**: editar renglones de cualquier ticket; filtro por comercio; lista por fecha de subida.
+- **Dashboard**: filtro por artículo, tarjeta "Auto-clasificado %", split operativo/no operativo.
+- Migraciones 017 y 018. PLAN_CEREBRO.md: todas las fases 0–7 ✅.
 
 ## Cambios 2026-06-04 (tanda IA + gasto)
 - **Dashboard sin ventas**: la etapa actual es 100% captura de gasto + entrenar IA + ver
