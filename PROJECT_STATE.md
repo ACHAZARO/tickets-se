@@ -76,8 +76,9 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (createSignedUrl). RLS: SELECT para `authenticated` (migracion 011).
 
 - `comercios` (nombre, sucursal_id, categoria_id, veces) — la IA aprende la categoria habitual de cada comercio.
-### Migraciones aplicadas: 001–018
-  (017 = categoría nullable + RPC ligar_huerfano; 018 = precio_historial + equivalencias)
+### Migraciones aplicadas: 001–019
+  (017 = categoría nullable + RPC ligar_huerfano; 018 = precio_historial + equivalencias;
+   019 = consumo_inventario)
 
 ---
 
@@ -125,6 +126,16 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
+## Cambios 2026-06-05 (b) — precios visibles, inventario y pulido
+- **procesar-ticket v23**: alerta de precio compara vs PROMEDIO de hasta 5 compras previas,
+  requiere ≥2 registros y misma unidad (menos falsos positivos).
+- **confirmar-admin v2**: registra precio de renglones ligados durante la revisión.
+- **/admin/precios**: último precio, anterior, variación %; fila expandible con mini-gráfica.
+- **/admin/inventario** (migración 019): unidades base compradas − consumo manual = disponible.
+- **Dashboard**: unidades base por equivalencia en "Productos más comprados".
+- **Cerebro**: buscadores por columna + ligado masivo de huérfanos.
+- Nav admin: + Precios, + Inventario.
 
 ## Cambios 2026-06-05 (Cerebro completo + precios)
 - **procesar-ticket v22**: registra precio unitario por renglón (precio_historial),
