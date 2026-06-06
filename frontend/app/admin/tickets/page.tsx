@@ -106,6 +106,19 @@ export default function TicketsPage() {
     return pb ? (urls[`${pb.bucket}/${pb.path}`] ?? null) : null
   }
 
+  const [confirmando, setConfirmando] = useState(false)
+  async function confirmarTicket(t: Ticket) {
+    // Empuja un ticket pendiente al arqueo (archiva + Sheets + estado=confirmado)
+    // y resuelve sus alertas. Util cuando lo arreglaste en Cerebro/Catalogo.
+    setConfirmando(true)
+    const { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } })
+    if (!error) await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('resuelta', false)
+    setConfirmando(false)
+    if (error) { alert('No se pudo confirmar: ' + error.message); return }
+    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'confirmado' } } : d)
+    setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'confirmado' } : x))
+  }
+
   async function eliminarTicket(t: Ticket) {
     if (!confirm('¿Eliminar este ticket? Se borran el registro, sus renglones y la foto. No se puede deshacer.')) return
     const pb = pathBucket(t)
@@ -337,6 +350,15 @@ export default function TicketsPage() {
               <span className="text-zinc-500">Total</span>
               <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
             </div>
+            {detalle.ticket.estado !== 'confirmado' && (
+              <button
+                onClick={() => confirmarTicket(detalle.ticket)}
+                disabled={confirmando}
+                className="w-full rounded-xl bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-60"
+              >
+                {confirmando ? 'Confirmando…' : 'Confirmar ticket (entra al arqueo)'}
+              </button>
+            )}
             <button
               onClick={() => eliminarTicket(detalle.ticket)}
               className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400 hover:bg-zinc-700"
