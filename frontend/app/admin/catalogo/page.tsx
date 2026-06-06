@@ -14,6 +14,8 @@ interface Producto {
   veces_matched: number
   activo: boolean
   sucursal_id: string | null
+  contiene_cantidad: number | null
+  contiene_unidad: string | null
 }
 
 const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
@@ -29,14 +31,14 @@ export default function CatalogoPage() {
   const [addProd, setAddProd] = useState<null | { categoriaId: string; nombre: string; sinonimos: string; unidad: string }>(null)
   const [savingProd, setSavingProd] = useState(false)
   // edicion de producto existente
-  const [editProd, setEditProd] = useState<null | { id: string; categoria_id: string; unidad: string; sinonimos: string }>(null)
+  const [editProd, setEditProd] = useState<null | { id: string; categoria_id: string; unidad: string; sinonimos: string; contiene_cantidad: string; contiene_unidad: string }>(null)
   // borrado de categoria (con reasignacion si tiene contenido)
   const [delCat, setDelCat] = useState<null | { cat: Categoria; nProd: number; nItems: number; destino: string }>(null)
   const [borrando, setBorrando] = useState(false)
 
   const fetchData = useCallback(async () => {
     let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
-    let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id').order('nombre')
+    let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id, contiene_cantidad, contiene_unidad').order('nombre')
     catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
     prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
     const [catRes, prodRes] = await Promise.all([catQ, prodQ])
@@ -116,13 +118,17 @@ export default function CatalogoPage() {
   async function guardarEdicion() {
     if (!editProd || !editProd.categoria_id) return
     const sinonimos = editProd.sinonimos ? editProd.sinonimos.split(',').map(s => s.trim()).filter(Boolean) : []
+    const cont = editProd.contiene_cantidad.trim() === '' ? null : Number(editProd.contiene_cantidad)
+    const contUnidad = editProd.contiene_unidad.trim() || null
     await supabase.from('catalogo_productos').update({
       categoria_id: editProd.categoria_id,
       unidad_default: editProd.unidad || null,
       sinonimos,
+      contiene_cantidad: cont,
+      contiene_unidad: contUnidad,
     }).eq('id', editProd.id)
     setProductos(prev => prev.map(x => x.id === editProd.id
-      ? { ...x, categoria_id: editProd.categoria_id, unidad_default: editProd.unidad || null, sinonimos }
+      ? { ...x, categoria_id: editProd.categoria_id, unidad_default: editProd.unidad || null, sinonimos, contiene_cantidad: cont, contiene_unidad: contUnidad }
       : x))
     setEditProd(null)
   }
@@ -213,8 +219,9 @@ export default function CatalogoPage() {
                             {p.veces_matched > 0 && <span className="text-[10px] text-zinc-600">{p.veces_matched}×</span>}
                           </div>
                           {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">tambien: {p.sinonimos.join(', ')}</p>}
+                        {p.contiene_cantidad && p.contiene_unidad && <p className="text-[11px] text-zinc-600">1 {p.unidad_default ?? 'u'} = {p.contiene_cantidad} {p.contiene_unidad}</p>}
                         </div>
-                        <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', ') })}
+                        <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), contiene_cantidad: p.contiene_cantidad?.toString() ?? '', contiene_unidad: p.contiene_unidad ?? '' })}
                           className="text-xs text-blue-400 hover:text-blue-300">{editProd?.id === p.id ? 'cerrar' : 'editar'}</button>
                         <button onClick={() => toggleProd(p)} className={`text-xs px-2 py-1 rounded-lg ${p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
                         <button onClick={() => eliminarProd(p)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
@@ -229,6 +236,13 @@ export default function CatalogoPage() {
                           </select>
                           <input value={editProd.sinonimos} onChange={e => setEditProd({ ...editProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. magna, premium, diesel)"
                             className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                          <label className="block text-[11px] text-zinc-500">Equivalencia (opcional): 1 {editProd.unidad || p.unidad_default || 'unidad'} contiene…</label>
+                          <div className="flex gap-2">
+                            <input type="number" inputMode="decimal" value={editProd.contiene_cantidad} onChange={e => setEditProd({ ...editProd, contiene_cantidad: e.target.value })}
+                              placeholder="cantidad (ej. 30)" className="w-1/2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                            <input value={editProd.contiene_unidad} onChange={e => setEditProd({ ...editProd, contiene_unidad: e.target.value })}
+                              placeholder="de qué (ej. huevos)" className="w-1/2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                          </div>
                           <div className="flex gap-2">
                             <select value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
                               className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">

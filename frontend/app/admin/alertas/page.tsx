@@ -27,6 +27,7 @@ const TIPO_CONFIG: Record<string, { label: string; color: string }> = {
   producto_no_reconocido: { label: 'Producto nuevo', color: 'bg-blue-900/40 text-blue-400' },
   sin_unidad: { label: 'Sin unidad', color: 'bg-purple-900/40 text-purple-400' },
   monto_anomalo: { label: 'Monto alto', color: 'bg-orange-900/40 text-orange-400' },
+  precio_anomalo: { label: 'Cambio de precio', color: 'bg-orange-900/40 text-orange-400' },
 }
 
 type FilterType = 'all' | 'pending' | 'resolved'

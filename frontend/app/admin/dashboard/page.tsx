@@ -65,6 +65,7 @@ export default function DashboardPage() {
   const [trend, setTrend] = useState<{ mes: string; gasto: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [hover, setHover] = useState<number | null>(null)
+  const [prodFiltro, setProdFiltro] = useState('')
 
   const { inicio, fin } = useMemo(() => modo === 'mes' ? rangoDeMes(mesSel) : { inicio: rangoIni, fin: rangoFin },
     [modo, mesSel, rangoIni, rangoFin])
@@ -159,6 +160,12 @@ export default function DashboardPage() {
   const gastoOperativo = operativas.reduce((s, c) => s + c.gasto, 0)
   const gastoNoOperativo = noOperativas.reduce((s, c) => s + c.gasto, 0)
 
+  // Auto-clasificacion (Fase 5): % de renglones que cayeron en un producto del catalogo.
+  const totalVeces = productosTop.reduce((s, p) => s + p.veces, 0)
+  const recVeces = productosTop.filter(p => p.reconocido).reduce((s, p) => s + p.veces, 0)
+  const autoPct = totalVeces > 0 ? Math.round((recVeces / totalVeces) * 100) : 0
+  const prodsFiltrados = productosTop.filter(p => !prodFiltro || p.nombre.toLowerCase().includes(prodFiltro.toLowerCase()))
+
   const periodoLabel = modo === 'mes' ? nombreMesLargo(mesSel) : `${inicio} a ${fin}`
   const sucursalLabel = sucursalId ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? '') : 'Todas'
   const maxTrend = Math.max(1, ...trend.map(t => t.gasto))
@@ -224,6 +231,7 @@ export default function DashboardPage() {
             <Card label="Gasto operativo" value={fmt(gastoOperativo)} color="text-blue-400" />
             <Card label="Tickets" value={String(nTickets)} />
             {gastoNoOperativo > 0 && <Card label="Gasto no operativo" value={fmt(gastoNoOperativo)} color="text-zinc-400" hint="no entra a la distribución" />}
+            <Card label="Auto-clasificado" value={`${autoPct}%`} color={autoPct >= 70 ? 'text-emerald-400' : 'text-amber-400'} hint="renglones reconocidos por catálogo" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -321,17 +329,18 @@ export default function DashboardPage() {
 
           {/* Productos mas comprados */}
           <div className="rounded-2xl bg-zinc-900 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800 flex-wrap">
               <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Productos más comprados</p>
-              <span className="text-xs text-zinc-600">marcas/sinónimos sumados a su producto</span>
+              <input value={prodFiltro} onChange={e => setProdFiltro(e.target.value)} placeholder="Filtrar artículo…"
+                className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 w-48" />
             </div>
-            {productosTop.length === 0 ? (
-              <p className="px-4 py-6 text-center text-zinc-500 text-sm">Sin productos en el periodo</p>
+            {prodsFiltrados.length === 0 ? (
+              <p className="px-4 py-6 text-center text-zinc-500 text-sm">{productosTop.length === 0 ? 'Sin productos en el periodo' : 'Sin coincidencias'}</p>
             ) : (
               <table className="w-full text-sm">
                 <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Producto</th><th className="text-right font-medium px-4 py-2">Cantidad</th><th className="text-right font-medium px-4 py-2">Veces</th><th className="text-right font-medium px-4 py-2">Gasto</th></tr></thead>
                 <tbody>
-                  {productosTop.slice(0, 40).map(p => (
+                  {prodsFiltrados.slice(0, 60).map(p => (
                     <tr key={p.nombre} className="border-t border-zinc-800/50">
                       <td className="px-4 py-2 text-zinc-200">{p.nombre}
                         {p.reconocido
