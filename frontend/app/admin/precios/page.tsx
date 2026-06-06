@@ -52,29 +52,35 @@ export default function PreciosPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    let q = supabase.from('precio_historial')
-      .select('precio_unitario, fecha, created_at, sucursal_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default)')
-      .order('created_at', { ascending: true }).limit(5000)
-    if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+    // Fuente real: renglones CONFIRMADOS con cantidad y monto -> precio unitario.
+    // (No dependemos de precio_historial, asi aparecen TODOS los productos comprados.)
+    let q = supabase.from('ticket_items')
+      .select('descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(nombre, unidad_default), registros_tickets!inner(fecha_ticket, created_at, estado, sucursal_id)')
+      .eq('registros_tickets.estado', 'confirmado').limit(8000)
+    if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
     const { data } = await q
 
     const map = new Map<string, ProdPrecio>()
-    for (const row of (data as unknown as Array<{ precio_unitario: number; fecha: string | null; created_at: string; catalogo_productos: { nombre: string; unidad_default: string | null } | null }>) ?? []) {
-      const nombre = row.catalogo_productos?.nombre
+    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; catalogo_productos: { nombre: string; unidad_default: string | null } | null; registros_tickets: { fecha_ticket: string | null; created_at: string } | null }>) ?? []) {
+      const monto = Number(row.monto); const cant = Number(row.cantidad)
+      if (!Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+      const nombre = (row.catalogo_productos?.nombre ?? row.descripcion ?? '').trim()
       if (!nombre) continue
       const key = nombre.toLowerCase()
-      if (!map.has(key)) map.set(key, { nombre, unidad: row.catalogo_productos?.unidad_default ?? null, puntos: [], ultimo: 0, anterior: null, variacion: null })
-      map.get(key)!.puntos.push({ precio: Number(row.precio_unitario), fecha: row.fecha, created_at: row.created_at })
+      const unidad = row.catalogo_productos?.unidad_default ?? row.unidad ?? null
+      if (!map.has(key)) map.set(key, { nombre, unidad, puntos: [], ultimo: 0, anterior: null, variacion: null })
+      map.get(key)!.puntos.push({ precio: monto / cant, fecha: row.registros_tickets?.fecha_ticket ?? null, created_at: row.registros_tickets?.created_at ?? '' })
     }
     const list: ProdPrecio[] = []
     for (const p of map.values()) {
+      // ordena los puntos cronologicamente (por fecha del ticket, luego subida)
+      p.puntos.sort((a, b) => (a.fecha ?? a.created_at).localeCompare(b.fecha ?? b.created_at) || a.created_at.localeCompare(b.created_at))
       const n = p.puntos.length
       p.ultimo = p.puntos[n - 1].precio
       p.anterior = n >= 2 ? p.puntos[n - 2].precio : null
       p.variacion = p.anterior && p.anterior > 0 ? ((p.ultimo - p.anterior) / p.anterior) * 100 : null
       list.push(p)
     }
-    // ordena: primero los de mayor variación absoluta
     list.sort((a, b) => Math.abs(b.variacion ?? 0) - Math.abs(a.variacion ?? 0) || b.ultimo - a.ultimo)
     setProds(list)
     setLoading(false)

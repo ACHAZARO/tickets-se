@@ -6,8 +6,10 @@ import { useSucursal } from '@/lib/sucursal-context'
 
 interface Categoria { id: string; nombre: string }
 interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null }
-interface Comercio { id: string; nombre: string; veces: number }
-interface Huerfano { nombre: string; veces: number; comercios: Set<string>; categoria_id: string; unidad: string; sinonimos: string }
+interface Comercio { id: string; nombre: string; veces: number; categoria_id: string | null }
+interface Huerfano { nombre: string; veces: number; comercios: Set<string>; categoria_id: string; unidad: string; sinonimos: string; contieneCant: string; contieneUnidad: string }
+
+const CONTENEDORES = ['caja', 'bulto', 'paquete', 'rollo', 'galon']
 
 const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
 
@@ -35,7 +37,7 @@ export default function CerebroPage() {
     setLoading(true)
     let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
     let prodQ = supabase.from('catalogo_productos').select('id, nombre, categoria_id, unidad_default').eq('activo', true).order('nombre')
-    let comQ = supabase.from('comercios').select('id, nombre, veces').order('veces', { ascending: false })
+    let comQ = supabase.from('comercios').select('id, nombre, veces, categoria_id').order('veces', { ascending: false })
     catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
     prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
     comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ.is('sucursal_id', null)
@@ -68,7 +70,7 @@ export default function CerebroPage() {
         const desc = (row.descripcion ?? '').trim()
         if (desc) {
           const k = desc.toLowerCase()
-          if (!huerf.has(k)) huerf.set(k, { nombre: desc, veces: 0, comercios: new Set(), categoria_id: '', unidad: '', sinonimos: '' })
+          if (!huerf.has(k)) huerf.set(k, { nombre: desc, veces: 0, comercios: new Set(), categoria_id: '', unidad: '', sinonimos: '', contieneCant: '', contieneUnidad: '' })
           const h = huerf.get(k)!; h.veces++; if (com) h.comercios.add(com)
         }
       }
@@ -88,18 +90,27 @@ export default function CerebroPage() {
     setProductos(prev => prev.map(x => x.id === p.id ? { ...x, categoria_id: categoriaId || null } : x))
     await supabase.from('catalogo_productos').update({ categoria_id: categoriaId || null }).eq('id', p.id)
   }
+  async function forzarCategoriaComercio(c: Comercio, categoriaId: string) {
+    setComercios(prev => prev.map(x => x.id === c.id ? { ...x, categoria_id: categoriaId || null } : x))
+    await supabase.from('comercios').update({ categoria_id: categoriaId || null }).eq('id', c.id)
+  }
 
-  function setHuerfanoCampo(nombre: string, campo: 'categoria_id' | 'unidad' | 'sinonimos', valor: string) {
+  function setHuerfanoCampo(nombre: string, campo: 'categoria_id' | 'unidad' | 'sinonimos' | 'contieneCant' | 'contieneUnidad', valor: string) {
     setHuerfanos(prev => prev.map(h => h.nombre === nombre ? { ...h, [campo]: valor } : h))
   }
   async function ligarHuerfano(h: Huerfano) {
     if (!h.categoria_id) return
     setGuardando(h.nombre)
     const sinonimos = h.sinonimos ? h.sinonimos.split(',').map(s => s.trim()).filter(Boolean) : []
-    const { error } = await supabase.rpc('ligar_huerfano', {
+    const { data: prodId, error } = await supabase.rpc('ligar_huerfano', {
       p_nombre: h.nombre, p_categoria_id: h.categoria_id,
       p_sucursal_id: sucursalId || null, p_unidad: h.unidad || null, p_sinonimos: sinonimos,
     })
+    // Si dio equivalencia (ej. 1 caja = 24 pz), la guarda en el producto recien ligado.
+    const cc = Number(h.contieneCant)
+    if (!error && prodId && h.contieneUnidad.trim() && Number.isFinite(cc) && cc > 0) {
+      await supabase.from('catalogo_productos').update({ contiene_cantidad: cc, contiene_unidad: h.contieneUnidad.trim() }).eq('id', prodId)
+    }
     setGuardando(null)
     if (error) { alert('No se pudo ligar: ' + error.message); return }
     setHuerfanos(prev => prev.filter(x => x.nombre !== h.nombre))
@@ -190,12 +201,23 @@ export default function CerebroPage() {
               const resaltado = comerciosResaltados?.has(c.nombre.toLowerCase())
               const apagado = comerciosResaltados && !resaltado
               return (
-                <button key={c.id} onClick={() => toggleSel('comercio', c.id)}
-                  className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 transition-colors
-                    ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : 'hover:bg-zinc-800/50'} ${apagado ? 'opacity-40' : ''}`}>
-                  <span className="text-sm text-zinc-100 truncate">{c.nombre}</span>
-                  <span className="text-[10px] text-zinc-600 flex-shrink-0">{c.veces}×</span>
-                </button>
+                <div key={c.id} className={`transition-colors ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : ''} ${apagado ? 'opacity-40' : ''}`}>
+                  <button onClick={() => toggleSel('comercio', c.id)}
+                    className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-zinc-800/30">
+                    <span className="text-sm text-zinc-100 truncate">{c.nombre}{c.categoria_id ? <span className="ml-1 text-[10px] text-blue-400">●</span> : ''}</span>
+                    <span className="text-[10px] text-zinc-600 flex-shrink-0">{c.veces}×</span>
+                  </button>
+                  {activo && (
+                    <div className="px-4 pb-2.5 -mt-1">
+                      <label className="block text-[10px] text-zinc-500 mb-1">Forzar categoría (cuando siempre es lo mismo, ej. gasolinera)</label>
+                      <select value={c.categoria_id ?? ''} onChange={e => forzarCategoriaComercio(c, e.target.value)}
+                        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                        <option value="">No forzar (vende de varias)</option>
+                        {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
@@ -276,6 +298,15 @@ export default function CerebroPage() {
                         {guardando === h.nombre ? '…' : 'Ligar'}
                       </button>
                     </div>
+                    {CONTENEDORES.includes(h.unidad) && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-zinc-500">1 {h.unidad} =</span>
+                        <input type="number" inputMode="decimal" value={h.contieneCant} onChange={e => setHuerfanoCampo(h.nombre, 'contieneCant', e.target.value)}
+                          placeholder="cuántas" className="w-20 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600" />
+                        <input value={h.contieneUnidad} onChange={e => setHuerfanoCampo(h.nombre, 'contieneUnidad', e.target.value)}
+                          placeholder="de qué (ej. huevos)" className="flex-1 min-w-[100px] rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600" />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
