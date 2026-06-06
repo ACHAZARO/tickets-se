@@ -174,7 +174,7 @@ async function aprenderProductos(
 // guarda historial y detecta saltos fuertes vs el precio de referencia.
 async function registrarPrecios(
   supabase: SB,
-  items: { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null }[],
+  items: { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[],
   catalog: Catalog, sucursalId: string, registroId: string, fecha: string
 ): Promise<boolean> {
   let anomalia = false
@@ -186,16 +186,28 @@ async function registrarPrecios(
     const unit = monto / cant
     const prod = catalog.products.find(p => p.id === pid)
     try {
+      // Compara contra el promedio de hasta 5 compras previas (no contra una sola),
+      // y solo si ya hay >=2 registros (para no alertar mientras se forma la base).
+      const { data: previos } = await supabase.from('precio_historial')
+        .select('precio_unitario').eq('producto_catalogo_id', pid)
+        .order('created_at', { ascending: false }).limit(5)
       await supabase.from('precio_historial').insert({
         producto_catalogo_id: pid, sucursal_id: sucursalId,
         registro_ticket_id: registroId, precio_unitario: unit, fecha,
       })
-      const ref = prod?.precio_referencia ?? null
-      if (ref && ref > 0) {
-        const ratio = unit / ref
-        if (ratio > 1.4 || ratio < 0.6) anomalia = true // +40% o -40%
-      }
       await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
+
+      const prev = (previos ?? []).map((r: { precio_unitario: number }) => Number(r.precio_unitario))
+        .filter((n: number) => Number.isFinite(n) && n > 0)
+      // misma unidad: si el producto tiene unidad_default, el renglon debe coincidir
+      const mismaUnidad = !prod?.unidad_default || !it.unidad || it.unidad === prod.unidad_default
+      if (prev.length >= 2 && mismaUnidad) {
+        const avg = prev.reduce((s: number, n: number) => s + n, 0) / prev.length
+        if (avg > 0) {
+          const ratio = unit / avg
+          if (ratio > 1.4 || ratio < 0.6) anomalia = true // +40% o -40% vs promedio
+        }
+      }
     } catch (e) { console.error('registrarPrecios:', e) }
   }
   return anomalia
