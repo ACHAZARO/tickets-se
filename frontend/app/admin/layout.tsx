@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/admin/tickets', label: 'Tickets' },
   { href: '/admin/alertas', label: 'Alertas' },
   { href: '/admin/huerfanos', label: 'Huerfanos' },
+  { href: '/admin/cerebro', label: 'Cerebro' },
   { href: '/admin/catalogo', label: 'Catalogo' },
   { href: '/admin/comercios', label: 'Comercios' },
   { href: '/admin/sucursales', label: 'Sucursales' },

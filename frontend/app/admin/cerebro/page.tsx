@@ -1,0 +1,249 @@
+'use client'
+
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useSucursal } from '@/lib/sucursal-context'
+
+interface Categoria { id: string; nombre: string }
+interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null }
+interface Comercio { id: string; nombre: string; veces: number }
+interface Huerfano { nombre: string; veces: number; comercios: Set<string>; categoria_id: string; unidad: string; sinonimos: string }
+
+const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
+
+type Sel = { tipo: 'comercio' | 'categoria'; id: string } | null
+
+export default function CerebroPage() {
+  const { sucursalId } = useSucursal()
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [comercios, setComercios] = useState<Comercio[]>([])
+  const [huerfanos, setHuerfanos] = useState<Huerfano[]>([])
+  // comercio(lower) -> { categorias observadas, ids de productos del catalogo }
+  const [comCat, setComCat] = useState<Record<string, { cats: Set<string>; prods: Set<string> }>>({})
+  const [loading, setLoading] = useState(true)
+  const [sel, setSel] = useState<Sel>(null)
+  const [guardando, setGuardando] = useState<string | null>(null)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
+    let prodQ = supabase.from('catalogo_productos').select('id, nombre, categoria_id, unidad_default').eq('activo', true).order('nombre')
+    let comQ = supabase.from('comercios').select('id, nombre, veces').order('veces', { ascending: false })
+    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
+    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
+    comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ.is('sucursal_id', null)
+
+    let itemsQ = supabase.from('ticket_items')
+      .select('descripcion, categoria_id, producto_catalogo_id, categorias_gasto:categoria_id(nombre), registros_tickets!inner(comercio, sucursal_id)')
+      .limit(4000)
+    if (sucursalId) itemsQ = itemsQ.eq('registros_tickets.sucursal_id', sucursalId)
+
+    const [catRes, prodRes, comRes, itemsRes] = await Promise.all([catQ, prodQ, comQ, itemsQ])
+    const catList = (catRes.data as Categoria[] | null) ?? []
+    setCategorias(catList)
+    setProductos((prodRes.data as Producto[] | null) ?? [])
+    setComercios((comRes.data as Comercio[] | null) ?? [])
+    const catNombreToId = new Map(catList.map(c => [c.nombre, c.id]))
+
+    const cc: Record<string, { cats: Set<string>; prods: Set<string> }> = {}
+    const huerf = new Map<string, Huerfano>()
+    for (const row of (itemsRes.data as unknown as Array<{ descripcion: string; categoria_id: string | null; producto_catalogo_id: string | null; categorias_gasto: { nombre: string } | null; registros_tickets: { comercio: string | null } | null }>) ?? []) {
+      const com = (row.registros_tickets?.comercio ?? '').trim()
+      const comKey = com.toLowerCase()
+      if (com) {
+        if (!cc[comKey]) cc[comKey] = { cats: new Set(), prods: new Set() }
+        const catId = row.categoria_id ?? (row.categorias_gasto?.nombre ? catNombreToId.get(row.categorias_gasto.nombre) : undefined)
+        if (catId) cc[comKey].cats.add(catId)
+        if (row.producto_catalogo_id) cc[comKey].prods.add(row.producto_catalogo_id)
+      }
+      // huérfanos = renglones sin categoria
+      if (!row.categoria_id) {
+        const desc = (row.descripcion ?? '').trim()
+        if (desc) {
+          const k = desc.toLowerCase()
+          if (!huerf.has(k)) huerf.set(k, { nombre: desc, veces: 0, comercios: new Set(), categoria_id: '', unidad: '', sinonimos: '' })
+          const h = huerf.get(k)!; h.veces++; if (com) h.comercios.add(com)
+        }
+      }
+    }
+    setComCat(cc)
+    setHuerfanos([...huerf.values()].sort((a, b) => b.veces - a.veces))
+    setLoading(false)
+  }, [sucursalId])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  function toggleSel(tipo: 'comercio' | 'categoria', id: string) {
+    setSel(prev => prev && prev.tipo === tipo && prev.id === id ? null : { tipo, id })
+  }
+
+  async function moverProducto(p: Producto, categoriaId: string) {
+    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, categoria_id: categoriaId || null } : x))
+    await supabase.from('catalogo_productos').update({ categoria_id: categoriaId || null }).eq('id', p.id)
+  }
+
+  function setHuerfanoCampo(nombre: string, campo: 'categoria_id' | 'unidad' | 'sinonimos', valor: string) {
+    setHuerfanos(prev => prev.map(h => h.nombre === nombre ? { ...h, [campo]: valor } : h))
+  }
+  async function ligarHuerfano(h: Huerfano) {
+    if (!h.categoria_id) return
+    setGuardando(h.nombre)
+    const sinonimos = h.sinonimos ? h.sinonimos.split(',').map(s => s.trim()).filter(Boolean) : []
+    const { error } = await supabase.rpc('ligar_huerfano', {
+      p_nombre: h.nombre, p_categoria_id: h.categoria_id,
+      p_sucursal_id: sucursalId || null, p_unidad: h.unidad || null, p_sinonimos: sinonimos,
+    })
+    setGuardando(null)
+    if (error) { alert('No se pudo ligar: ' + error.message); return }
+    setHuerfanos(prev => prev.filter(x => x.nombre !== h.nombre))
+    fetchData() // refresca para que aparezca como producto del catalogo
+  }
+
+  // --- Derivados de selección ---
+  const catNombre = (id: string | null) => categorias.find(c => c.id === id)?.nombre ?? 'sin categoría'
+  const comercioActivoKey = sel?.tipo === 'comercio' ? (comercios.find(c => c.id === sel.id)?.nombre ?? '').toLowerCase() : null
+
+  // categorías resaltadas (las que surte el comercio seleccionado)
+  const catsResaltadas = useMemo(() => {
+    if (sel?.tipo !== 'comercio' || !comercioActivoKey) return null
+    return comCat[comercioActivoKey]?.cats ?? new Set<string>()
+  }, [sel, comercioActivoKey, comCat])
+
+  // comercios resaltados (los que surten la categoría seleccionada)
+  const comerciosResaltados = useMemo(() => {
+    if (sel?.tipo !== 'categoria') return null
+    const s = new Set<string>()
+    for (const [k, v] of Object.entries(comCat)) if (v.cats.has(sel.id)) s.add(k)
+    return s
+  }, [sel, comCat])
+
+  // productos filtrados por selección
+  const productosFiltrados = useMemo(() => {
+    if (sel?.tipo === 'categoria') return productos.filter(p => p.categoria_id === sel.id)
+    if (sel?.tipo === 'comercio' && comercioActivoKey) {
+      const ids = comCat[comercioActivoKey]?.prods ?? new Set<string>()
+      return productos.filter(p => ids.has(p.id))
+    }
+    return productos
+  }, [sel, productos, comercioActivoKey, comCat])
+
+  const huerfanosFiltrados = useMemo(() => {
+    if (sel?.tipo === 'comercio' && comercioActivoKey) {
+      const comNombre = comercios.find(c => c.id === sel.id)?.nombre ?? ''
+      return huerfanos.filter(h => h.comercios.has(comNombre))
+    }
+    return huerfanos
+  }, [sel, huerfanos, comercioActivoKey, comercios])
+
+  if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-zinc-100">Cerebro</h2>
+        <p className="text-sm text-zinc-500 mt-1">
+          Comercios, categorías y productos ligados. Toca un comercio o una categoría para ver qué se conecta.
+          Los <span className="text-amber-400">huérfanos</span> (arriba en Productos) los ligas y se acomodan solos.
+          {sel && <button onClick={() => setSel(null)} className="ml-2 text-blue-400 hover:text-blue-300">limpiar selección</button>}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* COMERCIOS */}
+        <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
+          <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">Comercios ({comercios.length})</div>
+          <div className="divide-y divide-zinc-800/50 max-h-[70vh] overflow-y-auto">
+            {comercios.length === 0 && <p className="px-4 py-4 text-xs text-zinc-600">Aún no hay comercios.</p>}
+            {comercios.map(c => {
+              const activo = sel?.tipo === 'comercio' && sel.id === c.id
+              const resaltado = comerciosResaltados?.has(c.nombre.toLowerCase())
+              const apagado = comerciosResaltados && !resaltado
+              return (
+                <button key={c.id} onClick={() => toggleSel('comercio', c.id)}
+                  className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 transition-colors
+                    ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : 'hover:bg-zinc-800/50'} ${apagado ? 'opacity-40' : ''}`}>
+                  <span className="text-sm text-zinc-100 truncate">{c.nombre}</span>
+                  <span className="text-[10px] text-zinc-600 flex-shrink-0">{c.veces}×</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* CATEGORIAS */}
+        <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
+          <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">Categorías ({categorias.length})</div>
+          <div className="divide-y divide-zinc-800/50 max-h-[70vh] overflow-y-auto">
+            {categorias.map(c => {
+              const activo = sel?.tipo === 'categoria' && sel.id === c.id
+              const resaltado = catsResaltadas?.has(c.id)
+              const apagado = catsResaltadas && !resaltado
+              const nProd = productos.filter(p => p.categoria_id === c.id).length
+              return (
+                <button key={c.id} onClick={() => toggleSel('categoria', c.id)}
+                  className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 transition-colors
+                    ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : 'hover:bg-zinc-800/50'} ${apagado ? 'opacity-40' : ''}`}>
+                  <span className="text-sm text-zinc-100 truncate">{c.nombre}</span>
+                  <span className="text-[10px] text-zinc-600 flex-shrink-0">{nProd} prod.</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* PRODUCTOS */}
+        <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
+          <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">
+            Productos {sel ? '(filtrados)' : `(${productos.length})`}
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto">
+            {/* Huérfanos */}
+            {huerfanosFiltrados.length > 0 && (
+              <div className="border-b border-amber-800/30">
+                <p className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wider text-amber-400">Huérfanos ({huerfanosFiltrados.length})</p>
+                {huerfanosFiltrados.slice(0, 60).map(h => (
+                  <div key={h.nombre} className="px-4 py-2.5 space-y-2 border-t border-zinc-800/40">
+                    <p className="text-sm text-zinc-100">{h.nombre} <span className="text-[10px] text-zinc-600">{h.veces}×</span></p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <select value={h.categoria_id} onChange={e => setHuerfanoCampo(h.nombre, 'categoria_id', e.target.value)}
+                        className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                        <option value="">Categoría…</option>
+                        {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                      <select value={h.unidad} onChange={e => setHuerfanoCampo(h.nombre, 'unidad', e.target.value)}
+                        className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                        <option value="">Unidad</option>
+                        {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                      <button onClick={() => ligarHuerfano(h)} disabled={!h.categoria_id || guardando === h.nombre}
+                        className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
+                        {guardando === h.nombre ? '…' : 'Ligar'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Productos del catálogo */}
+            {productosFiltrados.length === 0 && huerfanosFiltrados.length === 0 ? (
+              <p className="px-4 py-4 text-xs text-zinc-600">Sin productos {sel ? 'para esta selección' : ''}.</p>
+            ) : productosFiltrados.map(p => (
+              <div key={p.id} className="px-4 py-2.5 border-t border-zinc-800/40 flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-100 truncate">{p.nombre}</p>
+                  <p className="text-[11px] text-zinc-600">{catNombre(p.categoria_id)}{p.unidad_default ? ` · ${p.unidad_default}` : ''}</p>
+                </div>
+                <select value={p.categoria_id ?? ''} onChange={e => moverProducto(p, e.target.value)} title="Mover de categoría"
+                  className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 max-w-[120px]">
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
