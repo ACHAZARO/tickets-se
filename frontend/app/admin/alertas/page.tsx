@@ -78,10 +78,11 @@ export default function AlertasPage() {
       <h2 className="text-xl font-semibold text-zinc-100">Alertas</h2>
 
       {/* Counters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <CounterCard label="Pendientes" count={counts.total} color="text-zinc-100" />
         <CounterCard label="Duplicados" count={(counts.duplicado || 0) + (counts.posible_duplicado || 0)} color="text-amber-400" />
         <CounterCard label="Productos nuevos" count={counts.producto_no_reconocido || 0} color="text-blue-400" />
+        <CounterCard label="Cambio de precio" count={counts.precio_anomalo || 0} color="text-orange-400" />
         <CounterCard label="Ilegibles" count={counts.ilegible || 0} color="text-red-400" />
       </div>
 
