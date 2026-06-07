@@ -129,6 +129,14 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
 
+## Cambios 2026-06-06 (b) — más desglose y correcciones
+- Dashboard: tabla "En dónde se gasta (comercios)" (tickets, gasto, % del total).
+- Reporte (Excel): columna "Precio unitario prom." por producto.
+- Entradas: columna Categoría (en tabla y CSV).
+- Alertas: contador "Cambio de precio".
+- Fix: borrar producto del catálogo desligaba mal (FK NO ACTION) → ahora desliga renglones
+  primero y verifica el error (antes fallaba en silencio y reaparecía al recargar).
+
 ## Cambios 2026-06-06 — pulido y precisión
 - **Matcher de productos preciso** (procesar-ticket v24 + catalog.ts): sinónimos/nombres de <4
   chars (gas, 1, ala) solo coinciden EXACTO; el match por palabra es por token completo, no
