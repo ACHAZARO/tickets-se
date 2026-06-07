@@ -111,8 +111,11 @@ export default function CatalogoPage() {
     setProductos(prev => prev.map(x => x.id === p.id ? { ...x, activo: !x.activo } : x))
   }
   async function eliminarProd(p: Producto) {
-    if (!confirm(`¿Eliminar "${p.nombre}" del catálogo?`)) return
-    await supabase.from('catalogo_productos').delete().eq('id', p.id)
+    if (!confirm(`¿Eliminar "${p.nombre}" del catálogo? Los renglones que lo usaban conservan su categoría pero se desligan del producto.`)) return
+    // Desliga los renglones (FK NO ACTION: si no, el borrado falla). Conservan categoria/descripcion.
+    await supabase.from('ticket_items').update({ producto_catalogo_id: null }).eq('producto_catalogo_id', p.id)
+    const { error } = await supabase.from('catalogo_productos').delete().eq('id', p.id)
+    if (error) { alert('No se pudo eliminar: ' + error.message); return }
     setProductos(prev => prev.filter(x => x.id !== p.id))
   }
   async function guardarEdicion() {
