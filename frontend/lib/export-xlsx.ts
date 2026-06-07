@@ -98,9 +98,10 @@ export function exportReporteMensual(opts: {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(coms), 'Comercios')
 
   const prods = [
-    ['Producto', 'Cantidad', 'Unidad', 'Unidades base', 'Unidad base', 'Veces', 'Gasto', 'En catálogo'],
+    ['Producto', 'Cantidad', 'Unidad', 'Unidades base', 'Unidad base', 'Veces', 'Gasto', 'Precio unit. prom.', 'En catálogo'],
     ...opts.productos.map(p => [
-      p.nombre, p.cantidad, p.unidad ?? '', p.base || '', p.baseUnidad ?? '', p.veces, p.gasto, p.reconocido ? 'Sí' : 'No',
+      p.nombre, p.cantidad, p.unidad ?? '', p.base || '', p.baseUnidad ?? '', p.veces, p.gasto,
+      p.cantidad > 0 ? Number((p.gasto / p.cantidad).toFixed(2)) : '', p.reconocido ? 'Sí' : 'No',
     ]),
   ]
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(prods), 'Productos')

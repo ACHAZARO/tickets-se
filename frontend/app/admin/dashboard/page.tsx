@@ -351,6 +351,31 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Top comercios */}
+          {comerciosAgg.length > 0 && (
+            <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+              <div className="px-4 py-3 border-b border-zinc-800">
+                <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">En dónde se gasta (comercios)</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Comercio</th><th className="text-right font-medium px-4 py-2">Tickets</th><th className="text-right font-medium px-4 py-2">Gasto</th><th className="text-right font-medium px-4 py-2">% del total</th></tr></thead>
+                <tbody>
+                  {comerciosAgg.slice(0, 15).map(c => {
+                    const tot = gastoOperativo + gastoNoOperativo
+                    return (
+                      <tr key={c.nombre} className="border-t border-zinc-800/50">
+                        <td className="px-4 py-2 text-zinc-200">{c.nombre}</td>
+                        <td className="px-4 py-2 text-right text-zinc-400">{c.tickets}</td>
+                        <td className="px-4 py-2 text-right text-zinc-300">{fmt2(c.gasto)}</td>
+                        <td className="px-4 py-2 text-right text-zinc-500">{tot > 0 ? ((c.gasto / tot) * 100).toFixed(0) + '%' : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Productos mas comprados */}
           <div className="rounded-2xl bg-zinc-900 overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800 flex-wrap">
