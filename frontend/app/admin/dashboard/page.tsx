@@ -75,7 +75,7 @@ export default function DashboardPage() {
     setLoading(true)
     // mapa de categorias -> operativo
     let catQ = supabase.from('categorias_gasto').select('id, cuenta_operativo, sucursal_id')
-    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
+    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ
     const { data: catData } = await catQ
     const opMap = new Map<string, boolean>()
     for (const c of catData ?? []) opMap.set(c.id as string, (c.cuenta_operativo as boolean) ?? true)
@@ -151,7 +151,7 @@ export default function DashboardPage() {
     (async () => {
       const desde = MESES_TREND[0] + '-01'
       let catQ = supabase.from('categorias_gasto').select('id, cuenta_operativo, sucursal_id')
-      catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
+      catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ
       let tq = supabase.from('ticket_items')
         .select('monto, categoria_id, registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
         .eq('registros_tickets.estado', 'confirmado').gte('registros_tickets.fecha_ticket', desde)

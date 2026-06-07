@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 
 interface Sucursal { id: string; nombre: string }
-interface Item { id: string; descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categoria_id: string | null; categorias_gasto: { nombre: string } | null }
+interface Item { id: string; descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categoria_id: string | null; producto_catalogo_id: string | null; categorias_gasto: { nombre: string } | null }
 
 const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
 interface Ticket {
@@ -17,6 +17,7 @@ interface Ticket {
   created_at: string
   storage_path_original: string | null
   storage_path_archivo: string | null
+  sucursal_id: string | null
   sucursales: { nombre: string } | null
   empleados: { nombre: string } | null
 }
@@ -78,7 +79,7 @@ export default function TicketsPage() {
   const fetchTickets = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
       .gte('created_at', desde).lt('created_at', diaSiguienteISO(hasta))
       .order('created_at', { ascending: false }).limit(500)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
@@ -139,7 +140,7 @@ export default function TicketsPage() {
   async function abrirDetalle(t: Ticket) {
     setEditarItems(false)
     const { data } = await supabase.from('ticket_items')
-      .select('id, descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre)')
+      .select('id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, categorias_gasto:categoria_id(nombre)')
       .eq('registro_ticket_id', t.id).order('created_at').order('id')
     setDetalle({ ticket: t, items: (data as unknown as Item[]) ?? [], url: urlDe(t) })
   }
@@ -157,14 +158,33 @@ export default function TicketsPage() {
 
   async function guardarItemTicket(it: Item) {
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
+    const sucId = detalle?.ticket.sucursal_id ?? null
+    let productoId = it.producto_catalogo_id ?? null
+    // Si tiene categoría y aún no está ligado a un producto, lo busca o lo crea
+    // (para que aparezca en Catálogo/Cerebro/Inventario, igual que en la revisión de alertas).
+    if (!productoId && it.categoria_id && it.descripcion.trim()) {
+      const { data: ex } = await supabase.from('catalogo_productos').select('id')
+        .ilike('nombre', it.descripcion.trim())
+        .or(`sucursal_id.is.null,sucursal_id.eq.${sucId ?? '00000000-0000-0000-0000-000000000000'}`)
+        .limit(1).maybeSingle()
+      if (ex) productoId = ex.id as string
+      else {
+        const { data: nuevo } = await supabase.from('catalogo_productos').insert({
+          nombre: it.descripcion.trim(), sinonimos: [], categoria_id: it.categoria_id,
+          unidad_default: it.unidad || null, sucursal_id: sucId,
+        }).select('id').single()
+        productoId = nuevo?.id ?? null
+      }
+    }
     await supabase.from('ticket_items').update({
       descripcion: it.descripcion,
       categoria_id: it.categoria_id || null,
       unidad: it.unidad || null,
       monto: it.monto,
+      producto_catalogo_id: productoId,
       necesita_revision: !it.categoria_id || !it.unidad,
     }).eq('id', it.id)
-    setDetalle(d => d ? { ...d, items: d.items.map(x => x.id === it.id ? { ...x, categorias_gasto: nombreCat ? { nombre: nombreCat } : null } : x) } : d)
+    setDetalle(d => d ? { ...d, items: d.items.map(x => x.id === it.id ? { ...x, producto_catalogo_id: productoId, categorias_gasto: nombreCat ? { nombre: nombreCat } : null } : x) } : d)
     setSavedItem(it.id)
     setTimeout(() => setSavedItem(s => s === it.id ? null : s), 2000)
   }

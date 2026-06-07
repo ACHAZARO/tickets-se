@@ -39,8 +39,8 @@ export default function CatalogoPage() {
   const fetchData = useCallback(async () => {
     let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
     let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id, contiene_cantidad, contiene_unidad').order('nombre')
-    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
-    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
+    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ // "Todas": sin filtro (global + todas las sucursales)
+    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ
     const [catRes, prodRes] = await Promise.all([catQ, prodQ])
     setCategorias((catRes.data as Categoria[] | null) ?? [])
     setProductos((prodRes.data as Producto[] | null) ?? [])

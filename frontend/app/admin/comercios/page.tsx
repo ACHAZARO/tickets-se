@@ -23,8 +23,8 @@ export default function ComerciosPage() {
   const fetchData = useCallback(async () => {
     let comQ = supabase.from('comercios').select('id, nombre, categoria_id, veces, sucursal_id').order('veces', { ascending: false })
     let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
-    comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ.is('sucursal_id', null)
-    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
+    comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ // "Todas": sin filtro
+    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ
 
     // Productos/categorias que la IA ha identificado por comercio (de los renglones).
     let itemsQ = supabase.from('ticket_items')

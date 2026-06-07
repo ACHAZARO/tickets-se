@@ -38,9 +38,9 @@ export default function CerebroPage() {
     let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
     let prodQ = supabase.from('catalogo_productos').select('id, nombre, categoria_id, unidad_default').eq('activo', true).order('nombre')
     let comQ = supabase.from('comercios').select('id, nombre, veces, categoria_id').order('veces', { ascending: false })
-    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ.is('sucursal_id', null)
-    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ.is('sucursal_id', null)
-    comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ.is('sucursal_id', null)
+    catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ // "Todas": sin filtro
+    prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ
+    comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ
 
     let itemsQ = supabase.from('ticket_items')
       .select('descripcion, categoria_id, producto_catalogo_id, categorias_gasto:categoria_id(nombre), registros_tickets!inner(comercio, sucursal_id)')
