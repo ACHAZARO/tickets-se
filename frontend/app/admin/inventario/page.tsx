@@ -6,6 +6,7 @@ import { useSucursal } from '@/lib/sucursal-context'
 
 interface Fila {
   nombre: string
+  categoria: string | null
   veces: number
   cantidad: number
   unidad: string | null
@@ -35,7 +36,7 @@ export default function EntradasPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
       .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta)
       .limit(8000)
@@ -43,10 +44,11 @@ export default function EntradasPage() {
     const { data } = await q
 
     const map = new Map<string, Fila>()
-    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null } | null }>) ?? []) {
       const nombre = (row.catalogo_productos?.nombre ?? row.descripcion ?? 'Sin nombre').trim()
       const key = nombre.toLowerCase()
-      const f = map.get(key) ?? { nombre, veces: 0, cantidad: 0, unidad: null as string | null, unidadMixta: false, base: 0, baseUnidad: null as string | null, gasto: 0 }
+      const f = map.get(key) ?? { nombre, categoria: null as string | null, veces: 0, cantidad: 0, unidad: null as string | null, unidadMixta: false, base: 0, baseUnidad: null as string | null, gasto: 0 }
+      if (!f.categoria && row.categorias_gasto?.nombre) f.categoria = row.categorias_gasto.nombre
       f.veces += 1
       const cant = Number(row.cantidad ?? 0)
       f.cantidad += cant
@@ -69,8 +71,8 @@ export default function EntradasPage() {
   const totVeces = filtradas.reduce((s, f) => s + f.veces, 0)
 
   function exportarCSV() {
-    const head = ['Producto', 'Veces', 'Cantidad', 'Unidad', 'Unidades base', 'Unidad base', 'Gasto']
-    const rows = filtradas.map(f => [f.nombre, f.veces, f.cantidad, f.unidadMixta ? 'mixta' : (f.unidad ?? ''), f.base || '', f.baseUnidad ?? '', f.gasto])
+    const head = ['Producto', 'Categoria', 'Veces', 'Cantidad', 'Unidad', 'Unidades base', 'Unidad base', 'Gasto']
+    const rows = filtradas.map(f => [f.nombre, f.categoria ?? '', f.veces, f.cantidad, f.unidadMixta ? 'mixta' : (f.unidad ?? ''), f.base || '', f.baseUnidad ?? '', f.gasto])
     const csv = [head, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const a = document.createElement('a')
@@ -115,6 +117,7 @@ export default function EntradasPage() {
             <thead>
               <tr className="border-b border-zinc-800 text-zinc-500">
                 <th className="text-left font-medium px-4 py-3">Producto</th>
+                <th className="text-left font-medium px-4 py-3">Categoría</th>
                 <th className="text-right font-medium px-4 py-3">Veces</th>
                 <th className="text-right font-medium px-4 py-3">Cantidad</th>
                 <th className="text-right font-medium px-4 py-3">Unidades base</th>
@@ -125,6 +128,7 @@ export default function EntradasPage() {
               {filtradas.map(f => (
                 <tr key={f.nombre} className="border-t border-zinc-800/50">
                   <td className="px-4 py-2.5 text-zinc-200">{f.nombre}</td>
+                  <td className="px-4 py-2.5 text-zinc-500">{f.categoria ?? '—'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.veces}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.cantidad > 0 ? `${num(f.cantidad)}${f.unidadMixta ? '' : f.unidad ? ' ' + f.unidad : ''}` : '—'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-300">{f.base > 0 && f.baseUnidad ? `${num(f.base)} ${f.baseUnidad}` : '—'}</td>
@@ -134,7 +138,7 @@ export default function EntradasPage() {
             </tbody>
             <tfoot>
               <tr className="border-t border-zinc-700 font-semibold">
-                <td className="px-4 py-2.5 text-zinc-300">Total</td>
+                <td className="px-4 py-2.5 text-zinc-300" colSpan={2}>Total</td>
                 <td className="px-4 py-2.5 text-right text-zinc-400">{totVeces}</td>
                 <td></td><td></td>
                 <td className="px-4 py-2.5 text-right text-zinc-100">{money(totGasto)}</td>
