@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { rangoDeMes } from '@/lib/arqueo'
+import { computeBaseUnits } from '@/lib/units.mjs'
 import type { TicketDetalle, ResumenCategoria } from '@/lib/export-xlsx'
 
 interface ItemRow {
@@ -13,7 +14,7 @@ interface ItemRow {
   monto: number | null
   categoria_id: string | null
   categorias_gasto: { nombre: string } | null
-  catalogo_productos: { nombre: string; contiene_cantidad: number | null; contiene_unidad: string | null } | null
+  catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null } | null
   registros_tickets: { id: string; fecha_ticket: string | null; comercio: string | null } | null
 }
 interface CatAgg { id: string; nombre: string; gasto: number; operativo: boolean }
@@ -82,7 +83,7 @@ export default function DashboardPage() {
 
     // items confirmados en el rango
     let tq = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, contiene_cantidad, contiene_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
       .gte('registros_tickets.fecha_ticket', inicio).lte('registros_tickets.fecha_ticket', fin)
     if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
@@ -125,12 +126,20 @@ export default function DashboardPage() {
       prev.gasto += Number(t.monto ?? 0); prev.veces += 1; if (reconocido) prev.reconocido = true
       const cant = Number(t.cantidad ?? 0)
       prev.cantidad += cant
-      const u = t.unidad?.trim() || null
+      const u = (t.catalogo_productos?.unidad_default ?? t.unidad)?.trim() || null
       if (u) { if (prev.unidad && prev.unidad !== u) prev.unidadMixta = true; else if (!prev.unidad) prev.unidad = u }
-      // equivalencia -> unidades base (ej. cono -> huevos)
-      const cc = t.catalogo_productos?.contiene_cantidad
-      const cu = t.catalogo_productos?.contiene_unidad
-      if (cc && cu && cant > 0) { prev.base += cant * Number(cc); prev.baseUnidad = cu }
+      const base = computeBaseUnits({
+        productName: nombre,
+        quantity: cant,
+        purchaseUnit: u,
+        containsQuantity: t.catalogo_productos?.contiene_cantidad,
+        containsUnit: t.catalogo_productos?.contiene_unidad,
+      })
+      if (base) {
+        prev.base += base.quantity
+        if (prev.baseUnidad && prev.baseUnidad !== base.unit) prev.baseUnidad = 'mixta'
+        else if (!prev.baseUnidad) prev.baseUnidad = base.unit
+      }
       pmap.set(key, prev)
     }
     setProductosTop([...pmap.values()].sort((a, b) => b.gasto - a.gasto))
@@ -402,7 +411,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">
                         {p.cantidad > 0 ? `${p.cantidad.toLocaleString('es-MX', { maximumFractionDigits: 2 })}${p.unidadMixta ? '' : p.unidad ? ' ' + p.unidad : ''}` : '—'}
-                        {p.base > 0 && p.baseUnidad && <span className="block text-[10px] text-zinc-600">= {p.base.toLocaleString('es-MX', { maximumFractionDigits: 0 })} {p.baseUnidad}</span>}
+                        {p.base > 0 && p.baseUnidad && <span className="block text-[10px] text-zinc-600">= {p.base.toLocaleString('es-MX', { maximumFractionDigits: 2 })} {p.baseUnidad}</span>}
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">{p.veces}</td>
                       <td className="px-4 py-2 text-right text-zinc-300">{fmt2(p.gasto)}</td>

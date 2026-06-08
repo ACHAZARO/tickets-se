@@ -100,7 +100,7 @@ export function exportReporteMensual(opts: {
   const prods = [
     ['Producto', 'Cantidad', 'Unidad', 'Unidades base', 'Unidad base', 'Veces', 'Gasto', 'Precio unit. prom.', 'En catálogo'],
     ...opts.productos.map(p => [
-      p.nombre, p.cantidad, p.unidad ?? '', p.base || '', p.baseUnidad ?? '', p.veces, p.gasto,
+      p.nombre, p.cantidad, p.unidad ?? '', p.base || '', p.baseUnidad ?? 'Revisar', p.veces, p.gasto,
       p.cantidad > 0 ? Number((p.gasto / p.cantidad).toFixed(2)) : '', p.reconocido ? 'Sí' : 'No',
     ]),
   ]

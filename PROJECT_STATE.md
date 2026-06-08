@@ -51,7 +51,7 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 |---|---|
 | `/admin/dashboard` (Arqueo) | Gasto real (de `ticket_items` confirmados) vs ventas, % por categoria con objetivo y semaforo, dona y tendencia. Selector mes/rango. Export a Excel. Usa el objetivo de la sucursal con global de respaldo. |
 | `/admin/tickets` | Lista TODOS los tickets (filtro periodo + sucursal del header) con foto, comercio, total y **quien lo subio**. Detalle con foto + renglones. Boton "Descargar periodo" → ZIP con imagenes + tickets.csv. |
-| `/admin/alertas` | Tickets que necesitan revision (filtra por sucursal). Detalle `/admin/alertas/[id]`: corrige categoria/unidad **por renglon** y **ensena sinonimos** (los guarda en el catalogo). Resuelve o rechaza. |
+| `/admin/alertas` | Legacy: la ruta existe, pero ya no esta en el nav. La operacion diaria se hace desde `/admin/tickets`. |
 | `/admin/ventas` | Captura manual de la venta mensual por sucursal (para el arqueo). |
 | `/admin/catalogo` | Catalogo + categorias fusionados. Cada categoria con sus productos. Categoria: renombrar, activar, toggle **Operativo/No operativo** (si suma o no al gasto de operacion). Producto: agregar, **editar (mover de categoria, unidad, sinonimos)**, activar, eliminar. Por sucursal (global + de la sucursal). La IA auto-aprende productos aqui. |
 | `/admin/comercios` | Comercios que la IA aprendio (su categoria habitual). Corregir categoria u olvidar. Por sucursal. |
@@ -82,9 +82,10 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (createSignedUrl). RLS: SELECT para `authenticated` (migracion 011).
 
 - `comercios` (nombre, sucursal_id, categoria_id, veces) — la IA aprende la categoria habitual de cada comercio.
-### Migraciones aplicadas: 001–021
+### Migraciones aplicadas: 001–022
   (017 = categoria nullable + RPC ligar_huerfano; 018 = precio_historial + equivalencias;
-   019 = consumo_inventario; 020 = backfill productos en limbo; 021 = descuentos)
+   019 = consumo_inventario; 020 = backfill productos en limbo; 021 = descuentos;
+   022 = CHECK de alertas para Tickets unificado)
 
 ---
 
@@ -99,8 +100,21 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   abreviaturas/erratas (popt→popote).
 - `confirmar-ticket` — confirmacion manual (1 fila/item a Sheets). (El happy path auto-confirma desde procesar-ticket.)
 - `confirmar-admin` (verify_jwt=true) — el admin confirma un ticket revisado desde Alertas (archiva + Sheets + estado).
+- `reprocesar-ticket` (verify_jwt=true) — segunda pasada manual de IA desde Tickets; reemplaza renglones y deja el ticket pendiente para revision.
 - `enviar-alerta-email` — Resend para alertas criticas.
 - Deploy: via Supabase MCP `deploy_edge_function` (no hay token para el CLI de supabase).
+
+## Cambios 2026-06-08 — pulido Tickets + IA + Entradas
+- `/admin/tickets` queda como centro de revision: muestra chips de alerta, permite editar encabezado, editar/agregar/borrar renglones, ensenar sinonimos/equivalencias, confirmar, rechazar, eliminar y relanzar IA.
+- `/admin/alertas` se quita del nav. La tabla `alertas_tickets` sigue como backend de senales, pero el admin ya no debe operar desde una pantalla separada.
+- IA: se sube calidad de imagen movil a 2400px/JPEG 0.86; Gemini conserva descripcion literal y usa catalogo solo para categoria/unidad.
+- IA: se detiene auto-aprendizaje de productos desde lecturas crudas. Producto nuevo queda pendiente para que el admin lo confirme desde Tickets, evitando contaminar catalogo.
+- Duplicados exactos: ahora crean registro `rechazado` con alerta `duplicado`, para que aparezcan auditables en Tickets.
+- `sin_fecha`: si Gemini no lee fecha valida se usa fecha de subida, se marca `_fecha_asumida` y se genera alerta para revisar.
+- Entradas/Dashboard/Excel: unidades base se muestran siempre. Si no hay equivalencia, se usa identidad 1:1 con el nombre del producto (ej. `7 Pan de Nutella`).
+- Nueva funcion `reprocesar-ticket`: segunda pasada manual, reemplaza renglones actuales, resuelve alertas previas y genera nuevas senales.
+- Verificado local: `node --test frontend/lib/units.test.mjs` OK; `npm run build` OK; `http://localhost:3000/admin/tickets` responde 200 en dev.
+- Pendiente de despliegue: Supabase CLI no tiene `SUPABASE_ACCESS_TOKEN` y `db push --linked` no ve link activo. Aplicar migracion 022 y desplegar `procesar-ticket` + `reprocesar-ticket` desde Supabase MCP/Dashboard o con `supabase login`.
 
 ## Auditoria Codex 2026-06-08
 - Verificacion local: `npm run build` en `/frontend` termino OK con Next 14.2.29 y genero 18 rutas.

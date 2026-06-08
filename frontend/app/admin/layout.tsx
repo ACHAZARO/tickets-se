@@ -10,7 +10,6 @@ import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Gasto' },
   { href: '/admin/tickets', label: 'Tickets' },
-  { href: '/admin/alertas', label: 'Alertas' },
   { href: '/admin/cerebro', label: 'Cerebro' },
   { href: '/admin/precios', label: 'Precios' },
   { href: '/admin/inventario', label: 'Entradas' },

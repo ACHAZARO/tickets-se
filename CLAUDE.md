@@ -62,6 +62,8 @@ revision de tickets/
 |           |   +-- index.ts           # Legacy gerente: POST {registro_id} -> Sheets + archivo
 |           +-- confirmar-admin/
 |           |   +-- index.ts           # Admin confirma tickets revisados
+|           +-- reprocesar-ticket/
+|           |   +-- index.ts           # Admin relanza IA y reemplaza renglones
 |           +-- enviar-alerta-email/
 |               +-- index.ts           # Resend para alertas criticas
 |
@@ -275,6 +277,7 @@ npx supabase functions deploy verificar-pin --project-ref dlmqqmvrgkilptawllep
 npx supabase functions deploy procesar-ticket --project-ref dlmqqmvrgkilptawllep
 npx supabase functions deploy confirmar-ticket --project-ref dlmqqmvrgkilptawllep
 npx supabase functions deploy confirmar-admin --project-ref dlmqqmvrgkilptawllep
+npx supabase functions deploy reprocesar-ticket --project-ref dlmqqmvrgkilptawllep
 npx supabase functions deploy enviar-alerta-email --project-ref dlmqqmvrgkilptawllep
 npx supabase migration new <nombre>
 npx supabase db push --project-ref dlmqqmvrgkilptawllep
@@ -292,7 +295,7 @@ cd frontend && npx vercel --prod
 
 ---
 
-## Migraciones aplicadas (001–021)
+## Migraciones aplicadas (001–022)
 - `001` schema base (sucursales, empleados, registros_tickets, verificar_pin)
 - `002` fix search_path pgcrypto · `003` tablas backoffice · `004` columnas registros · `005` seed categorias
 - `006` auth/RLS admin · `007` RLS read empleados · `008` ventas + objetivos_costo
@@ -302,6 +305,7 @@ cd frontend && npx vercel --prod
 - `014` eliminar tickets admin · `015` categoria cuenta_operativo · `016` comercios conocidos
 - `017` cerebro/huerfanos + RPC ligar_huerfano · `018` precios/equivalencias
 - `019` consumo_inventario · `020` backfill productos en limbo · `021` descuentos
+- `022` tipos de alerta para flujo unificado en Tickets (`sin_fecha`, `precio_anomalo`)
 
 ---
 
@@ -316,4 +320,4 @@ cd frontend && npx vercel --prod
 
 ---
 
-**Ultima actualizacion:** 2026-06-08 — sincronizado para trabajo conjunto Claude + Codex. Detalle vivo en `PROJECT_STATE.md`.
+**Ultima actualizacion:** 2026-06-08 — Tickets concentra revision, renglones y relectura IA. Detalle vivo en `PROJECT_STATE.md`.

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { computeBaseUnits, formatBaseUnits } from '@/lib/units.mjs'
 
 interface Fila {
   nombre: string
@@ -55,9 +56,18 @@ export default function EntradasPage() {
       f.gasto += Number(row.monto ?? 0)
       const u = (row.catalogo_productos?.unidad_default ?? row.unidad)?.trim() || null
       if (u) { if (f.unidad && f.unidad !== u) f.unidadMixta = true; else if (!f.unidad) f.unidad = u }
-      const cc = row.catalogo_productos?.contiene_cantidad
-      const cu = row.catalogo_productos?.contiene_unidad
-      if (cc && cu && cant > 0) { f.base += cant * Number(cc); f.baseUnidad = cu }
+      const base = computeBaseUnits({
+        productName: nombre,
+        quantity: cant,
+        purchaseUnit: u,
+        containsQuantity: row.catalogo_productos?.contiene_cantidad,
+        containsUnit: row.catalogo_productos?.contiene_unidad,
+      })
+      if (base) {
+        f.base += base.quantity
+        if (f.baseUnidad && f.baseUnidad !== base.unit) f.baseUnidad = 'mixta'
+        else if (!f.baseUnidad) f.baseUnidad = base.unit
+      }
       map.set(key, f)
     }
     setFilas([...map.values()].sort((a, b) => b.gasto - a.gasto))
@@ -72,7 +82,7 @@ export default function EntradasPage() {
 
   function exportarCSV() {
     const head = ['Producto', 'Categoria', 'Veces', 'Cantidad', 'Unidad', 'Unidades base', 'Unidad base', 'Gasto']
-    const rows = filtradas.map(f => [f.nombre, f.categoria ?? '', f.veces, f.cantidad, f.unidadMixta ? 'mixta' : (f.unidad ?? ''), f.base || '', f.baseUnidad ?? '', f.gasto])
+    const rows = filtradas.map(f => [f.nombre, f.categoria ?? '', f.veces, f.cantidad, f.unidadMixta ? 'mixta' : (f.unidad ?? ''), f.base || '', f.baseUnidad ?? 'Revisar', f.gasto])
     const csv = [head, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const a = document.createElement('a')
@@ -131,7 +141,7 @@ export default function EntradasPage() {
                   <td className="px-4 py-2.5 text-zinc-500">{f.categoria ?? '—'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.veces}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.cantidad > 0 ? `${num(f.cantidad)}${f.unidadMixta ? '' : f.unidad ? ' ' + f.unidad : ''}` : '—'}</td>
-                  <td className="px-4 py-2.5 text-right text-zinc-300">{f.base > 0 && f.baseUnidad ? `${num(f.base)} ${f.baseUnidad}` : '—'}</td>
+                  <td className="px-4 py-2.5 text-right text-zinc-300">{f.base > 0 && f.baseUnidad ? formatBaseUnits({ quantity: f.base, unit: f.baseUnidad, source: 'identity' }) : 'Revisar'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-300">{money(f.gasto)}</td>
                 </tr>
               ))}

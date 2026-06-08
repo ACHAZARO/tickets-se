@@ -39,7 +39,7 @@ function buildGeminiPrompt(catalogContext: string): string {
   "confianza": "alta si los datos son claros, media si algunos son ambiguos, baja si es ilegible o muy borroso",
   "items": [
     {
-      "descripcion": "texto del producto tal como aparece",
+      "descripcion": "texto literal del producto tal como aparece en el ticket",
       "cantidad": numero o null,
       "unidad": "kg, g (gramos), pz, ml, lt, caja, bulto, paquete, rollo, galon u otro, o null si no se indica",
       "monto": numero decimal del precio de ese renglon o null,
@@ -52,10 +52,11 @@ ${catalogContext}
 
 Reglas importantes:
 - Crea un objeto dentro de "items" por CADA producto o renglon del ticket. No agrupes varios productos en uno.
+- La "descripcion" debe ser LITERAL: conserva codigos, abreviaturas y texto raro tal como lo lees. NO reemplaces la descripcion por el nombre del catalogo.
 - Asigna a cada renglon la categoria MAS ESPECIFICA que aplique de la lista de categorias validas. Si de plano ninguna aplica, usa null en "categoria".
 - USA EL NOMBRE DEL COMERCIO para decidir la categoria. Ejemplos: en una gasolinera o "centro gasolinero", palabras como "gas", "magna", "premium", "diesel" son COMBUSTIBLE para auto (categoria de gasolina/combustible), NO gas de cocina. En cambio "Gas LP", "gas de cocina" o un comercio tipo "Gas de Xalapa" si es gas de cocina.
-- Si un renglon esta abreviado, cortado o con error de dedo pero se parece a un producto conocido (ej. "popt" o "popote", "azuc" o "azucar", "serv" o "servilletas"), trátalo como ese producto conocido: usa su nombre, su categoria y su unidad.
-- Si un producto coincide con uno de los productos conocidos (o uno de sus sinonimos/marcas), usa su nombre, categoria y unidad.
+- Si un renglon esta abreviado, cortado o con error de dedo pero se parece a un producto conocido (ej. "popt" o "popote", "azuc" o "azucar", "serv" o "servilletas"), usa el catalogo SOLO para categoria/unidad. Conserva la descripcion literal leida.
+- Si un producto coincide con uno de los productos conocidos (o uno de sus sinonimos/marcas), usa su categoria y unidad, pero NO cambies la descripcion literal.
 - Si una nota tiene UN SOLO producto y un total (ej. "alitas 50 pzas $850"), pon ese total como el "monto" de ese producto Y en "monto_total".
 - Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
 - Si el ticket tiene un DESCUENTO, promocion o rebaja (dinero que se resta del total), captúralo como un renglon APARTE: "descripcion": "Descuento", "categoria": "Descuentos" y "monto" NEGATIVO (el ahorro, ej. -50). No lo restes de los otros renglones.
@@ -267,7 +268,9 @@ async function procesarEnSegundoPlano(opts: {
     // Si Gemini no leyo una fecha valida, usar la fecha de subida (hoy) para que
     // el ticket NO quede invisible en el arqueo/lista (filtrados por fecha).
     const hoy = new Date().toISOString().slice(0, 10)
-    const fechaTicket = (datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) ? datos.fecha : hoy
+    const fechaValida = !!(datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha))
+    const fechaTicket = fechaValida ? datos.fecha! : hoy
+    if (!fechaValida) (datos as Record<string, unknown>)._fecha_asumida = true
 
     await supabase.from('registros_tickets').update({
       fecha_ticket: fechaTicket,
@@ -280,6 +283,7 @@ async function procesarEnSegundoPlano(opts: {
     const matchedIds = new Set<string>()
     let anySinCategoria = false
     let anySinUnidad = false
+    let anyProductoNuevo = false
     const itemsToInsert = (rawItems.length ? rawItems : [
       { descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null },
     ]).map(it => {
@@ -292,6 +296,7 @@ async function procesarEnSegundoPlano(opts: {
       let necesita = false, motivo: string | null = null
       if (!cat) { necesita = true; motivo = 'sin_categoria'; anySinCategoria = true }
       else if (!unidad) { necesita = true; motivo = 'sin_unidad'; anySinUnidad = true }
+      else if (!matched) { necesita = true; motivo = 'producto_nuevo'; anyProductoNuevo = true }
       return {
         registro_ticket_id: registroId, descripcion: desc,
         cantidad: it.cantidad ?? null, unidad, monto: it.monto ?? null,
@@ -321,9 +326,8 @@ async function procesarEnSegundoPlano(opts: {
     // Registra el comercio (las categorias se infieren por observacion; puede tener varias)
     await aprenderComercio(supabase, datos.comercio ?? null, sucursalId)
 
-    // Auto-aprende productos: agrega al catalogo los renglones que la IA categorizo
-    // pero que NO estaban en el catalogo (el usuario los edita despues si hace falta).
-    await aprenderProductos(supabase, sucursalId, itemsToInsert)
+    // No auto-aprender productos desde IA: una lectura mala contamina el catalogo.
+    // Los productos nuevos se confirman/ensenan manualmente desde Tickets.
 
     // Precios: guarda historial y detecta saltos fuertes vs referencia.
     const precioAnomalo = await registrarPrecios(supabase, itemsToInsert, catalog, sucursalId, registroId, fechaTicket)
@@ -340,7 +344,8 @@ async function procesarEnSegundoPlano(opts: {
       await createAlert(supabase, registroId, 'ilegible')
       notifyAlertEmail(registroId, 'ilegible'); hayAlerta = true
     }
-    if (anySinCategoria) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
+    if (!fechaValida) { await createAlert(supabase, registroId, 'sin_fecha'); hayAlerta = true }
+    if (anySinCategoria || anyProductoNuevo) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
     if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
     if (precioAnomalo) {
       await createAlert(supabase, registroId, 'precio_anomalo')
@@ -437,12 +442,24 @@ serve(async (req: Request) => {
     const mime = imagenFile.type || 'image/jpeg'
     const hashImagen = await sha256Hex(imageBytes)
 
-    // Duplicado exacto por hash (rapido) -> avisa al gerente al instante
+    const extension = imagenFile.name.split('.').pop() ?? 'jpg'
+
+    // Duplicado exacto por hash: queda registrado como rechazado para auditoria
+    // en Tickets, no desaparece del flujo del admin.
     const { data: existing } = await supabase.from('registros_tickets')
       .select('id').eq('hash_imagen', hashImagen).maybeSingle()
-    if (existing) return json({ duplicado: true, ticket_original_id: existing.id })
+    if (existing) {
+      const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_dup.${extension}`
+      await supabase.storage.from('por-revisar').upload(dupPath, imageBytes, { contentType: mime, upsert: false })
+      const { data: dupReg } = await supabase.from('registros_tickets').insert({
+        sucursal_id: sucursalId, empleado_id: empleadoId,
+        hash_imagen: hashImagen, storage_path_original: dupPath,
+        estado: 'rechazado', es_duplicado: true, duplicado_de: existing.id,
+      }).select('id').single()
+      if (dupReg?.id) await createAlert(supabase, dupReg.id as string, 'duplicado', existing.id as string)
+      return json({ duplicado: true, registro_id: dupReg?.id ?? null, ticket_original_id: existing.id })
+    }
 
-    const extension = imagenFile.name.split('.').pop() ?? 'jpg'
     const storagePath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}.${extension}`
     const { error: uploadError } = await supabase.storage.from('por-revisar')
       .upload(storagePath, imageBytes, { contentType: mime, upsert: false })

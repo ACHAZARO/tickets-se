@@ -29,10 +29,9 @@ type UploadState = 'idle' | 'preview' | 'processing' | 'review' | 'confirming' |
 
 const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
 
-// Reduce la foto antes de subir: las fotos de celular pesan varios MB y por
-// datos moviles la subida se cuelga. Bajamos a ~1600px / JPEG 0.7 (~200-400KB).
-// Tambien le quita ruido a Gemini y abarata el costo.
-async function comprimirImagen(file: File, maxLado = 1500, calidad = 0.65): Promise<Blob> {
+// Reduce la foto antes de subir sin destruir texto chico del ticket. Mantener
+// mas resolucion que antes es clave para OCR; el timeout evita que se cuelgue.
+async function comprimirImagen(file: File, maxLado = 2400, calidad = 0.86): Promise<Blob> {
   if (!file.type.startsWith('image/')) return file
   try {
     const bitmap = await createImageBitmap(file)
