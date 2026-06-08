@@ -174,8 +174,11 @@ export default function DashboardPage() {
 
   const operativas = cats.filter(c => c.operativo)
   const noOperativas = cats.filter(c => !c.operativo)
-  const gastoOperativo = operativas.reduce((s, c) => s + c.gasto, 0)
+  const gastoOperativo = operativas.reduce((s, c) => s + c.gasto, 0) // neto (compras - descuentos)
   const gastoNoOperativo = noOperativas.reduce((s, c) => s + c.gasto, 0)
+  // descuentos = categorías operativas con gasto negativo (dinero ahorrado)
+  const ahorro = -operativas.filter(c => c.gasto < 0).reduce((s, c) => s + c.gasto, 0)
+  const gastoPositivo = operativas.filter(c => c.gasto > 0).reduce((s, c) => s + c.gasto, 0)
 
   // Auto-clasificacion (Fase 5): % de renglones que cayeron en un producto del catalogo.
   const totalVeces = productosTop.reduce((s, p) => s + p.veces, 0)
@@ -189,20 +192,20 @@ export default function DashboardPage() {
 
   // segmentos de dona (categorias operativas)
   const segs = useMemo(() => {
-    if (gastoOperativo <= 0) return [] as { nombre: string; gasto: number; pct: number; color: string; d: string }[]
+    if (gastoPositivo <= 0) return [] as { nombre: string; gasto: number; pct: number; color: string; d: string }[]
     let acc = -Math.PI / 2
-    return operativas.map((c, i) => {
-      const pct = c.gasto / gastoOperativo
+    return operativas.filter(c => c.gasto > 0).map((c, i) => {
+      const pct = c.gasto / gastoPositivo
       const a0 = acc, a1 = acc + pct * 2 * Math.PI; acc = a1
       return { nombre: c.nombre, gasto: c.gasto, pct: pct * 100, color: COLORS[i % COLORS.length], d: arc(50, 50, 46, 30, a0, a1 - 0.0001) }
     })
-  }, [operativas, gastoOperativo])
+  }, [operativas, gastoPositivo])
 
   async function exportar() {
     const { exportReporteMensual } = await import('@/lib/export-xlsx')
     const categorias: ResumenCategoria[] = cats.map(c => ({
       nombre: c.nombre, gasto: c.gasto, operativo: c.operativo,
-      pct: gastoOperativo > 0 && c.operativo ? (c.gasto / gastoOperativo) * 100 : 0,
+      pct: gastoPositivo > 0 && c.operativo && c.gasto > 0 ? (c.gasto / gastoPositivo) * 100 : 0,
     }))
     const productos = productosTop.map(p => ({
       nombre: p.nombre, cantidad: p.cantidad, unidad: p.unidadMixta ? null : p.unidad,
@@ -254,6 +257,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Card label="Gasto operativo" value={fmt(gastoOperativo)} color="text-blue-400" />
             <Card label="Tickets" value={String(nTickets)} />
+            {ahorro > 0 && <Card label="Ahorro (descuentos)" value={fmt(ahorro)} color="text-emerald-400" hint="dinero que se ahorró" />}
             {gastoNoOperativo > 0 && <Card label="Gasto no operativo" value={fmt(gastoNoOperativo)} color="text-zinc-400" hint="no entra a la distribución" />}
             <Card label="Auto-clasificado" value={`${autoPct}%`} color={autoPct >= 70 ? 'text-emerald-400' : 'text-amber-400'} hint="renglones reconocidos por catálogo" />
           </div>
@@ -279,8 +283,8 @@ export default function DashboardPage() {
                         <span className="inline-block h-2 w-2 rounded-full mr-2" style={{ background: COLORS[i % COLORS.length] }} />
                         {c.nombre}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-zinc-300">{fmt2(c.gasto)}</td>
-                      <td className="px-4 py-2.5 text-right text-zinc-400">{gastoOperativo > 0 ? ((c.gasto / gastoOperativo) * 100).toFixed(1) + '%' : '—'}</td>
+                      <td className={`px-4 py-2.5 text-right ${c.gasto < 0 ? 'text-emerald-400' : 'text-zinc-300'}`}>{fmt2(c.gasto)}</td>
+                      <td className="px-4 py-2.5 text-right text-zinc-400">{c.gasto < 0 ? 'ahorro' : gastoPositivo > 0 ? ((c.gasto / gastoPositivo) * 100).toFixed(1) + '%' : '—'}</td>
                     </tr>
                   ))}
                   {noOperativas.map(c => (

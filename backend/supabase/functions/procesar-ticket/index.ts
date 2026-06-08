@@ -58,6 +58,7 @@ Reglas importantes:
 - Si un producto coincide con uno de los productos conocidos (o uno de sus sinonimos/marcas), usa su nombre, categoria y unidad.
 - Si una nota tiene UN SOLO producto y un total (ej. "alitas 50 pzas $850"), pon ese total como el "monto" de ese producto Y en "monto_total".
 - Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
+- Si el ticket tiene un DESCUENTO, promocion o rebaja (dinero que se resta del total), captúralo como un renglon APARTE: "descripcion": "Descuento", "categoria": "Descuentos" y "monto" NEGATIVO (el ahorro, ej. -50). No lo restes de los otros renglones.
 - Incluye tambien el texto escrito a mano en tu analisis.
 Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
 }
