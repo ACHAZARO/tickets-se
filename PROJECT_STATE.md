@@ -1,6 +1,12 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-06-04.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-06-08.
+
+## Coordinacion Claude + Codex
+- `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.
+- Este archivo es la fuente viva para estado real, decisiones recientes, deuda conocida y proximo trabajo.
+- Antes de pulir o corregir, leer primero estos tres archivos y luego el area afectada.
+- Codex hizo auditoria local el 2026-06-08: build frontend OK, sin cambios de codigo aun.
 
 ## Estado general: EN PRODUCCION (funcional end-to-end)
 
@@ -76,15 +82,15 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (createSignedUrl). RLS: SELECT para `authenticated` (migracion 011).
 
 - `comercios` (nombre, sucursal_id, categoria_id, veces) — la IA aprende la categoria habitual de cada comercio.
-### Migraciones aplicadas: 001–019
-  (017 = categoría nullable + RPC ligar_huerfano; 018 = precio_historial + equivalencias;
-   019 = consumo_inventario)
+### Migraciones aplicadas: 001–021
+  (017 = categoria nullable + RPC ligar_huerfano; 018 = precio_historial + equivalencias;
+   019 = consumo_inventario; 020 = backfill productos en limbo; 021 = descuentos)
 
 ---
 
 ## Edge Functions (Deno, verify_jwt=false, auth JWT HMAC propio)
 - `verificar-pin` — PIN → session_token.
-- `procesar-ticket` (v24) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
+- `procesar-ticket` (v25) — async: responde rapido + Gemini multi-producto en background + auto-confirma.
   Aprende comercios/productos, registra precios (alerta `precio_anomalo` vs promedio) y matchea con
   PRECISION (sinonimos <4 chars solo exactos; match por token completo, no substring).
   Aprende comercios (`aprenderComercio`) y **auto-aprende productos** (`aprenderProductos`): cada renglon
@@ -95,6 +101,14 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 - `confirmar-admin` (verify_jwt=true) — el admin confirma un ticket revisado desde Alertas (archiva + Sheets + estado).
 - `enviar-alerta-email` — Resend para alertas criticas.
 - Deploy: via Supabase MCP `deploy_edge_function` (no hay token para el CLI de supabase).
+
+## Auditoria Codex 2026-06-08
+- Verificacion local: `npm run build` en `/frontend` termino OK con Next 14.2.29 y genero 18 rutas.
+- `CLAUDE.md` estaba desfasado vs este archivo: migraciones 001-013, Gemini 1.5 en env vars y estructura sin funciones nuevas. Se sincronizo junto con `AGENTS.md`.
+- Deuda detectada: `/sucursal/[slug]/subir/page.tsx` conserva estados `review/confirming`, `ticketData`, `registroId` y llamada a `confirmar-ticket`, pero el flujo actual async nunca llena esos estados. No rompe build, pero conviene limpiarlo o decidir si se revive review del gerente.
+- Deuda detectada: `confirmar-ticket` queda como funcion legacy para confirmacion manual del gerente. El camino admin usa `confirmar-admin`. Antes de desplegar cambios, decidir si se mantiene por compatibilidad o se retira del frontend/backend.
+- Riesgo a revisar en produccion: `procesar-ticket` hace auto-confirmacion en background; si falla mover archivo o Sheets, el error es non-blocking/solo log. Validar que el admin vea claramente tickets limpios que no llegaron a Sheets si ocurre una falla externa.
+- Riesgo a revisar en datos: los descuentos entran como monto negativo y dashboard netea gasto operativo. Confirmar con usuarios si quieren ver ahorro separado por sucursal/periodo en Tickets, Excel y Sheets, no solo en Dashboard.
 
 ---
 
@@ -207,7 +221,8 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
 - **Eliminar tickets** + descarga ZIP del periodo + retencion de imagenes +1 año (pg_cron).
 
 ## Pendiente / ideas
+- Siguiente sesion de pulido: revisar primero deuda `confirmar-ticket`/pantalla review legacy, visibilidad de fallas Sheets y UX movil de subida multiple.
 - Re-aprender comercio al confirmar desde Alertas (que las correcciones del admin refuercen el mapa comercio→categoria).
 - Marcar esquinas de la foto para recortar ruido a Gemini (opcional; 2.5-flash lee bien).
 - markitdown (Microsoft): util solo si suben PDFs/facturas digitales, no para fotos.
-- Confirmacion manual de tickets pendientes desde el admin (hoy se resuelven via alertas).
+- Decidir si se elimina el flujo legacy `confirmar-ticket` del gerente o si se revive una pantalla de review manual antes de confirmar.

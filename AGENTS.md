@@ -1,4 +1,4 @@
-# Revision de Tickets -- CLAUDE.md
+# Revision de Tickets -- AGENTS.md
 
 ## Descripcion
 Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tickets de gastos operacionales. Backend en Edge Functions (Deno) procesa imagenes con Gemini (vision) **en segundo plano**, extrae **multiples productos por ticket**, auto-categoriza cada renglon y vuelca los datos a Google Sheets. Un admin web audita el costo vs ventas **por sucursal**.
@@ -25,7 +25,7 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 
 ```
 revision de tickets/
-+-- CLAUDE.md                          <- ESTE ARCHIVO (guia principal)
++-- AGENTS.md                          <- ESTE ARCHIVO (guia principal)
 +-- PROJECT_STATE.md                   <- estado vivo del proyecto
 +-- .gitignore
 |
@@ -229,7 +229,7 @@ Configurados como Supabase Secrets (`npx supabase secrets set`):
 ## Workflow de sesion
 
 ### Al iniciar
-1. Lee este `CLAUDE.md`
+1. Lee este `AGENTS.md`
 2. Lee `PROJECT_STATE.md` para ver el estado actual
 3. Identifica la tarea y el area afectada (frontend/backend/schema)
 
@@ -259,7 +259,7 @@ Este proyecto puede trabajarse desde Codex CLI. Consideraciones:
 - Leer/editar archivos del frontend y backend
 - Correr `npm` commands en `/frontend`
 - Correr `git` commands
-- Leer este CLAUDE.md y PROJECT_STATE.md
+- Leer este AGENTS.md y PROJECT_STATE.md
 
 ### Codex NO puede
 - Ejecutar Supabase MCP tools (usar CLI en su lugar)
@@ -286,7 +286,7 @@ cd frontend && npx vercel --prod
 ```
 
 ### Archivos que Codex debe leer primero
-1. `CLAUDE.md` (este archivo)
+1. `AGENTS.md` (este archivo)
 2. `PROJECT_STATE.md`
 3. El archivo especifico que va a editar
 
