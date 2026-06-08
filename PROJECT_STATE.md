@@ -129,6 +129,17 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
 
+## Cambios 2026-06-07 — descuentos + scope "Todas"
+- **Descuentos** (categoría operativa global + producto, migración 021; procesar-ticket v25):
+  la IA captura descuentos/promos como renglón con monto NEGATIVO (categoría "Descuentos") →
+  resta del gasto operativo (dinero ahorrado). Dashboard: gasto operativo neto, dona usa solo
+  gasto positivo, tarjeta "Ahorro (descuentos)".
+- **Fix scope "Todas"**: Catálogo/Cerebro/Comercios mostraban solo lo global → ahora "Todas"
+  muestra todas las sucursales. Antes los productos por-sucursal quedaban invisibles.
+- **Fix aprendizaje en Tickets/Editar**: ahora crea/liga el producto (antes quedaba en limbo).
+  Migración 020: backfill de 36 renglones en limbo (ej. hielo).
+- procesar-ticket en **v25**.
+
 ## Cambios 2026-06-06 (b) — más desglose y correcciones
 - Dashboard: tabla "En dónde se gasta (comercios)" (tickets, gasto, % del total).
 - Reporte (Excel): columna "Precio unitario prom." por producto.
