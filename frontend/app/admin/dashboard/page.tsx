@@ -274,7 +274,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Tabla por categoria */}
             <div className="rounded-2xl bg-zinc-900 overflow-hidden">
-              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px]">
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
                 <thead>
                   <tr className="border-b border-zinc-800 text-zinc-500">
                     <th className="text-left font-medium px-4 py-3">Categoría</th>
@@ -370,7 +370,7 @@ export default function DashboardPage() {
               <div className="px-4 py-3 border-b border-zinc-800">
                 <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">En dónde se gasta (comercios)</p>
               </div>
-              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px]">
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
                 <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Comercio</th><th className="text-right font-medium px-4 py-2">Tickets</th><th className="text-right font-medium px-4 py-2">Gasto</th><th className="text-right font-medium px-4 py-2">% del total</th></tr></thead>
                 <tbody>
                   {comerciosAgg.slice(0, 15).map(c => {
@@ -399,7 +399,7 @@ export default function DashboardPage() {
             {prodsFiltrados.length === 0 ? (
               <p className="px-4 py-6 text-center text-zinc-500 text-sm">{productosTop.length === 0 ? 'Sin productos en el periodo' : 'Sin coincidencias'}</p>
             ) : (
-              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px]">
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
                 <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Producto</th><th className="text-right font-medium px-4 py-2">Cantidad</th><th className="text-right font-medium px-4 py-2">Veces</th><th className="text-right font-medium px-4 py-2">Gasto</th></tr></thead>
                 <tbody>
                   {prodsFiltrados.slice(0, 60).map(p => (

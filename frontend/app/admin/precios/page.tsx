@@ -115,7 +115,7 @@ export default function PreciosPage() {
         <p className="text-zinc-500 text-center py-12">{prods.length === 0 ? 'Aún no hay precios: aparecen cuando hay tickets confirmados con cantidad y monto por renglón.' : 'Sin coincidencias'}</p>
       ) : (
         <div className="rounded-2xl bg-zinc-900 overflow-hidden">
-          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px]">
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
             <thead>
               <tr className="border-b border-zinc-800 text-zinc-500">
                 <th className="text-left font-medium px-4 py-3">Producto</th>
