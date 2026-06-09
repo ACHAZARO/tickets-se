@@ -42,6 +42,15 @@ serve(async (req: Request) => {
     if (!reg) return json({ error: 'Registro no encontrado' }, 404)
 
     const now = new Date()
+
+    // CLAIM atomico: un solo request gana la confirmacion. Si llegan dos clics o
+    // llamadas concurrentes, solo el ganador manda a Sheets (evita doble fila).
+    if (reg.estado === 'confirmado') return json({ ok: true, yaConfirmado: true })
+    const { data: claimRows } = await supabase.from('registros_tickets')
+      .update({ estado: 'confirmado', confirmado_en: now.toISOString() })
+      .eq('id', registro_id).neq('estado', 'confirmado').select('id')
+    if (!claimRows || claimRows.length === 0) return json({ ok: true, yaConfirmado: true })
+
     let archivoPath = reg.storage_path_archivo as string | null
 
     // Mover imagen por-revisar -> archivo (si aun no se archivo)
@@ -75,49 +84,42 @@ serve(async (req: Request) => {
       categoria_gasto: (it.categorias_gasto as { nombre: string } | null)?.nombre ?? null,
     }))
 
-    // Solo manda a Sheets si no estaba confirmado antes (evita duplicar filas)
+    // Ya ganamos el claim arriba: mandamos a Sheets exactamente una vez.
     let sheetsRowId: string | null = null
-    if (reg.estado !== 'confirmado') {
-      try {
-        sheetsRowId = await enviarAGoogleSheets({
-          fecha_ticket: reg.fecha_ticket ?? null,
-          folio_ticket: reg.folio_ticket ?? null,
-          comercio: reg.comercio ?? null,
-          sucursal_nombre: suc?.nombre ?? 'Sucursal',
-          empleado_nombre: emp?.nombre ?? 'Desconocido',
-          storage_path: archivoPath ?? '',
-          confirmado_en: now.toISOString(),
-          items,
-        })
-      } catch (e) { console.error('Sheets (no bloqueante):', e) }
-    }
+    try {
+      sheetsRowId = await enviarAGoogleSheets({
+        fecha_ticket: reg.fecha_ticket ?? null,
+        folio_ticket: reg.folio_ticket ?? null,
+        comercio: reg.comercio ?? null,
+        sucursal_nombre: suc?.nombre ?? 'Sucursal',
+        empleado_nombre: emp?.nombre ?? 'Desconocido',
+        storage_path: archivoPath ?? '',
+        confirmado_en: now.toISOString(),
+        items,
+      })
+    } catch (e) { console.error('Sheets (no bloqueante):', e) }
 
     await supabase.from('registros_tickets').update({
-      estado: 'confirmado',
       storage_path_archivo: archivoPath,
-      confirmado_en: now.toISOString(),
       ...(sheetsRowId ? { sheets_row_id: sheetsRowId } : {}),
     }).eq('id', registro_id)
 
-    // Registra precios de los renglones que se ligaron a un producto durante la revision
-    // (al ingest no tenian producto, por eso no se registro su precio entonces).
-    if (reg.estado !== 'confirmado') {
-      const vistos = new Set<string>()
-      for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
-        const pid = it.producto_catalogo_id as string | null
-        const monto = Number(it.monto)
-        const cant = Number(it.cantidad)
-        if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
-        vistos.add(pid)
-        const unit = monto / cant
-        try {
-          await supabase.from('precio_historial').insert({
-            producto_catalogo_id: pid, sucursal_id: reg.sucursal_id,
-            registro_ticket_id: registro_id, precio_unitario: unit, fecha: reg.fecha_ticket ?? null,
-          })
-          await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
-        } catch (e) { console.error('precio (confirmar-admin):', e) }
-      }
+    // Registra precios de los renglones ligados a un producto durante la revision.
+    const vistos = new Set<string>()
+    for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
+      const pid = it.producto_catalogo_id as string | null
+      const monto = Number(it.monto)
+      const cant = Number(it.cantidad)
+      if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+      vistos.add(pid)
+      const unit = monto / cant
+      try {
+        await supabase.from('precio_historial').insert({
+          producto_catalogo_id: pid, sucursal_id: reg.sucursal_id,
+          registro_ticket_id: registro_id, precio_unitario: unit, fecha: reg.fecha_ticket ?? null,
+        })
+        await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
+      } catch (e) { console.error('precio (confirmar-admin):', e) }
     }
 
     return json({ ok: true })
