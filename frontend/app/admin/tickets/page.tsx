@@ -110,6 +110,7 @@ export default function TicketsPage() {
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     let q = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
@@ -133,7 +134,9 @@ export default function TicketsPage() {
       .gte('created_at', desde).lt('created_at', diaSiguienteISO(hasta))
       .order('created_at', { ascending: false }).limit(600)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
-    const { data } = await q
+    const { data, error } = await q
+    if (error) { setLoadError(error.message); setTickets([]); setLoading(false); return }
+    setLoadError(null)
     const rows = (data as unknown as Ticket[]) ?? []
     setTickets(rows)
 
@@ -381,8 +384,12 @@ export default function TicketsPage() {
     setBusy(null)
     if (error) { alert('No se pudo releer: ' + error.message); return }
     await fetchTickets()
-    const refreshed = tickets.find(x => x.id === t.id) ?? t
-    await abrirDetalle(refreshed)
+    // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
+    // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
+    const { data: fresh } = await supabase.from('registros_tickets')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+      .eq('id', t.id).maybeSingle()
+    await abrirDetalle((fresh as unknown as Ticket) ?? t)
   }
 
   async function eliminarTicket(t: Ticket) {
@@ -419,6 +426,11 @@ export default function TicketsPage() {
         </Field>
       </div>
 
+      {loadError && (
+        <div className="rounded-xl bg-red-950/40 border border-red-800/50 px-4 py-3 text-sm text-red-300">
+          No se pudieron cargar los tickets: {loadError}
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
       ) : ticketsFiltrados.length === 0 ? (

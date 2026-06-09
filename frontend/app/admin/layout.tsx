@@ -64,12 +64,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <header className="border-b border-zinc-800 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-6 flex-wrap">
           <h1 className="text-base font-semibold text-zinc-100">Tickets SE</h1>
-          <nav className="flex gap-1 flex-wrap">
+          <nav className="flex gap-1 overflow-x-auto max-w-full -mx-1 px-1 scrollbar-none">
             {NAV_ITEMS.map(item => (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   pathname.startsWith(item.href)
                     ? 'bg-zinc-800 text-zinc-100'
                     : 'text-zinc-500 hover:text-zinc-300'

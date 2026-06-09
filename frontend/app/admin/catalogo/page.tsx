@@ -87,6 +87,10 @@ export default function CatalogoPage() {
       if (nItems > 0) await supabase.from('ticket_items').update({ categoria_id: destino }).eq('categoria_id', cat.id)
     }
     await supabase.from('comercios').update({ categoria_id: null }).eq('categoria_id', cat.id)
+    // objetivos_costo.categoria_id es FK NOT NULL: reasignar (o borrar si no hay destino)
+    // para que el delete de la categoria no falle ni deje huerfanos.
+    if (destino) await supabase.from('objetivos_costo').update({ categoria_id: destino }).eq('categoria_id', cat.id)
+    else await supabase.from('objetivos_costo').delete().eq('categoria_id', cat.id)
     const { error } = await supabase.from('categorias_gasto').delete().eq('id', cat.id)
     setBorrando(false)
     if (error) { alert('No se pudo borrar: ' + error.message); return }

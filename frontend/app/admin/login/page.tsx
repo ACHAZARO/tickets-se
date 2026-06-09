@@ -25,7 +25,7 @@ export default function AdminLoginPage() {
       return
     }
 
-    router.replace('/admin/alertas')
+    router.replace('/admin/tickets')
   }
 
   return (
