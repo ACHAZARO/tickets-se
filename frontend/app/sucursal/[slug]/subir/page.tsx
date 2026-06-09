@@ -124,7 +124,7 @@ export default function SubirPage({ params }: PageProps) {
     if (archivos.length === 0) return
 
     // Envia UNA foto con reintentos. Devuelve el resultado para contarlo.
-    async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail'> {
+    async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail' | 'expired'> {
       // La compresion no puede colgar el envio: si tarda >8s, usa la original.
       const imagen = await Promise.race<Blob>([
         comprimirImagen(file),
@@ -146,6 +146,8 @@ export default function SubirPage({ params }: PageProps) {
           const data = await res.json().catch(() => ({}))
           if (res.ok && data.recibido) return 'ok'
           if (data.duplicado) return 'dup'
+          // Sesion expirada/invalida: hay que re-ingresar el PIN.
+          if (res.status === 401) return 'expired'
           // error del servidor: no tiene caso reintentar el mismo contenido
           return 'fail'
         } catch {
@@ -161,13 +163,23 @@ export default function SubirPage({ params }: PageProps) {
     let ok = 0
     let duplicados = 0
     let fallidos = 0
+    let expirada = false
     // Cada foto es independiente y secuencial: si una falla, NO se cancelan las demas.
     for (let i = 0; i < archivos.length; i++) {
       setProgreso({ actual: i + 1, total: archivos.length })
       const r = await enviarUna(archivos[i])
       if (r === 'ok') ok++
       else if (r === 'dup') duplicados++
+      else if (r === 'expired') { expirada = true; break }
       else fallidos++
+    }
+    if (expirada) {
+      setProgreso({ actual: 0, total: 0 })
+      setErrorMsg('Tu sesión expiró. Vuelve a ingresar tu PIN.')
+      setState('error')
+      sessionStorage.removeItem(`auth_${slug}`)
+      setTimeout(() => router.replace(`/sucursal/${slug}`), 2200)
+      return
     }
     setProgreso({ actual: 0, total: 0 })
     // El procesamiento con IA corre en segundo plano; el gerente solo confirma envio.
@@ -184,7 +196,7 @@ export default function SubirPage({ params }: PageProps) {
     } else {
       setState('done')
     }
-  }, [imageFile, imageFiles, sessionToken])
+  }, [imageFile, imageFiles, sessionToken, slug, router])
 
   const handleConfirm = useCallback(async () => {
     if (!registroId) return
