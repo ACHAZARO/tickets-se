@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { useToast, useConfirm } from '../ui'
 
 interface Categoria { id: string; nombre: string }
 interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null }
@@ -17,6 +18,8 @@ type Sel = { tipo: 'comercio' | 'categoria'; id: string } | null
 
 export default function CerebroPage() {
   const { sucursalId } = useSucursal()
+  const toast = useToast()
+  const confirm = useConfirm()
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [comercios, setComercios] = useState<Comercio[]>([])
@@ -112,7 +115,7 @@ export default function CerebroPage() {
       await supabase.from('catalogo_productos').update({ contiene_cantidad: cc, contiene_unidad: h.contieneUnidad.trim() }).eq('id', prodId)
     }
     setGuardando(null)
-    if (error) { alert('No se pudo ligar: ' + error.message); return }
+    if (error) { toast('No se pudo ligar: ' + error.message, 'error'); return }
     setHuerfanos(prev => prev.filter(x => x.nombre !== h.nombre))
     fetchData() // refresca para que aparezca como producto del catalogo
   }

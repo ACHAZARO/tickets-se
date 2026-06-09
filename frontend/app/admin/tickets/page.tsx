@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { useToast, useConfirm } from '../ui'
 
 interface Item {
   id: string
@@ -95,6 +96,8 @@ function emptyItem(ticketId: string): Omit<Item, 'categorias_gasto'> {
 
 export default function TicketsPage() {
   const { sucursalId, sucursales } = useSucursal()
+  const toast = useToast()
+  const confirm = useConfirm()
   const nombreSucursal = sucursalId ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? 'sucursal') : 'Todas las sucursales'
   const [desde, setDesde] = useState(primerDiaMesISO())
   const [hasta, setHasta] = useState(hoyISO())
@@ -322,11 +325,11 @@ export default function TicketsPage() {
     let savedId = it.id
     if (it.id.startsWith('nuevo-')) {
       const { data, error } = await supabase.from('ticket_items').insert(payload).select('id').single()
-      if (error) { alert(error.message); setBusy(null); return }
+      if (error) { toast(error.message, 'error'); setBusy(null); return }
       savedId = data.id as string
     } else {
       const { error } = await supabase.from('ticket_items').update(payload).eq('id', it.id)
-      if (error) { alert(error.message); setBusy(null); return }
+      if (error) { toast(error.message, 'error'); setBusy(null); return }
     }
     await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', detalle.ticket.id).eq('tipo', 'producto_no_reconocido')
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
@@ -364,14 +367,14 @@ export default function TicketsPage() {
     const { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } })
     if (!error) await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('resuelta', false)
     setBusy(null)
-    if (error) { alert('No se pudo confirmar: ' + error.message); return }
+    if (error) { toast('No se pudo confirmar: ' + error.message, 'error'); return }
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'confirmado' } } : d)
     setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'confirmado' } : x))
     setAlertas(prev => ({ ...prev, [t.id]: [] }))
   }
 
   async function rechazarTicket(t: Ticket) {
-    if (!confirm('Rechazar este ticket? No entrara al arqueo.')) return
+    if (!(await confirm('Rechazar este ticket? No entra al arqueo.', { danger: true }))) return
     await supabase.from('registros_tickets').update({ estado: 'rechazado' }).eq('id', t.id)
     await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id)
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'rechazado' } } : d)
@@ -379,11 +382,11 @@ export default function TicketsPage() {
   }
 
   async function reintentarIA(t: Ticket) {
-    if (!confirm('Volver a leer con IA? Se reemplazaran los renglones actuales.')) return
+    if (!(await confirm('Volver a leer con IA? Se reemplazan los renglones actuales.'))) return
     setBusy('ia')
     const { error } = await supabase.functions.invoke('reprocesar-ticket', { body: { registro_id: t.id } })
     setBusy(null)
-    if (error) { alert('No se pudo releer: ' + error.message); return }
+    if (error) { toast('No se pudo releer: ' + error.message, 'error'); return }
     await fetchTickets()
     // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
     // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
@@ -394,11 +397,11 @@ export default function TicketsPage() {
   }
 
   async function eliminarTicket(t: Ticket) {
-    if (!confirm('Eliminar este ticket? Se borran registro, renglones y foto.')) return
+    if (!(await confirm('Eliminar este ticket? Se borran registro, renglones y foto. No se puede deshacer.', { danger: true }))) return
     const pb = pathBucket(t)
     if (pb) await supabase.storage.from(pb.bucket).remove([pb.path])
     const { error } = await supabase.from('registros_tickets').delete().eq('id', t.id)
-    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return }
     setDetalle(null)
     setTickets(prev => prev.filter(x => x.id !== t.id))
   }
@@ -472,9 +475,11 @@ export default function TicketsPage() {
             return (
               <button key={t.id} onClick={() => abrirDetalle(t)}
                 className="w-full flex items-center gap-4 rounded-xl bg-zinc-900 p-3 hover:bg-zinc-800/80 transition-colors text-left">
-                <div className="h-14 w-14 rounded-lg bg-zinc-800 flex-shrink-0 overflow-hidden">
+                <div className="group relative h-14 w-14 rounded-lg bg-zinc-800 flex-shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {url && <img src={url} alt="" className="h-full w-full object-cover" />}
+                  {url && <img src={url} alt="" className="h-full w-full object-cover rounded-lg" />}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {url && <img src={url} alt="" className="hidden md:group-hover:block absolute left-[60px] top-0 z-50 w-72 max-h-96 object-contain rounded-lg border border-zinc-600 shadow-2xl bg-zinc-950 pointer-events-none" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

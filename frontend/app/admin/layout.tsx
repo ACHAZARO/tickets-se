@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
+import { AdminUIProvider } from './ui'
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Gasto' },
@@ -60,6 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <SucursalProvider>
+    <AdminUIProvider>
     <div className="min-h-screen min-h-[100dvh] flex flex-col">
       <header className="border-b border-zinc-800 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-6 flex-wrap">
@@ -94,6 +96,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </main>
     </div>
+    </AdminUIProvider>
     </SucursalProvider>
   )
 }

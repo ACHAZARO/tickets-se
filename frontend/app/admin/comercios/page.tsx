@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { useToast, useConfirm } from '../ui'
 
 interface Categoria { id: string; nombre: string }
 interface Comercio { id: string; nombre: string; categoria_id: string | null; veces: number; sucursal_id: string | null }
@@ -12,6 +13,8 @@ interface Resumen { categorias: string[]; productos: ProdAgg[] }
 
 export default function ComerciosPage() {
   const { sucursalId } = useSucursal()
+  const toast = useToast()
+  const confirm = useConfirm()
   const [comercios, setComercios] = useState<Comercio[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
   // resumen por comercio (en minusculas) -> categorias observadas + productos
@@ -68,7 +71,7 @@ export default function ComerciosPage() {
     await supabase.from('comercios').update({ categoria_id: categoriaId || null }).eq('id', c.id)
   }
   async function eliminar(c: Comercio) {
-    if (!confirm(`¿Olvidar el comercio "${c.nombre}"?`)) return
+    if (!(await confirm(`¿Olvidar el comercio "${c.nombre}"?`, { danger: true }))) return
     await supabase.from('comercios').delete().eq('id', c.id)
     setComercios(prev => prev.filter(x => x.id !== c.id))
   }

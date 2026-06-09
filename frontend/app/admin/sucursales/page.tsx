@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
+import { useToast, useConfirm } from '../ui'
 
 interface Sucursal {
   id: string
@@ -31,6 +32,8 @@ function slugify(s: string): string {
 }
 
 export default function SucursalesPage() {
+  const toast = useToast()
+  const confirm = useConfirm()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -65,10 +68,10 @@ export default function SucursalesPage() {
   }
 
   async function eliminarSucursal(s: Sucursal) {
-    if (!confirm(`¿Eliminar la sucursal "${s.nombre}"? Esto no se puede deshacer.`)) return
+    if (!(await confirm(`¿Eliminar la sucursal "${s.nombre}"? Esto no se puede deshacer.`, { danger: true }))) return
     const { error } = await supabase.from('sucursales').delete().eq('id', s.id)
     if (error) {
-      alert('No se puede eliminar: la sucursal tiene tickets o ventas registradas. Usa "Desactivar" en su lugar.')
+      toast('No se puede eliminar: la sucursal tiene tickets o ventas registradas. Usa "Desactivar" en su lugar.', 'error')
       return
     }
     setSucursales(prev => prev.filter(x => x.id !== s.id))
@@ -198,6 +201,8 @@ function SucursalModal({ form, onClose, onSaved }: {
 }
 
 function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; onClose: () => void; onChanged: () => void }) {
+  const toast = useToast()
+  const confirm = useConfirm()
   const [empleados, setEmpleados] = useState<Empleado[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<null | { id?: string; nombre: string; pin: string; activo: boolean }>(null)
@@ -235,7 +240,7 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
   }
 
   async function eliminar(e: Empleado) {
-    if (!confirm(`¿Eliminar al empleado "${e.nombre}"?`)) return
+    if (!(await confirm(`¿Eliminar al empleado "${e.nombre}"?`, { danger: true }))) return
     const { error } = await supabase.from('empleados').delete().eq('id', e.id)
     if (error) {
       // Tiene tickets asociados: solo quitarlo de la sucursal y desactivarlo

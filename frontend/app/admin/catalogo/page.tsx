@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { useToast, useConfirm } from '../ui'
 
 interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
 interface Producto {
@@ -22,6 +23,8 @@ const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquet
 
 export default function CatalogoPage() {
   const { sucursalId } = useSucursal()
+  const toast = useToast()
+  const confirm = useConfirm()
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [loading, setLoading] = useState(true)
@@ -93,7 +96,7 @@ export default function CatalogoPage() {
     else await supabase.from('objetivos_costo').delete().eq('categoria_id', cat.id)
     const { error } = await supabase.from('categorias_gasto').delete().eq('id', cat.id)
     setBorrando(false)
-    if (error) { alert('No se pudo borrar: ' + error.message); return }
+    if (error) { toast('No se pudo borrar: ' + error.message, 'error'); return }
     setDelCat(null); setLoading(true); fetchData()
   }
 
@@ -115,11 +118,11 @@ export default function CatalogoPage() {
     setProductos(prev => prev.map(x => x.id === p.id ? { ...x, activo: !x.activo } : x))
   }
   async function eliminarProd(p: Producto) {
-    if (!confirm(`¿Eliminar "${p.nombre}" del catálogo? Los renglones que lo usaban conservan su categoría pero se desligan del producto.`)) return
+    if (!(await confirm(`¿Eliminar "${p.nombre}" del catálogo? Los renglones que lo usaban conservan su categoría pero se desligan del producto.`, { danger: true }))) return
     // Desliga los renglones (FK NO ACTION: si no, el borrado falla). Conservan categoria/descripcion.
     await supabase.from('ticket_items').update({ producto_catalogo_id: null }).eq('producto_catalogo_id', p.id)
     const { error } = await supabase.from('catalogo_productos').delete().eq('id', p.id)
-    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return }
     setProductos(prev => prev.filter(x => x.id !== p.id))
   }
   async function guardarEdicion() {
