@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/admin/cerebro', label: 'Cerebro' },
   { href: '/admin/precios', label: 'Precios' },
   { href: '/admin/inventario', label: 'Entradas' },
+  { href: '/admin/stock', label: 'Stock' },
   { href: '/admin/catalogo', label: 'Catalogo' },
   { href: '/admin/comercios', label: 'Comercios' },
   { href: '/admin/sucursales', label: 'Sucursales' },
