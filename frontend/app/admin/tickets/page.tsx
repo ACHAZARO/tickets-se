@@ -107,6 +107,7 @@ export default function TicketsPage() {
   const [catalogo, setCatalogo] = useState<CatalogProduct[]>([])
   const [cats, setCats] = useState<{ id: string; nombre: string }[]>([])
   const [comercioFiltro, setComercioFiltro] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados'>('todos')
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
@@ -403,7 +404,20 @@ export default function TicketsPage() {
   }
 
   const comerciosUnicos = [...new Set(tickets.map(t => t.comercio).filter((c): c is string => !!c))].sort()
-  const ticketsFiltrados = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
+  const baseTickets = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
+  const tieneAlerta = (t: Ticket) => (alertas[t.id]?.length ?? 0) > 0
+  const cuenta = {
+    todos: baseTickets.length,
+    pendientes: baseTickets.filter(t => t.estado === 'pendiente').length,
+    alertas: baseTickets.filter(tieneAlerta).length,
+    confirmados: baseTickets.filter(t => t.estado === 'confirmado').length,
+  }
+  const ticketsFiltrados = baseTickets.filter(t =>
+    filtroEstado === 'todos' ? true
+    : filtroEstado === 'pendientes' ? t.estado === 'pendiente'
+    : filtroEstado === 'alertas' ? tieneAlerta(t)
+    : t.estado === 'confirmado'
+  )
 
   return (
     <div className="space-y-6">
@@ -424,6 +438,21 @@ export default function TicketsPage() {
             {comerciosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {([
+          { k: 'todos', label: 'Todos', n: cuenta.todos, color: 'bg-zinc-700 text-zinc-100' },
+          { k: 'pendientes', label: 'Pendientes', n: cuenta.pendientes, color: 'bg-amber-600 text-white' },
+          { k: 'alertas', label: 'Con alerta', n: cuenta.alertas, color: 'bg-orange-600 text-white' },
+          { k: 'confirmados', label: 'Confirmados', n: cuenta.confirmados, color: 'bg-emerald-700 text-white' },
+        ] as const).map(c => (
+          <button key={c.k} onClick={() => setFiltroEstado(c.k)}
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${filtroEstado === c.k ? c.color : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {c.label}
+            <span className={`text-xs rounded-full px-1.5 ${filtroEstado === c.k ? 'bg-black/20' : 'bg-zinc-800'}`}>{c.n}</span>
+          </button>
+        ))}
       </div>
 
       {loadError && (
