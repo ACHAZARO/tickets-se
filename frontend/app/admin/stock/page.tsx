@@ -58,10 +58,14 @@ export default function StockPage() {
         containsQuantity: prod.contiene_cantidad,
         containsUnit: prod.contiene_unidad,
       })
-      if (!base) continue // sin equivalencia no se puede medir en unidad base
-      const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: base.unit }
+      if (!base) continue
+      // Unidad real: si hay equivalencia, la unidad contenida (ej. pz); si no, la unidad de compra (kg/lt).
+      // El fallback "identity" de computeBaseUnits usa el nombre del producto: lo ignoramos como etiqueta.
+      const unidad = base.source === 'equivalence' ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
+      const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad }
       f.entradas += base.quantity
-      if (f.baseUnidad && f.baseUnidad !== base.unit) f.baseUnidad = 'mixta'
+      if (unidad && f.baseUnidad && f.baseUnidad !== unidad) f.baseUnidad = 'mixta'
+      else if (!f.baseUnidad) f.baseUnidad = unidad
       map.set(prod.id, f)
     }
     const list: Fila[] = []
@@ -100,7 +104,7 @@ export default function StockPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-zinc-100">Stock</h2>
-        <p className="text-sm text-zinc-500 mt-1">{nombreSucursal} · existencias estimadas: lo comprado (confirmado) menos lo consumido, en unidades base. Solo aparecen productos con equivalencia configurada en el catalogo (ej. 1 caja = 24 pz).</p>
+        <p className="text-sm text-zinc-500 mt-1">{nombreSucursal} · existencias estimadas: lo comprado (confirmado) menos lo consumido. Las cajas/bultos se convierten a su unidad contenida si configuras la equivalencia en el Catalogo (ej. 1 caja = 24 pz).</p>
       </div>
 
       <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"
@@ -110,7 +114,7 @@ export default function StockPage() {
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
       ) : filtradas.length === 0 ? (
         <p className="text-zinc-500 text-center py-12">
-          {filas.length === 0 ? 'Aun no hay stock medible. Configura equivalencias en el Catalogo (ej. 1 caja = 24 pz) y confirma tickets.' : 'Sin coincidencias'}
+          {filas.length === 0 ? 'Aun no hay stock: confirma tickets con productos ligados al catalogo.' : 'Sin coincidencias'}
         </p>
       ) : (
         <div className="rounded-2xl bg-zinc-900 overflow-hidden">
