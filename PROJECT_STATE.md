@@ -157,6 +157,15 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
 
+## Cambios 2026-06-08 — sync Codex + deploys
+- Codex unifico la revision en `/admin/tickets` (commit 39e259d): editor inline, `reprocesar-ticket`
+  (releer con IA), `lib/units.mjs` (+tests, pasan), migracion 022 (tipos de alerta).
+- **Claude desplego lo que faltaba en la nube** (Codex no tiene MCP): `procesar-ticket` **v26**
+  (descripcion literal, alerta `sin_fecha`, NO auto-aprende productos, duplicado = ticket
+  `rechazado`), `reprocesar-ticket` **v1**, migracion 022 aplicada.
+- Fix: feedback "✓ Guardado" al guardar renglon en Tickets (regresion de la unificacion).
+- Protocolo de despliegues Claude<->Codex documentado en AGENTS.md (bitacora de sincronizacion).
+
 ## Cambios 2026-06-07 — descuentos + scope "Todas"
 - **Descuentos** (categoría operativa global + producto, migración 021; procesar-ticket v25):
   la IA captura descuentos/promos como renglón con monto NEGATIVO (categoría "Descuentos") →

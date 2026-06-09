@@ -11,6 +11,7 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 - Codex puede encargarse de auditorias locales, builds, ediciones y verificacion en el workspace. Claude puede continuar desde estos documentos sin asumir memoria externa.
 - Si un agente encuentra deuda o bugs sin corregir en la sesion, debe dejarlos en `PROJECT_STATE.md` con fecha, evidencia y siguiente accion sugerida.
 - No pisar cambios no propios. Revisar `git status` antes de editar, usar paths especificos al stagear y nunca commitear secretos.
+- **Reparto de despliegues**: Codex NO puede desplegar edge functions ni aplicar migraciones (sin token Supabase). Claude SI (Supabase MCP). Cuando Codex toque `backend/supabase/functions/**` o `supabase/migrations/**`, deja `PENDIENTE DEPLOY (Claude)` en la bitacora de `AGENTS.md`; Claude despliega y marca hecho. La bitacora viva de sincronizacion esta en `AGENTS.md`.
 
 ## Stack
 - **Frontend**: Next.js 14 (Vercel), optimizado para movil + panel `/admin`

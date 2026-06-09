@@ -12,6 +12,24 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 - Si un agente encuentra deuda o bugs sin corregir en la sesion, debe dejarlos en `PROJECT_STATE.md` con fecha, evidencia y siguiente accion sugerida.
 - No pisar cambios no propios. Revisar `git status` antes de editar, usar paths especificos al stagear y nunca commitear secretos.
 
+### Reparto de despliegues (IMPORTANTE)
+- **Codex NO puede desplegar edge functions ni aplicar migraciones** (no tiene token de Supabase CLI/MCP). **Claude SI** (via Supabase MCP).
+- Por eso: cuando **Codex** cree/edite una **edge function** (`backend/supabase/functions/...`) o una **migracion** (`supabase/migrations/...`), debe dejar una linea **`PENDIENTE DEPLOY (Claude)`** en la seccion de abajo. **Claude** la despliega/aplica por MCP y marca la linea como hecha con la version desplegada.
+- Frontend: lo despliega Vercel solo al hacer push a `main` (ambos agentes ok).
+
+### Bitacora de sincronizacion Claude <-> Codex
+- 2026-06-08 (Claude): desplegado lo que dejo Codex en el commit `39e259d` y que faltaba en la nube:
+  - `procesar-ticket` -> **v26** (descripcion literal, alerta `sin_fecha`, NO auto-aprende productos, duplicado = ticket `rechazado` con `es_duplicado`/`duplicado_de`). Incluye la regla de `Descuentos` (Claude).
+  - `reprocesar-ticket` -> **v1** desplegada (verify_jwt=true). El boton "Releer con IA" de Tickets ya funciona.
+  - Migracion **022** (CHECK de tipos de alerta con `sin_fecha`/`precio_anomalo`) aplicada en la BD (estaba solo en archivo).
+  - Verificado: columnas `es_duplicado`/`duplicado_de` existen; `hash_imagen` NO es UNIQUE (la insercion de duplicado de Codex es segura).
+  - Fix Claude: feedback "✓ Guardado" al guardar renglon en Tickets (se habia perdido en la unificacion).
+- Estado de edge functions desplegadas: verificar-pin v9, procesar-ticket **v26**, confirmar-ticket v11, confirmar-admin v2, enviar-alerta-email v2, reprocesar-ticket **v1**.
+- Migraciones aplicadas en la nube: 001–020, **022** (021 Descuentos se aplico por SQL directo: categoria+producto "Descuentos" ya existen).
+
+### PENDIENTE DEPLOY (Claude)
+- (sin pendientes)
+
 ## Stack
 - **Frontend**: Next.js 14 (Vercel), optimizado para movil + panel `/admin`
 - **DB + Storage**: Supabase (`tickets-se`, ref: `dlmqqmvrgkilptawllep`)
