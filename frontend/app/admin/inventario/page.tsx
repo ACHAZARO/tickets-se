@@ -123,7 +123,7 @@ export default function EntradasPage() {
         <p className="text-zinc-500 text-center py-12">Sin compras confirmadas en el periodo</p>
       ) : (
         <div className="rounded-2xl bg-zinc-900 overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="border-b border-zinc-800 text-zinc-500">
                 <th className="text-left font-medium px-4 py-3">Producto</th>
@@ -154,7 +154,7 @@ export default function EntradasPage() {
                 <td className="px-4 py-2.5 text-right text-zinc-100">{money(totGasto)}</td>
               </tr>
             </tfoot>
-          </table>
+          </table></div>
         </div>
       )}
     </div>
