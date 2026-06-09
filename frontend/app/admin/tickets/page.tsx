@@ -25,6 +25,8 @@ interface CatalogProduct {
   unidad_default: string | null
   contiene_cantidad: number | null
   contiene_unidad: string | null
+  contiene_sub_cantidad: number | null
+  contiene_sub_unidad: string | null
 }
 interface Ticket {
   id: string
@@ -126,7 +128,7 @@ export default function TicketsPage() {
 
   const loadCatalogo = useCallback(async (sucId: string | null) => {
     let q = supabase.from('catalogo_productos')
-      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad')
+      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad')
       .eq('activo', true).order('nombre')
     q = sucId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucId}`) : q
     const { data } = await q
@@ -250,7 +252,7 @@ export default function TicketsPage() {
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, monto: total } : t))
   }
 
-  async function ensureProduct(it: Item, opts: { synonymText: string; baseQty: string; baseUnit: string }) {
+  async function ensureProduct(it: Item, opts: { synonymText: string; baseQty: string; baseUnit: string; subQty: string; subUnit: string }) {
     const sucId = detalle?.ticket.sucursal_id ?? null
     let productoId = it.producto_catalogo_id
     const nombre = it.descripcion.trim()
@@ -288,6 +290,8 @@ export default function TicketsPage() {
       }
       const baseQty = opts.baseQty.trim() === '' ? null : Number(opts.baseQty)
       const baseUnit = opts.baseUnit.trim() || null
+      const subQty = opts.subQty.trim() === '' ? null : Number(opts.subQty)
+      const subUnit = opts.subUnit.trim() || null
       const updatePayload: Record<string, unknown> = {
         nombre,
         categoria_id: it.categoria_id,
@@ -297,6 +301,14 @@ export default function TicketsPage() {
       if (Number.isFinite(baseQty as number) && (baseQty as number) > 0 && baseUnit) {
         updatePayload.contiene_cantidad = baseQty
         updatePayload.contiene_unidad = baseUnit
+        // Nivel 2 (opcional): cada baseUnit trae subQty subUnit.
+        if (Number.isFinite(subQty as number) && (subQty as number) > 0 && subUnit) {
+          updatePayload.contiene_sub_cantidad = subQty
+          updatePayload.contiene_sub_unidad = subUnit
+        } else {
+          updatePayload.contiene_sub_cantidad = null
+          updatePayload.contiene_sub_unidad = null
+        }
       }
       await supabase.from('catalogo_productos').update(updatePayload).eq('id', productoId)
     }
@@ -311,6 +323,8 @@ export default function TicketsPage() {
       synonymText: String(fd.get('sinonimos') ?? ''),
       baseQty: String(fd.get('baseQty') ?? ''),
       baseUnit: String(fd.get('baseUnit') ?? ''),
+      subQty: String(fd.get('subQty') ?? ''),
+      subUnit: String(fd.get('subUnit') ?? ''),
     })
     const necesita = !it.categoria_id || !it.unidad || !productoId
     const payload = {
@@ -561,13 +575,18 @@ export default function TicketsPage() {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
                         return (
                           <div className="rounded-lg bg-zinc-800/40 p-2 space-y-1.5">
-                            <p className="text-[11px] text-zinc-400">¿Esta presentación trae varias piezas? Dile cuántas: <span className="text-zinc-200">1 {it.unidad} = </span></p>
+                            <p className="text-[11px] text-zinc-400">¿Esta presentación trae varias piezas? <span className="text-zinc-200">1 {it.unidad} = </span></p>
                             <div className="grid grid-cols-2 gap-2">
-                              <input key={`bq-${it.producto_catalogo_id ?? 'new'}`} name="baseQty" type="number" inputMode="decimal" defaultValue={linked?.contiene_cantidad ?? ''} placeholder="cuántas (ej. 30)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              <input key={`bq-${it.producto_catalogo_id ?? 'new'}`} name="baseQty" type="number" inputMode="decimal" defaultValue={linked?.contiene_cantidad ?? ''} placeholder="cuántas (ej. 24)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                               <input key={`bu-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="baseUnit" defaultValue={linked?.contiene_unidad ?? ''} placeholder="de qué (ej. pz, huevo)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                             </div>
+                            <p className="text-[11px] text-zinc-500">Y opcional: cada pieza trae… (ej. cada media crema = 355 ml)</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input key={`sq-${it.producto_catalogo_id ?? 'new'}`} name="subQty" type="number" inputMode="decimal" defaultValue={linked?.contiene_sub_cantidad ?? ''} placeholder="cuánto c/u (ej. 355)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              <input key={`su-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="subUnit" defaultValue={linked?.contiene_sub_unidad ?? ''} placeholder="de qué (ej. ml)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                            </div>
                             {linked?.contiene_cantidad && linked?.contiene_unidad && (
-                              <p className="text-[11px] text-emerald-500/80">Guardado: 1 {it.unidad} = {linked.contiene_cantidad} {linked.contiene_unidad}</p>
+                              <p className="text-[11px] text-emerald-500/80">Guardado: 1 {it.unidad} = {linked.contiene_cantidad} {linked.contiene_unidad}{linked.contiene_sub_cantidad && linked.contiene_sub_unidad ? ` = ${(Number(linked.contiene_cantidad) * Number(linked.contiene_sub_cantidad)).toLocaleString('es-MX')} ${linked.contiene_sub_unidad}` : ''}</p>
                             )}
                           </div>
                         )

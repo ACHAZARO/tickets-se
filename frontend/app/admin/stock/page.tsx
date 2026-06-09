@@ -32,7 +32,7 @@ export default function StockPage() {
     setLoading(true)
     // Entradas: renglones CONFIRMADOS ligados a un producto del catalogo, en unidades base.
     let q = supabase.from('ticket_items')
-      .select('cantidad, unidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad), registros_tickets!inner(estado, sucursal_id)')
+      .select('cantidad, unidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado').not('producto_catalogo_id', 'is', null).limit(8000)
     if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
 
@@ -48,7 +48,7 @@ export default function StockPage() {
     }
 
     const map = new Map<string, Fila>()
-    for (const row of (data as unknown as Array<{ cantidad: number | null; unidad: string | null; producto_catalogo_id: string; catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ cantidad: number | null; unidad: string | null; producto_catalogo_id: string; catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null } | null }>) ?? []) {
       const prod = row.catalogo_productos
       if (!prod) continue
       const base = computeBaseUnits({
@@ -57,11 +57,13 @@ export default function StockPage() {
         purchaseUnit: (prod.unidad_default ?? row.unidad) || null,
         containsQuantity: prod.contiene_cantidad,
         containsUnit: prod.contiene_unidad,
+        subQuantity: prod.contiene_sub_cantidad,
+        subUnit: prod.contiene_sub_unidad,
       })
       if (!base) continue
-      // Unidad real: si hay equivalencia, la unidad contenida (ej. pz); si no, la unidad de compra (kg/lt).
+      // Unidad real: si hay equivalencia (1 o 2 niveles), su unidad mas granular; si no, la de compra.
       // El fallback "identity" de computeBaseUnits usa el nombre del producto: lo ignoramos como etiqueta.
-      let unidad = base.source === 'equivalence' ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
+      let unidad = base.source.startsWith('equivalence') ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
       // Dato sucio: si la "unidad" coincide con el nombre del producto, no es una unidad real.
       if (unidad && unidad.toLowerCase() === prod.nombre.toLowerCase()) unidad = null
       const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad }

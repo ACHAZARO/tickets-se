@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { computeBaseUnits, formatBaseUnits } from './units.mjs'
+import { computeBaseUnits, formatBaseUnits, unitViews } from './units.mjs'
 
 describe('computeBaseUnits', () => {
   it('uses explicit catalog equivalence when present', () => {
@@ -35,7 +35,40 @@ describe('computeBaseUnits', () => {
     })
   })
 
+  it('expands two-level equivalence to the most granular unit', () => {
+    // 2 caja, cada caja = 24 pz, cada pz = 355 ml -> 2*24*355 = 17040 ml
+    const result = computeBaseUnits({
+      productName: 'Caja medias crema',
+      quantity: 2,
+      purchaseUnit: 'caja',
+      containsQuantity: 24,
+      containsUnit: 'pz',
+      subQuantity: 355,
+      subUnit: 'ml',
+    })
+    assert.deepEqual(result, { quantity: 17040, unit: 'ml', source: 'equivalence2' })
+  })
+
   it('formats missing quantity as a review marker', () => {
     assert.equal(formatBaseUnits(null), 'Revisar')
+  })
+})
+
+describe('unitViews', () => {
+  it('returns caja, pieza and ml views for a two-level product', () => {
+    const views = unitViews({
+      productName: 'Caja medias crema',
+      quantity: 2,
+      purchaseUnit: 'caja',
+      containsQuantity: 24,
+      containsUnit: 'pz',
+      subQuantity: 355,
+      subUnit: 'ml',
+    })
+    assert.deepEqual(views, [
+      { quantity: 2, unit: 'caja' },
+      { quantity: 48, unit: 'pz' },
+      { quantity: 17040, unit: 'ml' },
+    ])
   })
 })

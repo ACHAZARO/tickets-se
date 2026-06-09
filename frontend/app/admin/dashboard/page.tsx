@@ -14,7 +14,7 @@ interface ItemRow {
   monto: number | null
   categoria_id: string | null
   categorias_gasto: { nombre: string } | null
-  catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null } | null
+  catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null } | null
   registros_tickets: { id: string; fecha_ticket: string | null; comercio: string | null } | null
 }
 interface CatAgg { id: string; nombre: string; gasto: number; operativo: boolean }
@@ -83,7 +83,7 @@ export default function DashboardPage() {
 
     // items confirmados en el rango
     let tq = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
       .gte('registros_tickets.fecha_ticket', inicio).lte('registros_tickets.fecha_ticket', fin)
     if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
@@ -134,6 +134,8 @@ export default function DashboardPage() {
         purchaseUnit: u,
         containsQuantity: t.catalogo_productos?.contiene_cantidad,
         containsUnit: t.catalogo_productos?.contiene_unidad,
+        subQuantity: t.catalogo_productos?.contiene_sub_cantidad,
+        subUnit: t.catalogo_productos?.contiene_sub_unidad,
       })
       if (base) {
         prev.base += base.quantity

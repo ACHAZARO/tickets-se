@@ -37,7 +37,7 @@ export default function EntradasPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
       .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta)
       .limit(8000)
@@ -45,7 +45,7 @@ export default function EntradasPage() {
     const { data } = await q
 
     const map = new Map<string, Fila>()
-    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null } | null }>) ?? []) {
       const nombre = (row.catalogo_productos?.nombre ?? row.descripcion ?? 'Sin nombre').trim()
       const key = nombre.toLowerCase()
       const f = map.get(key) ?? { nombre, categoria: null as string | null, veces: 0, cantidad: 0, unidad: null as string | null, unidadMixta: false, base: 0, baseUnidad: null as string | null, gasto: 0 }
@@ -62,6 +62,8 @@ export default function EntradasPage() {
         purchaseUnit: u,
         containsQuantity: row.catalogo_productos?.contiene_cantidad,
         containsUnit: row.catalogo_productos?.contiene_unidad,
+        subQuantity: row.catalogo_productos?.contiene_sub_cantidad,
+        subUnit: row.catalogo_productos?.contiene_sub_unidad,
       })
       if (base) {
         f.base += base.quantity
