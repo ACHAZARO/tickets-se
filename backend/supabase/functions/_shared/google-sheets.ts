@@ -161,7 +161,11 @@ export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> 
   const token = await getAccessToken(sa)
 
   const now = new Date()
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  // La pestana usa el MES DEL TICKET (fecha_ticket), no el mes actual, para que el
+  // gasto caiga en la pestana correcta aunque se confirme despues.
+  const yearMonth = (registro.fecha_ticket && /^\d{4}-\d{2}/.test(registro.fecha_ticket))
+    ? registro.fecha_ticket.slice(0, 7)
+    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const tabName = `${registro.sucursal_nombre} ${yearMonth}`
 
   await ensureSheetTab(spreadsheetId, token, tabName)

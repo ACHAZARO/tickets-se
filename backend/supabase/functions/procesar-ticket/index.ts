@@ -313,9 +313,15 @@ async function procesarEnSegundoPlano(opts: {
       itemsToInsert[0].monto = montoTotal
     }
 
-    await supabase.from('ticket_items').insert(
+    const { error: itemsErr } = await supabase.from('ticket_items').insert(
       itemsToInsert.map(({ categoria_nombre: _omit, ...rest }) => rest)
     )
+    if (itemsErr) {
+      // No auto-confirmar un ticket sin renglones: marcar para revision.
+      console.error('ticket_items insert:', itemsErr)
+      await createAlert(supabase, registroId, 'ilegible')
+      return
+    }
 
     for (const pid of matchedIds) {
       const prod = catalog.products.find(p => p.id === pid)
@@ -447,7 +453,8 @@ serve(async (req: Request) => {
     // Duplicado exacto por hash: queda registrado como rechazado para auditoria
     // en Tickets, no desaparece del flujo del admin.
     const { data: existing } = await supabase.from('registros_tickets')
-      .select('id').eq('hash_imagen', hashImagen).maybeSingle()
+      .select('id').eq('hash_imagen', hashImagen).neq('estado', 'rechazado')
+      .order('created_at', { ascending: true }).limit(1).maybeSingle()
     if (existing) {
       const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_dup.${extension}`
       await supabase.storage.from('por-revisar').upload(dupPath, imageBytes, { contentType: mime, upsert: false })

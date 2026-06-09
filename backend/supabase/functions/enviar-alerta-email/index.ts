@@ -18,6 +18,15 @@ serve(async (req: Request) => {
   }
 
   try {
+    // Interno: solo se invoca desde procesar-ticket con el service role key.
+    // Cierra el endpoint a llamadas externas (filtraba datos del ticket / spam).
+    const auth = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
+    if (auth !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+      return new Response(JSON.stringify({ error: 'No autorizado' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const { registro_ticket_id, tipo } = await req.json()
 
     if (!ALERT_TYPES_EMAIL.includes(tipo)) {

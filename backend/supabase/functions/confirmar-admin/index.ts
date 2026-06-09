@@ -5,9 +5,19 @@ import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 
 // Confirma un ticket revisado por el ADMIN: archiva la imagen, manda 1 fila por
 // item a Google Sheets y pone estado=confirmado (para que entre al arqueo).
-// verify_jwt=true -> el gateway de Supabase valida el JWT del admin (Supabase Auth).
+// AUTORIZACION: verify_jwt del gateway NO basta (la anon key publica tambien pasa).
+// Validamos en codigo que el caller sea un admin real (admin_users).
 // deno-lint-ignore no-explicit-any
 type SB = any
+
+async function requireAdmin(supabase: SB, req: Request): Promise<boolean> {
+  const token = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
+  if (!token) return false
+  const { data: { user } } = await supabase.auth.getUser(token)
+  if (!user) return false
+  const { data } = await supabase.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle()
+  return !!data
+}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -23,6 +33,8 @@ serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
+
+    if (!(await requireAdmin(supabase, req))) return json({ error: 'No autorizado' }, 401)
 
     const { data: reg } = await supabase.from('registros_tickets')
       .select('id, estado, storage_path_original, storage_path_archivo, sucursal_id, empleado_id, fecha_ticket, folio_ticket, comercio')

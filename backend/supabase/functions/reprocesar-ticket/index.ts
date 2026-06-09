@@ -78,6 +78,15 @@ async function createAlert(supabase: SB, registroId: string, tipo: string): Prom
   await supabase.from('alertas_tickets').insert({ registro_ticket_id: registroId, tipo })
 }
 
+async function requireAdmin(supabase: SB, req: Request): Promise<boolean> {
+  const token = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
+  if (!token) return false
+  const { data: { user } } = await supabase.auth.getUser(token)
+  if (!user) return false
+  const { data } = await supabase.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle()
+  return !!data
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   const json = (body: unknown, status = 200) =>
@@ -89,6 +98,7 @@ serve(async (req: Request) => {
     if (!registro_id) return json({ error: 'registro_id requerido' }, 400)
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    if (!(await requireAdmin(supabase, req))) return json({ error: 'No autorizado' }, 401)
     const { data: reg } = await supabase.from('registros_tickets')
       .select('id, sucursal_id, storage_path_original, storage_path_archivo')
       .eq('id', registro_id).maybeSingle()
@@ -108,6 +118,10 @@ serve(async (req: Request) => {
     }, prompt(buildCatalogPromptContext(catalog)))
 
     const rawItems = (Array.isArray(datos.items) ? datos.items : []).filter(it => it && (it.descripcion || it.monto != null))
+    // No destruir los renglones existentes si la IA no devolvio nada util (falla total).
+    if (rawItems.length === 0 && datos.confianza === 'baja') {
+      return json({ error: 'La IA no pudo releer el ticket. No se cambio nada; intenta de nuevo.' }, 422)
+    }
     const montoTotal = datos.monto_total ?? (rawItems.length ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null : null)
     const hoy = new Date().toISOString().slice(0, 10)
     const fechaValida = !!(datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha))
