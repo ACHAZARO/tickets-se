@@ -157,6 +157,23 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
 
+## Cambios 2026-06-09 — UI/UX (navegación en vivo) + features
+Auditoría visual del panel logueado y mejoras implementadas/desplegadas:
+- **Triaje en Tickets**: chips con conteo (Todos/Pendientes/Con alerta/Confirmados) para filtrar rápido.
+- **Toasts + modal de confirmación** (`app/admin/ui.tsx`, `AdminUIProvider`): reemplazan TODOS los
+  `alert()/confirm()` nativos en tickets, catalogo, cerebro, comercios, sucursales.
+- **Zoom de miniatura** al pasar el mouse en la lista de Tickets.
+- **Tablas**: scroll horizontal solo en móvil (`md:min-w-0`), sin scrollbar en escritorio.
+- **Kiosko**: detecta sesión expirada (401) y redirige a re-ingresar el PIN.
+- **confirmar-admin v4**: confirmación ATÓMICA (claim) — un solo request manda a Sheets (no duplica fila).
+- **Nueva pantalla Stock** (`/admin/stock`): existencias = entradas (confirmadas, en unidad base por
+  equivalencia) − consumo (`consumo_inventario`); registro de consumo por producto.
+- Limpieza previa: páginas `alertas` legacy eliminadas. `categorias` = redirect a catalogo (se queda).
+- **Cabos deliberadamente NO tocados (documentados, sin riesgo)**: `ventas`/`objetivos` son features
+  reales no enlazadas en nav (no se borran para no perder trabajo); el bloque "review/confirming" del
+  kiosko (`subir`) y la edge `confirmar-ticket` son código muerto pero en el camino crítico del cliente,
+  se dejan intactos. La lectura "Ilegible" de tickets manuscritos/borrosos es inherente a la imagen.
+
 ## Cambios 2026-06-08 (b) — auditoría + endurecimiento de seguridad
 Auditoría multi-agente (32 hallazgos confirmados). Arreglado lo crítico:
 - **SEGURIDAD (RLS, mig 023)**: todas las tablas pasaron de "cualquier authenticated" a
