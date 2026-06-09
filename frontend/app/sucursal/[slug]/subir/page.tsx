@@ -8,24 +8,7 @@ interface PageProps {
   params: { slug: string }
 }
 
-interface TicketItem {
-  descripcion: string | null
-  cantidad: number | null
-  unidad: string | null
-  monto: number | null
-  necesita_revision?: boolean
-}
-
-interface TicketData {
-  fecha: string | null
-  comercio: string | null
-  folio_ticket: string | null
-  monto_total: number | null
-  confianza: string | null
-  items: TicketItem[]
-}
-
-type UploadState = 'idle' | 'preview' | 'processing' | 'review' | 'confirming' | 'done' | 'error'
+type UploadState = 'idle' | 'preview' | 'processing' | 'done' | 'error'
 
 const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
 
@@ -64,11 +47,9 @@ export default function SubirPage({ params }: PageProps) {
   const [duplicadas, setDuplicadas] = useState(0)
   const [fallidas, setFallidas] = useState(0)
   const [progreso, setProgreso] = useState({ actual: 0, total: 0 })
-  const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
-  const [registroId, setRegistroId] = useState<string | null>(null)
 
   // Guard: verify session exists
   useEffect(() => {
@@ -104,7 +85,6 @@ export default function SubirPage({ params }: PageProps) {
 
     setImageFiles(files)
     setImageFile(files[0])
-    setTicketData(null)
     setErrorMsg('')
 
     const reader = new FileReader()
@@ -198,32 +178,6 @@ export default function SubirPage({ params }: PageProps) {
     }
   }, [imageFile, imageFiles, sessionToken, slug, router])
 
-  const handleConfirm = useCallback(async () => {
-    if (!registroId) return
-    setState('confirming')
-
-    try {
-      const res = await fetch(`${EDGE_FUNCTIONS_URL}/confirmar-ticket`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
-        body: JSON.stringify({ registro_id: registroId }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al confirmar el ticket')
-      }
-
-      setState('done')
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Error al confirmar')
-      setState('error')
-    }
-  }, [registroId, sessionToken])
-
   const handleDiscard = useCallback(() => {
     setImageFile(null)
     setImageFiles([])
@@ -232,7 +186,6 @@ export default function SubirPage({ params }: PageProps) {
     setFallidas(0)
     setProgreso({ actual: 0, total: 0 })
     setImagePreview(null)
-    setTicketData(null)
     setErrorMsg('')
     setState('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -241,7 +194,6 @@ export default function SubirPage({ params }: PageProps) {
   const handleNewTicket = useCallback(() => {
     handleDiscard()
     // Restore session for another ticket
-    setRegistroId(null)
     const session = sessionStorage.getItem(`auth_${slug}`)
     if (!session && empleadoId) {
       sessionStorage.setItem(
@@ -415,101 +367,6 @@ export default function SubirPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* REVIEW: show extracted data */}
-      {(state === 'review' || state === 'confirming') && ticketData && (
-        <div className="flex flex-1 flex-col gap-4">
-          {/* Thumbnail */}
-          {imagePreview && (
-            <div className="relative h-28 w-full overflow-hidden rounded-xl bg-zinc-900">
-              <Image
-                src={imagePreview}
-                alt="Ticket"
-                fill
-                className="object-cover opacity-70"
-                unoptimized
-              />
-            </div>
-          )}
-
-          {/* Extracted data */}
-          <div className="rounded-2xl bg-zinc-900 p-4">
-            <p className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">
-              Datos extraídos por IA
-            </p>
-            <dl className="space-y-3">
-              <DataRow label="Comercio" value={ticketData.comercio} />
-              <DataRow label="Fecha" value={ticketData.fecha} />
-              <DataRow label="Folio" value={ticketData.folio_ticket} />
-              <DataRow
-                label="Total"
-                value={
-                  ticketData.monto_total != null
-                    ? `$ ${ticketData.monto_total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
-                    : null
-                }
-              />
-            </dl>
-          </div>
-
-          {/* Items */}
-          <div className="rounded-2xl bg-zinc-900 p-4">
-            <p className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">
-              Productos ({ticketData.items?.length ?? 0})
-            </p>
-            {(!ticketData.items || ticketData.items.length === 0) ? (
-              <p className="text-sm text-zinc-500">No se detectaron productos.</p>
-            ) : (
-              <ul className="divide-y divide-zinc-800/60">
-                {ticketData.items.map((it, i) => (
-                  <li key={i} className="flex items-start justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-sm text-zinc-100 truncate">{it.descripcion ?? 'Producto'}</p>
-                      <p className="text-xs text-zinc-500">
-                        {it.cantidad ?? ''} {it.unidad ?? ''}
-                        {it.necesita_revision && <span className="ml-1 text-amber-400">· por revisar</span>}
-                      </p>
-                    </div>
-                    <span className="text-sm text-zinc-300 whitespace-nowrap">
-                      {it.monto != null ? `$ ${Number(it.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {ticketData.confianza === 'baja' && (
-              <p className="mt-3 text-xs text-amber-400">La IA tuvo baja confianza; el admin revisará este ticket.</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 mt-auto">
-            <button
-              onClick={handleConfirm}
-              disabled={state === 'confirming'}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-100 py-4 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98] disabled:opacity-60"
-            >
-              {state === 'confirming' ? (
-                <>
-                  <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                  Guardando...
-                </>
-              ) : (
-                'Confirmar y guardar'
-              )}
-            </button>
-            <button
-              onClick={handleDiscard}
-              disabled={state === 'confirming'}
-              className="w-full rounded-2xl bg-zinc-800 py-4 text-base font-medium text-zinc-300 transition-transform active:scale-[0.98] disabled:opacity-60"
-            >
-              Descartar
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ERROR state */}
       {state === 'error' && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
@@ -538,16 +395,5 @@ export default function SubirPage({ params }: PageProps) {
         </div>
       )}
     </main>
-  )
-}
-
-function DataRow({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <dt className="min-w-[90px] text-sm text-zinc-500">{label}</dt>
-      <dd className="text-right text-sm font-medium text-zinc-100">
-        {value ?? <span className="text-zinc-600 italic">No detectado</span>}
-      </dd>
-    </div>
   )
 }
