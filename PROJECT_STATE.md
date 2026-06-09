@@ -157,6 +157,24 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
 
+## Cambios 2026-06-08 (b) — auditoría + endurecimiento de seguridad
+Auditoría multi-agente (32 hallazgos confirmados). Arreglado lo crítico:
+- **SEGURIDAD (RLS, mig 023)**: todas las tablas pasaron de "cualquier authenticated" a
+  `public.is_admin()` (allowlist `admin_users`). Cierra acceso cross-sucursal y el riesgo de
+  signup público. Lectura pública solo de `sucursales` activas (kiosko).
+- **RPCs (mig 024)**: `verificar_pin`/`limpiar_imagenes` solo service_role; `ligar_huerfano`
+  exige admin y sin anon.
+- **Edge functions service_role**: validan admin REAL en código (verify_jwt del gateway NO basta,
+  la anon key pública pasaba). confirmar-admin v3, reprocesar-ticket v2. enviar-alerta-email v3
+  exige el service role key. procesar-ticket v27 (insert con check, dedup robusto, Sheets mes del ticket).
+- reprocesar-ticket: ya NO borra renglones si la IA falla.
+- Frontend: login→/admin/tickets; nav móvil scrollable; borrar categoría reasigna objetivos_costo;
+  reintentarIA trae ticket fresco; error de carga visible.
+- **PENDIENTE MANUAL (Dashboard Supabase)**: deshabilitar "Allow new users to sign up" en
+  Authentication (no se puede por código/MCP). La RLS admin-only ya mitiga, pero conviene cerrarlo.
+- Nota auto-aprendizaje: desde v26 (Codex) procesar-ticket YA NO auto-aprende productos desde IA
+  (una lectura mala contaminaba el catálogo); los productos nuevos se enseñan manual en Tickets.
+
 ## Cambios 2026-06-08 — sync Codex + deploys
 - Codex unifico la revision en `/admin/tickets` (commit 39e259d): editor inline, `reprocesar-ticket`
   (releer con IA), `lib/units.mjs` (+tests, pasan), migracion 022 (tipos de alerta).

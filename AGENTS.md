@@ -27,8 +27,19 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 - Estado de edge functions desplegadas: verificar-pin v9, procesar-ticket **v26**, confirmar-ticket v11, confirmar-admin v2, enviar-alerta-email v2, reprocesar-ticket **v1**.
 - Migraciones aplicadas en la nube: 001–020, **022** (021 Descuentos se aplico por SQL directo: categoria+producto "Descuentos" ya existen).
 
+- 2026-06-08 (b) (Claude): auditoría multi-agente + endurecimiento de seguridad. Migraciones 023
+  (RLS admin-only via `admin_users`/`is_admin()`) y 024 (grants de RPC) aplicadas. Edge functions
+  redeployadas con auth real de admin: procesar-ticket **v27**, confirmar-admin **v3**,
+  reprocesar-ticket **v2**, enviar-alerta-email **v3**. NOTA para Codex: las edge functions con
+  service_role deben validar admin en código con `requireAdmin()` (auth.getUser + admin_users);
+  NO confiar en verify_jwt. Si agregas un admin nuevo, insértalo en `admin_users`.
+
 ### PENDIENTE DEPLOY (Claude)
 - (sin pendientes)
+
+### PENDIENTE MANUAL (Alejandro, en Supabase Dashboard)
+- Authentication > Sign In/Providers: **deshabilitar "Allow new users to sign up"** (no se puede por
+  código/MCP). La RLS ya es admin-only, pero esto cierra el registro anónimo del todo.
 
 ## Stack
 - **Frontend**: Next.js 14 (Vercel), optimizado para movil + panel `/admin`
