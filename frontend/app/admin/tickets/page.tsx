@@ -109,6 +109,7 @@ export default function TicketsPage() {
   const [comercioFiltro, setComercioFiltro] = useState('')
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
+  const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let q = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
@@ -342,6 +343,9 @@ export default function TicketsPage() {
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, monto: sumItems(currentItems) }, items: currentItems } : d)
     setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
     setBusy(null)
+    // Feedback visible: que SE NOTE que se guardo el renglon.
+    setSavedFlash(prev => ({ ...prev, [savedId]: true }))
+    setTimeout(() => setSavedFlash(prev => { const n = { ...prev }; delete n[savedId]; return n }), 2500)
   }
 
   async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
@@ -512,7 +516,10 @@ export default function TicketsPage() {
                           <input name="baseUnit" placeholder="de que unidad base (ej. Cerveza XX 355ml)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                         </div>
                       )}
-                      <button type="submit" disabled={busy === it.id} className="w-full rounded-lg bg-zinc-700 py-2 text-sm font-medium text-zinc-100 disabled:opacity-60">{busy === it.id ? 'Guardando...' : 'Guardar y ensenar'}</button>
+                      <div className="flex items-center gap-2">
+                        <button type="submit" disabled={busy === it.id} className={`flex-1 rounded-lg py-2 text-sm font-medium text-zinc-100 disabled:opacity-60 transition-colors ${savedFlash[it.id] ? 'bg-emerald-700' : 'bg-zinc-700 hover:bg-zinc-600'}`}>{busy === it.id ? 'Guardando...' : savedFlash[it.id] ? '✓ Guardado' : 'Guardar y ensenar'}</button>
+                        {savedFlash[it.id] && <span className="text-sm text-emerald-400 font-medium whitespace-nowrap">✓ Guardado</span>}
+                      </div>
                     </form>
                   ) : (
                     <div key={it.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-800/50 px-3 py-2 text-sm">
