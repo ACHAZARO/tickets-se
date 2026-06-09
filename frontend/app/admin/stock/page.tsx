@@ -61,7 +61,9 @@ export default function StockPage() {
       if (!base) continue
       // Unidad real: si hay equivalencia, la unidad contenida (ej. pz); si no, la unidad de compra (kg/lt).
       // El fallback "identity" de computeBaseUnits usa el nombre del producto: lo ignoramos como etiqueta.
-      const unidad = base.source === 'equivalence' ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
+      let unidad = base.source === 'equivalence' ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
+      // Dato sucio: si la "unidad" coincide con el nombre del producto, no es una unidad real.
+      if (unidad && unidad.toLowerCase() === prod.nombre.toLowerCase()) unidad = null
       const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad }
       f.entradas += base.quantity
       if (unidad && f.baseUnidad && f.baseUnidad !== unidad) f.baseUnidad = 'mixta'
