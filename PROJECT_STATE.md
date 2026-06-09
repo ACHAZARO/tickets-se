@@ -168,11 +168,14 @@ Auditoría visual del panel logueado y mejoras implementadas/desplegadas:
 - **confirmar-admin v4**: confirmación ATÓMICA (claim) — un solo request manda a Sheets (no duplica fila).
 - **Nueva pantalla Stock** (`/admin/stock`): existencias = entradas (confirmadas, en unidad base por
   equivalencia) − consumo (`consumo_inventario`); registro de consumo por producto.
-- Limpieza previa: páginas `alertas` legacy eliminadas. `categorias` = redirect a catalogo (se queda).
-- **Cabos deliberadamente NO tocados (documentados, sin riesgo)**: `ventas`/`objetivos` son features
-  reales no enlazadas en nav (no se borran para no perder trabajo); el bloque "review/confirming" del
-  kiosko (`subir`) y la edge `confirmar-ticket` son código muerto pero en el camino crítico del cliente,
-  se dejan intactos. La lectura "Ilegible" de tickets manuscritos/borrosos es inherente a la imagen.
+- Limpieza: páginas `alertas`, `ventas` y `objetivos` legacy eliminadas. `categorias` = redirect a catalogo.
+- **Kiosko (`subir`) pulido**: eliminado el bloque "review/confirming" muerto (~130 líneas inalcanzables:
+  `handleConfirm`/`confirmar-ticket`, `ticketData`, `DataRow`, estados review/confirming). El flujo vivo
+  (idle→preview→processing→done/error) quedó intacto y verificado en vivo (redirige a PIN sin sesión).
+- **PENDIENTE MANUAL (opcional, Alejandro)**: la edge function `confirmar-ticket` quedó huérfana (ya nada
+  la llama). El MCP no puede borrar edge functions; si quieres, elimínala en Supabase Dashboard >
+  Edge Functions > confirmar-ticket. Es inofensiva (gateada por JWT de sesión) si se deja.
+- La lectura "Ilegible" de tickets manuscritos/borrosos es inherente a la imagen, no a un defecto de código.
 
 ## Cambios 2026-06-08 (b) — auditoría + endurecimiento de seguridad
 Auditoría multi-agente (32 hallazgos confirmados). Arreglado lo crítico:
