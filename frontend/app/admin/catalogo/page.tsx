@@ -19,7 +19,7 @@ interface Producto {
   contiene_unidad: string | null
 }
 
-const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
+const UNIDADES = ['pz', 'kg', 'g', 'ml', 'lt', 'caja', 'bulto', 'paquete', 'cono', 'charola', 'costal', 'reja', 'rollo', 'galon', 'six', 'docena', 'atado', 'manojo', 'otro']
 
 export default function CatalogoPage() {
   const { sucursalId } = useSucursal()
@@ -157,6 +157,7 @@ export default function CatalogoPage() {
 
   return (
     <div className="space-y-6">
+      <datalist id="unidades-catalogo">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
       <div>
         <h2 className="text-xl font-semibold text-zinc-100">Catálogo y categorías</h2>
         <p className="text-sm text-zinc-500 mt-1">
@@ -209,11 +210,9 @@ export default function CatalogoPage() {
                   <input value={addProd.sinonimos} onChange={e => setAddProd({ ...addProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. barilla, espagueti)"
                     className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
                   <div className="flex gap-2">
-                    <select value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
-                      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
-                      <option value="">Unidad</option>
-                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
+                    <input list="unidades-catalogo" value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
+                      placeholder="Unidad (cono, caja, pz...)"
+                      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                     <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
                       className="flex-1 rounded-lg bg-zinc-100 py-1.5 text-sm font-semibold text-zinc-900 disabled:opacity-50">Guardar</button>
                     <button onClick={() => setAddProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
@@ -263,11 +262,9 @@ export default function CatalogoPage() {
                               placeholder="de qué (ej. huevos)" className="w-1/2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                           </div>
                           <div className="flex gap-2">
-                            <select value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
-                              className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
-                              <option value="">Unidad</option>
-                              {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                            </select>
+                            <input list="unidades-catalogo" value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
+                              placeholder="Unidad (cono, caja, pz...)"
+                              className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                             <button onClick={guardarEdicion} className="flex-1 rounded-lg bg-zinc-100 py-1.5 text-sm font-semibold text-zinc-900">Guardar</button>
                             <button onClick={() => setEditProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
                           </div>

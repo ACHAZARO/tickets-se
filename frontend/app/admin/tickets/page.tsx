@@ -42,8 +42,10 @@ interface Ticket {
 }
 interface AlertRow { registro_ticket_id: string; tipo: string; resuelta: boolean }
 
-const UNIDADES = ['kg', 'g', 'pz', 'ml', 'lt', 'caja', 'bulto', 'rollo', 'paquete', 'galon', 'otro']
-const CONTENEDORES = new Set(['caja', 'bulto', 'paquete', 'rollo', 'galon'])
+const UNIDADES = ['pz', 'kg', 'g', 'ml', 'lt', 'caja', 'bulto', 'paquete', 'cono', 'charola', 'costal', 'reja', 'rollo', 'galon', 'six', 'docena', 'atado', 'manojo', 'otro']
+// Unidades "simples": no necesitan equivalencia (1 kg ya es base). Cualquier OTRA
+// unidad (caja, cono, charola, costal, otro...) puede traer N piezas -> mostramos equivalencia.
+const BASE_UNIDADES = new Set(['pz', 'kg', 'g', 'ml', 'lt'])
 
 const ESTADO_COLOR: Record<string, string> = {
   confirmado: 'bg-emerald-900/40 text-emerald-400',
@@ -499,6 +501,7 @@ export default function TicketsPage() {
       {detalle && (
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-black/60 p-0 lg:p-4" onClick={() => setDetalle(null)}>
           <div className="w-full lg:max-w-6xl rounded-t-2xl lg:rounded-2xl bg-zinc-900 border border-zinc-800 p-5 max-h-[94dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <datalist id="unidades-tickets">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
@@ -544,9 +547,7 @@ export default function TicketsPage() {
                       {originalDesc[it.id] && originalDesc[it.id] !== it.descripcion && <p className="text-[11px] text-zinc-500">Leido originalmente: {originalDesc[it.id]}</p>}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="cantidad" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
-                        <select value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
-                          <option value="">Unidad</option>{UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                        </select>
+                        <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="Unidad (cono, caja, pz...)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                         <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="precio" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
                         <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="md:col-span-2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
                           <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -556,12 +557,21 @@ export default function TicketsPage() {
                         <option value="">Crear/ligar por nombre al guardar</option>{catalogo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                       </select>
                       <input name="sinonimos" placeholder="Sinonimos/codigos adicionales separados por coma" className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                      {CONTENEDORES.has(it.unidad ?? '') && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <input name="baseQty" type="number" inputMode="decimal" placeholder={`1 ${it.unidad} contiene cuantos`} className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                          <input name="baseUnit" placeholder="de que unidad base (ej. Cerveza XX 355ml)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                        </div>
-                      )}
+                      {it.unidad && !BASE_UNIDADES.has(it.unidad) && (() => {
+                        const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
+                        return (
+                          <div className="rounded-lg bg-zinc-800/40 p-2 space-y-1.5">
+                            <p className="text-[11px] text-zinc-400">¿Esta presentación trae varias piezas? Dile cuántas: <span className="text-zinc-200">1 {it.unidad} = </span></p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input key={`bq-${it.producto_catalogo_id ?? 'new'}`} name="baseQty" type="number" inputMode="decimal" defaultValue={linked?.contiene_cantidad ?? ''} placeholder="cuántas (ej. 30)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              <input key={`bu-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="baseUnit" defaultValue={linked?.contiene_unidad ?? ''} placeholder="de qué (ej. pz, huevo)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                            </div>
+                            {linked?.contiene_cantidad && linked?.contiene_unidad && (
+                              <p className="text-[11px] text-emerald-500/80">Guardado: 1 {it.unidad} = {linked.contiene_cantidad} {linked.contiene_unidad}</p>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <div className="flex items-center gap-2">
                         <button type="submit" disabled={busy === it.id} className={`flex-1 rounded-lg py-2 text-sm font-medium text-zinc-100 disabled:opacity-60 transition-colors ${savedFlash[it.id] ? 'bg-emerald-700' : 'bg-zinc-700 hover:bg-zinc-600'}`}>{busy === it.id ? 'Guardando...' : savedFlash[it.id] ? '✓ Guardado' : 'Guardar y ensenar'}</button>
                         {savedFlash[it.id] && <span className="text-sm text-emerald-400 font-medium whitespace-nowrap">✓ Guardado</span>}
