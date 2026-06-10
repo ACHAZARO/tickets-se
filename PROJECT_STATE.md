@@ -167,6 +167,13 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   monto atípico (total sobre promedio del comercio). origen = manual/auto/ia.
 - Migración **026** (`sospechoso`, `sospecha_motivo`/`origen`/`grupo`/`estado`), aplicada por MCP.
 - Futuro (anotado por Alejandro): ligar al POS para detectar "se compró 2 veces y no había salido".
+- **Fix 2026-06-10 (detección)**: el escáner solo miraba confirmados y aplicaba la ventana al rango
+  completo del grupo (un ticket viejo lo mataba). Ahora incluye **pendientes**, agrupa por **cercanía
+  de fecha (clusters)** y **particiona por sucursal**; corre también en "Todas". Verificado contra datos
+  reales (p.ej. Cervezas y Refrescos 05-28 $542 vs 05-29 $606).
+- **Unidades pieza vs volumen**: las bebidas de 355ml se cuentan **por pieza** (caja → N pz, sin nivel ml);
+  solo lo que se sirve (2L, salsas, gasolina) va en volumen. Corregidos en catálogo: mineral 24/.355L,
+  Bohemia CRISTAL (tenía unidad "ML"), CC lata 12pk. Clamato 2.5L se dejó en volumen (se sirve).
 
 ## Cambios 2026-06-09 (b) — kiosko, equivalencias y rendimiento
 - **Pantalla de PIN (kiosko) rehecha mobile-first**: columna centrada y compacta (antes `justify-between`
