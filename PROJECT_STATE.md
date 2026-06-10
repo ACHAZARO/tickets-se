@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-06-08.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-06-09.
 
 ## Coordinacion Claude + Codex
 - `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.
@@ -156,6 +156,27 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
+## Cambios 2026-06-09 (b) — kiosko, equivalencias y rendimiento
+- **Pantalla de PIN (kiosko) rehecha mobile-first**: columna centrada y compacta (antes `justify-between`
+  dejaba huecos enormes en pantallas altas), teclado de botones cuadrados, altura reservada para el error.
+- **Kiosko `subir` pulido**: eliminado el bloque "review/confirming" muerto (~130 líneas inalcanzables).
+  La edge `confirmar-ticket` quedó huérfana (borrar opcional en Dashboard; el MCP no borra edge functions).
+- **Páginas huérfanas eliminadas**: `ventas`, `objetivos` (confirmado por Alejandro). `categorias` = redirect.
+- **Equivalencias — fix raíz**: la unidad era una lista cerrada (sin "cono") y los inputs de equivalencia
+  estaban gateados a 5 contenedores. Ahora la unidad es **texto libre con sugerencias** (datalist) en
+  tickets y catálogo, y la equivalencia se muestra para CUALQUIER unidad no-base.
+- **Equivalencia de DOS niveles** (migración 025, columnas `contiene_sub_cantidad`/`contiene_sub_unidad`):
+  "1 caja = 24 pz, y cada pz = 355 ml" → cadena completa. `units.mjs`: `computeBaseUnits` expande 2 niveles
+  a la unidad más granular + nuevo `unitViews()` (caja/pz/ml). Tests 5/5. Config con preview en tickets y catálogo.
+- **Stock multi-unidad**: cuando hay equivalencia muestra "Disponible: 1 caja · 24 pz · 8,520 ml".
+- **Rendimiento del modal de tickets**:
+  - Imagen redimensionada vía transform de Supabase Storage (1400px/q72) en vez del original de MB.
+    Miniaturas de lista con `loading=lazy`.
+  - Selector de producto por renglón = **buscador con `<datalist>` compartido** (antes cada renglón era un
+    `<select>` con todo el catálogo → miles de `<option>`). Liga por nombre exacto o crea por nombre al guardar.
+- **Limitación de verificación**: el screenshot del Chrome MCP se cuelga en esta app (websocket/realtime deja
+  el `document_idle` abierto). Verificado por build + tests + migración; lista de tickets confirmada viva por DOM.
 
 ## Cambios 2026-06-09 — UI/UX (navegación en vivo) + features
 Auditoría visual del panel logueado y mejoras implementadas/desplegadas:

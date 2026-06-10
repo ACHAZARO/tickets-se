@@ -34,6 +34,19 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
   service_role deben validar admin en código con `requireAdmin()` (auth.getUser + admin_users);
   NO confiar en verify_jwt. Si agregas un admin nuevo, insértalo en `admin_users`.
 
+- 2026-06-09 (Claude): sprint de pulido + features (todo desplegado en `main`).
+  - Kiosko: pantalla de PIN rehecha mobile-first; eliminado bloque "review/confirming" muerto en `subir`.
+  - **Equivalencias**: unidad ahora es texto libre (datalist) en tickets y catálogo; equivalencia visible
+    para cualquier unidad no-base. **Dos niveles** (caja→pz→ml): migración **025** aplicada por MCP
+    (`contiene_sub_cantidad`/`contiene_sub_unidad`). `units.mjs`: `computeBaseUnits` 2 niveles + `unitViews()`.
+  - Stock: vista multi-unidad ("1 caja · 24 pz · 8,520 ml").
+  - Rendimiento del modal de Tickets: imagen redimensionada vía transform de Storage + lazy thumbnails;
+    selector de producto por renglón cambiado de `<select>` (todo el catálogo × renglón) a **buscador con
+    `<datalist>` compartido**. NOTA Codex: el renglón liga por nombre exacto del catálogo (o crea por nombre al guardar).
+  - `confirmar-admin` -> **v4** (confirmación atómica/claim para no duplicar fila en Sheets).
+  - Edge `confirmar-ticket` quedó huérfana (ya nada la llama); borrar opcional en Dashboard.
+  - OJO numeración: en repo `023`=RLS y `024`=grants ya existían; la equivalencia quedó como **025**.
+
 ### PENDIENTE DEPLOY (Claude)
 - (sin pendientes)
 

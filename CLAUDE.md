@@ -296,7 +296,7 @@ cd frontend && npx vercel --prod
 
 ---
 
-## Migraciones aplicadas (001–022)
+## Migraciones aplicadas (001–025)
 - `001` schema base (sucursales, empleados, registros_tickets, verificar_pin)
 - `002` fix search_path pgcrypto · `003` tablas backoffice · `004` columnas registros · `005` seed categorias
 - `006` auth/RLS admin · `007` RLS read empleados · `008` ventas + objetivos_costo
@@ -307,6 +307,8 @@ cd frontend && npx vercel --prod
 - `017` cerebro/huerfanos + RPC ligar_huerfano · `018` precios/equivalencias
 - `019` consumo_inventario · `020` backfill productos en limbo · `021` descuentos
 - `022` tipos de alerta para flujo unificado en Tickets (`sin_fecha`, `precio_anomalo`)
+- `023` RLS admin-only (`admin_users`/`is_admin()`) · `024` grants de RPC (hardening)
+- `025` equivalencia 2 niveles (`contiene_sub_cantidad`/`contiene_sub_unidad`): caja → pz → ml
 
 ---
 
