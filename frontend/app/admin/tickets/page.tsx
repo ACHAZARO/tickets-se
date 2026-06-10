@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { toCanonical } from '@/lib/units.mjs'
 import { useToast, useConfirm } from '../ui'
 
 interface Item {
@@ -596,7 +597,7 @@ export default function TicketsPage() {
                         placeholder="Buscar producto del catálogo… (si no, se crea por nombre al guardar)"
                         className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                       <input name="sinonimos" placeholder="Sinonimos/codigos adicionales separados por coma" className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                      {it.unidad && !BASE_UNIDADES.has(it.unidad) && (() => {
+                      {it.unidad && !BASE_UNIDADES.has(it.unidad) && !toCanonical(1, it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
                         return (
                           <div className="rounded-lg bg-zinc-800/40 p-2 space-y-1.5">

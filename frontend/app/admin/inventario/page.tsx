@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
-import { computeBaseUnits, formatBaseUnits } from '@/lib/units.mjs'
+import { computeBaseUnits, formatBaseUnits, pretty } from '@/lib/units.mjs'
 
 interface Fila {
   nombre: string
@@ -143,7 +143,7 @@ export default function EntradasPage() {
                   <td className="px-4 py-2.5 text-zinc-500">{f.categoria ?? '—'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.veces}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.cantidad > 0 ? `${num(f.cantidad)}${f.unidadMixta ? '' : f.unidad ? ' ' + f.unidad : ''}` : '—'}</td>
-                  <td className="px-4 py-2.5 text-right text-zinc-300">{f.base > 0 && f.baseUnidad ? formatBaseUnits({ quantity: f.base, unit: f.baseUnidad, source: 'identity' }) : 'Revisar'}</td>
+                  <td className="px-4 py-2.5 text-right text-zinc-300">{f.base > 0 && f.baseUnidad ? formatBaseUnits({ ...pretty(f.base, f.baseUnidad), source: 'identity' }) : 'Revisar'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-300">{money(f.gasto)}</td>
                 </tr>
               ))}

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { rangoDeMes } from '@/lib/arqueo'
-import { computeBaseUnits } from '@/lib/units.mjs'
+import { computeBaseUnits, pretty } from '@/lib/units.mjs'
 import type { TicketDetalle, ResumenCategoria } from '@/lib/export-xlsx'
 
 interface ItemRow {
@@ -413,7 +413,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">
                         {p.cantidad > 0 ? `${p.cantidad.toLocaleString('es-MX', { maximumFractionDigits: 2 })}${p.unidadMixta ? '' : p.unidad ? ' ' + p.unidad : ''}` : '—'}
-                        {p.base > 0 && p.baseUnidad && <span className="block text-[10px] text-zinc-600">= {p.base.toLocaleString('es-MX', { maximumFractionDigits: 2 })} {p.baseUnidad}</span>}
+                        {p.base > 0 && p.baseUnidad && (() => { const pr = pretty(p.base, p.baseUnidad); return <span className="block text-[10px] text-zinc-600">= {pr.quantity.toLocaleString('es-MX', { maximumFractionDigits: 2 })} {pr.unit}</span> })()}
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">{p.veces}</td>
                       <td className="px-4 py-2 text-right text-zinc-300">{fmt2(p.gasto)}</td>

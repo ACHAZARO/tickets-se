@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
-import { computeBaseUnits } from '@/lib/units.mjs'
+import { computeBaseUnits, toCanonical, sameDimension } from '@/lib/units.mjs'
 import { useToast } from '../ui'
 
 interface Cadena {
@@ -45,7 +45,7 @@ export default function StockPage() {
   const [filas, setFilas] = useState<Fila[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState('')
-  const [reg, setReg] = useState<null | { id: string; nombre: string; baseUnidad: string | null; cantidad: string; fecha: string; nota: string }>(null)
+  const [reg, setReg] = useState<null | { id: string; nombre: string; baseUnidad: string | null; cantidad: string; unidad: string; fecha: string; nota: string }>(null)
   const [guardando, setGuardando] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -83,7 +83,7 @@ export default function StockPage() {
       if (!base) continue
       // Unidad real: si hay equivalencia (1 o 2 niveles), su unidad mas granular; si no, la de compra.
       // El fallback "identity" de computeBaseUnits usa el nombre del producto: lo ignoramos como etiqueta.
-      let unidad = base.source.startsWith('equivalence') ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
+      let unidad = base.source !== 'identity' ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
       // Dato sucio: si la "unidad" coincide con el nombre del producto, no es una unidad real.
       if (unidad && unidad.toLowerCase() === prod.nombre.toLowerCase()) unidad = null
       const cadena: Cadena = {
@@ -115,10 +115,26 @@ export default function StockPage() {
     const cant = Number(reg.cantidad)
     if (!Number.isFinite(cant) || cant <= 0) { toast('Cantidad invalida', 'error'); return }
     if (!sucursalId) { toast('Selecciona una sucursal para registrar consumo', 'error'); return }
+
+    // Convierte a la unidad base del producto. Permite registrar "2.5 lt" aunque
+    // la base sea ml (se entiende la conversion). Si la unidad no es compatible, avisa.
+    let cantBase = cant
+    const u = reg.unidad.trim()
+    const base = reg.baseUnidad?.trim() || null
+    if (u && base && u.toLowerCase() !== base.toLowerCase()) {
+      const cu = toCanonical(cant, u)
+      const cb = toCanonical(1, base)
+      if (cu && cb && cu.unit === cb.unit && cb.quantity > 0) {
+        cantBase = cu.quantity / cb.quantity
+      } else if (!sameDimension(u, base)) {
+        toast(`"${u}" no se puede convertir a ${base}`, 'error'); return
+      }
+    }
+
     setGuardando(true)
     const { error } = await supabase.from('consumo_inventario').insert({
       producto_catalogo_id: reg.id, sucursal_id: sucursalId,
-      cantidad_base: cant, fecha: reg.fecha || hoyISO(), nota: reg.nota.trim() || null,
+      cantidad_base: cantBase, fecha: reg.fecha || hoyISO(), nota: reg.nota.trim() || null,
     })
     setGuardando(false)
     if (error) { toast('No se pudo registrar: ' + error.message, 'error'); return }
@@ -158,23 +174,29 @@ export default function StockPage() {
               </tr>
             </thead>
             <tbody>
-              {filtradas.map(f => (
+              {filtradas.map(f => {
+                // Display bonito: ml/g grandes se muestran en lt/kg (no cambia el calculo).
+                const big = (f.baseUnidad === 'ml' || f.baseUnidad === 'g') && Math.max(f.entradas, Math.abs(f.disponible), f.consumo) >= 1000
+                const dUnit = big ? (f.baseUnidad === 'ml' ? 'lt' : 'kg') : f.baseUnidad
+                const dFac = big ? 1 / 1000 : 1
+                return (
                 <tr key={f.id} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
                   <td className="px-4 py-2.5 text-zinc-200">
-                    <div>{f.nombre}{f.baseUnidad ? <span className="text-zinc-600"> /{f.baseUnidad}</span> : ''}</div>
+                    <div>{f.nombre}{dUnit ? <span className="text-zinc-600"> /{dUnit}</span> : ''}</div>
                     {f.cadena.c1 && f.cadena.u1 && (
                       <div className="text-[11px] text-zinc-500">Disponible: {vistasCadena(f.disponible, f.cadena).map(v => `${num(v.q)} ${v.u}`).join(' · ')}</div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-zinc-300">{num(f.entradas)}</td>
-                  <td className="px-4 py-2.5 text-right text-zinc-400">{num(f.consumo)}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${f.disponible <= 0 ? 'text-red-400' : f.disponible < f.entradas * 0.2 ? 'text-amber-400' : 'text-emerald-400'}`}>{num(f.disponible)}</td>
+                  <td className="px-4 py-2.5 text-right text-zinc-300">{num(f.entradas * dFac)}</td>
+                  <td className="px-4 py-2.5 text-right text-zinc-400">{num(f.consumo * dFac)}</td>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${f.disponible <= 0 ? 'text-red-400' : f.disponible < f.entradas * 0.2 ? 'text-amber-400' : 'text-emerald-400'}`}>{num(f.disponible * dFac)}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => setReg({ id: f.id, nombre: f.nombre, baseUnidad: f.baseUnidad, cantidad: '', fecha: hoyISO(), nota: '' })}
+                    <button onClick={() => setReg({ id: f.id, nombre: f.nombre, baseUnidad: f.baseUnidad, cantidad: '', unidad: f.baseUnidad ?? '', fecha: hoyISO(), nota: '' })}
                       className="text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1.5 whitespace-nowrap cursor-pointer">Registrar consumo</button>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table></div>
         </div>
@@ -189,9 +211,20 @@ export default function StockPage() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">Cantidad consumida{reg.baseUnidad ? ` (${reg.baseUnidad})` : ''}</label>
-                <input type="number" inputMode="decimal" autoFocus value={reg.cantidad} onChange={e => setReg({ ...reg, cantidad: e.target.value })}
-                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100" />
+                <label className="text-xs text-zinc-500 block mb-1">Cantidad consumida</label>
+                <div className="flex gap-2">
+                  <input type="number" inputMode="decimal" autoFocus value={reg.cantidad} onChange={e => setReg({ ...reg, cantidad: e.target.value })}
+                    placeholder="ej. 2.5" className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
+                  <input list="unidades-consumo" value={reg.unidad} onChange={e => setReg({ ...reg, unidad: e.target.value })}
+                    placeholder="unidad" className="w-24 rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
+                </div>
+                <datalist id="unidades-consumo">
+                  {(reg.baseUnidad === 'ml' ? ['ml', 'lt', 'galon'] : reg.baseUnidad === 'g' ? ['g', 'kg'] : [reg.baseUnidad ?? ''])
+                    .filter(Boolean).map(u => <option key={u} value={u as string} />)}
+                </datalist>
+                {reg.baseUnidad && (reg.baseUnidad === 'ml' || reg.baseUnidad === 'g') && (
+                  <p className="text-[11px] text-zinc-500 mt-1">Se guarda en {reg.baseUnidad}. Puedes escribir lt/kg/galon y se convierte solo.</p>
+                )}
               </div>
               <div>
                 <label className="text-xs text-zinc-500 block mb-1">Fecha</label>
