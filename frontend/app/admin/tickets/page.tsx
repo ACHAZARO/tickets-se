@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { toCanonical } from '@/lib/units.mjs'
+import { detectarSospechas } from '@/lib/fraude.mjs'
 import { useToast, useConfirm } from '../ui'
 
 interface Item {
@@ -42,6 +43,11 @@ interface Ticket {
   gemini_raw: Record<string, unknown> | null
   sucursales: { nombre: string } | null
   empleados: { nombre: string } | null
+  sospechoso?: boolean
+  sospecha_motivo?: string | null
+  sospecha_origen?: string | null
+  sospecha_grupo?: string | null
+  sospecha_estado?: string | null
 }
 interface AlertRow { registro_ticket_id: string; tipo: string; resuelta: boolean }
 
@@ -115,7 +121,8 @@ export default function TicketsPage() {
   const [catalogo, setCatalogo] = useState<CatalogProduct[]>([])
   const [cats, setCats] = useState<{ id: string; nombre: string }[]>([])
   const [comercioFiltro, setComercioFiltro] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados'>('todos')
+  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados' | 'fraude'>('todos')
+  const [detectando, setDetectando] = useState(false)
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
@@ -139,7 +146,7 @@ export default function TicketsPage() {
   const fetchTickets = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
       .gte('created_at', desde).lt('created_at', diaSiguienteISO(hasta))
       .order('created_at', { ascending: false }).limit(600)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
@@ -218,6 +225,73 @@ export default function TicketsPage() {
     const urlModalImg = await urlModal(t)
     setDetalle({ ticket: t, items, url: urlModalImg })
     setBusy(null)
+  }
+
+  // --- Revision de fraude ---
+  async function marcarSospechoso(t: Ticket, motivo: string) {
+    await supabase.from('registros_tickets').update({
+      sospechoso: true, sospecha_motivo: motivo || 'Marcado manualmente', sospecha_origen: 'manual', sospecha_estado: 'abierta',
+    }).eq('id', t.id)
+    toast('Enviado a revision de fraude')
+    fetchTickets()
+  }
+
+  async function resolverSospecha(t: Ticket, estado: 'descartada' | 'confirmada') {
+    await supabase.from('registros_tickets').update({
+      sospecha_estado: estado, sospechoso: estado === 'confirmada',
+    }).eq('id', t.id)
+    toast(estado === 'descartada' ? 'Sospecha descartada' : 'Marcado como fraude')
+    fetchTickets()
+  }
+
+  async function guardarMotivo(t: Ticket, motivo: string) {
+    await supabase.from('registros_tickets').update({ sospecha_motivo: motivo }).eq('id', t.id)
+  }
+
+  async function buscarSospechas() {
+    if (!sucursalId) { toast('Selecciona una sucursal para escanear', 'error'); return }
+    setDetectando(true)
+    try {
+      const { data, error } = await supabase.from('ticket_items')
+        .select('registro_ticket_id, producto_catalogo_id, descripcion, cantidad, monto, registros_tickets!inner(id, comercio, fecha_ticket, monto, estado, sucursal_id, sospecha_estado)')
+        .eq('registros_tickets.estado', 'confirmado').eq('registros_tickets.sucursal_id', sucursalId)
+        .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta).limit(12000)
+      if (error) { toast('No se pudo escanear: ' + error.message, 'error'); return }
+
+      // Reagrupa por ticket
+      const byTicket = new Map<string, { id: string; comercio: string | null; fecha: string | null; monto: number | null; estado: string; items: { pid: string | null; desc: string | null; cantidad: number | null; monto: number | null }[] }>()
+      for (const row of (data as unknown as Array<{ registro_ticket_id: string; producto_catalogo_id: string | null; descripcion: string | null; cantidad: number | null; monto: number | null; registros_tickets: { comercio: string | null; fecha_ticket: string | null; monto: number | null; sospecha_estado: string | null } | null }>) ?? []) {
+        const r = row.registros_tickets
+        if (!r) continue
+        let t = byTicket.get(row.registro_ticket_id)
+        if (!t) { t = { id: row.registro_ticket_id, comercio: r.comercio, fecha: r.fecha_ticket, monto: r.monto, estado: r.sospecha_estado ?? 'abierta', items: [] }; byTicket.set(row.registro_ticket_id, t) }
+        t.items.push({ pid: row.producto_catalogo_id, desc: row.descripcion, cantidad: row.cantidad, monto: row.monto })
+      }
+      const lista = [...byTicket.values()]
+      const resultado = detectarSospechas(lista.map(t => ({ id: t.id, comercio: t.comercio, fecha: t.fecha, monto: t.monto, items: t.items })))
+
+      // Asigna un UUID por groupKey
+      const grupoUUID = new Map<string, string>()
+      let marcados = 0
+      for (const [id, info] of Object.entries(resultado) as [string, { motivos: string[]; groupKey: string | null }][]) {
+        const prev = byTicket.get(id)
+        // No re-marcar lo que el admin ya descarto o confirmo
+        if (prev && (prev.estado === 'descartada' || prev.estado === 'confirmada')) continue
+        let grupo: string | null = null
+        if (info.groupKey) {
+          if (!grupoUUID.has(info.groupKey)) grupoUUID.set(info.groupKey, crypto.randomUUID())
+          grupo = grupoUUID.get(info.groupKey)!
+        }
+        await supabase.from('registros_tickets').update({
+          sospechoso: true, sospecha_motivo: info.motivos.join(' · '), sospecha_origen: 'auto', sospecha_grupo: grupo, sospecha_estado: 'abierta',
+        }).eq('id', id)
+        marcados++
+      }
+      await fetchTickets()
+      toast(marcados ? `${marcados} ticket(s) marcados para revisar` : 'Sin nuevas sospechas')
+    } finally {
+      setDetectando(false)
+    }
   }
 
   function setItemField(itemId: string, field: keyof Item, value: string) {
@@ -424,7 +498,7 @@ export default function TicketsPage() {
     // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
     // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
     const { data: fresh } = await supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
       .eq('id', t.id).maybeSingle()
     await abrirDetalle((fresh as unknown as Ticket) ?? t)
   }
@@ -442,17 +516,47 @@ export default function TicketsPage() {
   const comerciosUnicos = [...new Set(tickets.map(t => t.comercio).filter((c): c is string => !!c))].sort()
   const baseTickets = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
   const tieneAlerta = (t: Ticket) => (alertas[t.id]?.length ?? 0) > 0
+  const esSospechosoAbierto = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta'
   const cuenta = {
     todos: baseTickets.length,
     pendientes: baseTickets.filter(t => t.estado === 'pendiente').length,
     alertas: baseTickets.filter(tieneAlerta).length,
     confirmados: baseTickets.filter(t => t.estado === 'confirmado').length,
+    fraude: baseTickets.filter(esSospechosoAbierto).length,
   }
+  const fraudeGrupos = (() => {
+    const sosp = baseTickets.filter(esSospechosoAbierto)
+    const byGroup = new Map<string, Ticket[]>()
+    const sueltos: Ticket[] = []
+    for (const t of sosp) {
+      if (t.sospecha_grupo) { const a = byGroup.get(t.sospecha_grupo) ?? []; a.push(t); byGroup.set(t.sospecha_grupo, a) }
+      else sueltos.push(t)
+    }
+    return { grupos: [...byGroup.values()], sueltos }
+  })()
   const ticketsFiltrados = baseTickets.filter(t =>
     filtroEstado === 'todos' ? true
     : filtroEstado === 'pendientes' ? t.estado === 'pendiente'
     : filtroEstado === 'alertas' ? tieneAlerta(t)
     : t.estado === 'confirmado'
+  )
+
+  const filaSosp = (t: Ticket) => (
+    <div key={t.id} className="rounded-lg bg-zinc-900 border border-zinc-800/80 p-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => abrirDetalle(t)} className="text-sm text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
+        <span className="text-xs text-zinc-500">{t.fecha_ticket ?? 's/fecha'}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''}</span>
+        {t.sospecha_origen === 'manual' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">manual</span>}
+        <span className="ml-auto text-sm text-zinc-300">{fmt(t.monto)}</span>
+      </div>
+      <input defaultValue={t.sospecha_motivo ?? ''} onBlur={e => guardarMotivo(t, e.target.value)} placeholder="motivo de la sospecha…"
+        className="mt-2 w-full rounded bg-zinc-800/60 border border-zinc-800 px-2 py-1 text-xs text-zinc-300 placeholder-zinc-600" />
+      <div className="mt-2 flex items-center gap-3">
+        <button onClick={() => resolverSospecha(t, 'descartada')} className="text-xs text-zinc-400 hover:text-zinc-200">Descartar</button>
+        <button onClick={() => resolverSospecha(t, 'confirmada')} className="text-xs font-medium text-red-400 hover:text-red-300">Es fraude</button>
+        <button onClick={() => abrirDetalle(t)} className="text-xs text-blue-400 hover:text-blue-300 ml-auto">Abrir →</button>
+      </div>
+    </div>
   )
 
   return (
@@ -482,6 +586,7 @@ export default function TicketsPage() {
           { k: 'pendientes', label: 'Pendientes', n: cuenta.pendientes, color: 'bg-amber-600 text-white' },
           { k: 'alertas', label: 'Con alerta', n: cuenta.alertas, color: 'bg-orange-600 text-white' },
           { k: 'confirmados', label: 'Confirmados', n: cuenta.confirmados, color: 'bg-emerald-700 text-white' },
+          { k: 'fraude', label: 'Fraude', n: cuenta.fraude, color: 'bg-red-700 text-white' },
         ] as const).map(c => (
           <button key={c.k} onClick={() => setFiltroEstado(c.k)}
             className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${filtroEstado === c.k ? c.color : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
@@ -496,7 +601,36 @@ export default function TicketsPage() {
           No se pudieron cargar los tickets: {loadError}
         </div>
       )}
-      {loading ? (
+      {filtroEstado === 'fraude' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-zinc-500 max-w-xl">Tickets marcados como sospechosos (por ti, por la IA o por el escaneo). Revisa, agrega el motivo y decide. No siempre son duplicados ni pares.</p>
+            <button onClick={buscarSospechas} disabled={detectando || !sucursalId}
+              className="rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 whitespace-nowrap">
+              {detectando ? 'Escaneando…' : 'Buscar sospechas'}
+            </button>
+          </div>
+          {!sucursalId && <p className="text-xs text-amber-400">Selecciona una sucursal para escanear.</p>}
+          {fraudeGrupos.grupos.length === 0 && fraudeGrupos.sueltos.length === 0 ? (
+            <p className="text-zinc-500 text-center py-12">Sin tickets sospechosos. Usa &quot;Buscar sospechas&quot; o marca uno manualmente desde su detalle.</p>
+          ) : (
+            <div className="space-y-4">
+              {fraudeGrupos.grupos.map((g, i) => (
+                <div key={i} className="rounded-2xl bg-red-950/20 border border-red-900/40 p-3 space-y-2">
+                  <p className="text-xs font-medium text-red-300/90">Grupo relacionado · {g.length} tickets · {g[0]?.sospecha_motivo ?? 'sospecha'}</p>
+                  {g.map(filaSosp)}
+                </div>
+              ))}
+              {fraudeGrupos.sueltos.length > 0 && (
+                <div className="space-y-2">
+                  {fraudeGrupos.grupos.length > 0 && <p className="text-xs text-zinc-500">Individuales</p>}
+                  {fraudeGrupos.sueltos.map(filaSosp)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : loading ? (
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
       ) : ticketsFiltrados.length === 0 ? (
         <p className="text-zinc-500 text-center py-12">No hay tickets en este periodo</p>
@@ -557,6 +691,13 @@ export default function TicketsPage() {
                   <button onClick={() => reintentarIA(detalle.ticket)} disabled={busy === 'ia'} className="rounded-xl bg-blue-600/80 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'ia' ? 'Leyendo...' : 'Volver a leer IA'}</button>
                   <button onClick={() => rechazarTicket(detalle.ticket)} className="rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400">Rechazar</button>
                 </div>
+                {esSospechosoAbierto(detalle.ticket) ? (
+                  <button onClick={() => { resolverSospecha(detalle.ticket, 'descartada'); setDetalle(null) }}
+                    className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-zinc-300">Quitar de revision de fraude</button>
+                ) : (
+                  <button onClick={() => { marcarSospechoso(detalle.ticket, ''); setDetalle(null) }}
+                    className="w-full rounded-xl bg-red-900/40 border border-red-900/60 py-2.5 text-sm font-medium text-red-300 hover:bg-red-900/60">🚩 Marcar como sospechoso</button>
+                )}
               </div>
 
               <div className="space-y-3">
