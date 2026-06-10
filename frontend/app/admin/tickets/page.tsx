@@ -532,6 +532,7 @@ export default function TicketsPage() {
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-black/60 p-0 lg:p-4" onClick={() => setDetalle(null)}>
           <div className="w-full lg:max-w-6xl rounded-t-2xl lg:rounded-2xl bg-zinc-900 border border-zinc-800 p-5 max-h-[94dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <datalist id="unidades-tickets">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
+            <datalist id="catalogo-list">{catalogo.map(p => <option key={p.id} value={p.nombre} />)}</datalist>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
@@ -583,9 +584,17 @@ export default function TicketsPage() {
                           <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </div>
-                      <select value={it.producto_catalogo_id ?? ''} onChange={e => vincularProducto(it, e.target.value)} className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
-                        <option value="">Crear/ligar por nombre al guardar</option>{catalogo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                      </select>
+                      <input list="catalogo-list"
+                        key={`prod-${it.id}-${it.producto_catalogo_id ?? 'new'}`}
+                        defaultValue={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
+                        onChange={e => {
+                          const v = e.target.value.trim()
+                          if (v === '') { vincularProducto(it, ''); return }
+                          const prod = catalogo.find(p => p.nombre.toLowerCase() === v.toLowerCase())
+                          if (prod) vincularProducto(it, prod.id)
+                        }}
+                        placeholder="Buscar producto del catálogo… (si no, se crea por nombre al guardar)"
+                        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                       <input name="sinonimos" placeholder="Sinonimos/codigos adicionales separados por coma" className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
                       {it.unidad && !BASE_UNIDADES.has(it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
