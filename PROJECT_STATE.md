@@ -170,6 +170,10 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   "1 caja = 24 pz, y cada pz = 355 ml" → cadena completa. `units.mjs`: `computeBaseUnits` expande 2 niveles
   a la unidad más granular + nuevo `unitViews()` (caja/pz/ml). Tests 5/5. Config con preview en tickets y catálogo.
 - **Stock multi-unidad**: cuando hay equivalencia muestra "Disponible: 1 caja · 24 pz · 8,520 ml".
+- **Conversiones estándar (units.mjs)**: `toCanonical`/`sameDimension`/`pretty`. `computeBaseUnits`
+  normaliza unidades métricas a su canónico (ml/g): 2.5 lt = 2500 ml, 3 kg = 3000 g, 1 galón = 3785 ml.
+  Así suman y comparan bien sin configurar equivalencia. El modal de consumo de Stock acepta una unidad
+  (ej. "2.5 lt") y la convierte sola a la base. Display "bonito" (lt/kg) en Stock/Entradas/Gasto. Tests 9/9.
 - **Rendimiento del modal de tickets**:
   - Imagen redimensionada vía transform de Supabase Storage (1400px/q72) en vez del original de MB.
     Miniaturas de lista con `loading=lazy`.
