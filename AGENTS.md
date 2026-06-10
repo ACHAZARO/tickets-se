@@ -47,6 +47,12 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
   - Edge `confirmar-ticket` quedó huérfana (ya nada la llama); borrar opcional en Dashboard.
   - OJO numeración: en repo `023`=RLS y `024`=grants ya existían; la equivalencia quedó como **025**.
 
+- 2026-06-10 (Claude): conversiones de unidad métricas (lt/ml/kg/g/galón) en units.mjs (toCanonical/
+  sameDimension/pretty) + consumo en cualquier unidad en Stock. Y **Revisión de fraude**: pestaña en
+  Tickets, marcado manual/auto, 4 reglas en `lib/fraude.mjs`, migración **026** (`sospecha_*`) aplicada
+  por MCP. NOTA Codex: la detección corre en frontend (botón "Buscar sospechas") y persiste flags por
+  update directo a `registros_tickets` (RLS admin). Si tocas, no re-marcar tickets ya `descartada`/`confirmada`.
+
 ### PENDIENTE DEPLOY (Claude)
 - (sin pendientes)
 

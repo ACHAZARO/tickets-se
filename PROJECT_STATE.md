@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-06-09.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-06-10.
 
 ## Coordinacion Claude + Codex
 - `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.
@@ -156,6 +156,17 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
+## Cambios 2026-06-10 — Revision de fraude
+- **Nueva pestaña "Fraude"** en Tickets (5º chip rojo con conteo). Junta tickets sospechosos
+  **agrupados** (no solo pares) con motivo editable y resolución por ticket (Descartar / Es fraude).
+- **Marcado manual** desde el detalle del ticket ("🚩 Marcar como sospechoso").
+- **Botón "Buscar sospechas"** que corre 4 reglas (lib/fraude.mjs, puro, tests 4/4):
+  canasta repetida (mismos productos, distinto total, días cercanos), posible duplicado
+  (mismo comercio+total, fechas cercanas), salto de precio (unitario sobre histórico del producto),
+  monto atípico (total sobre promedio del comercio). origen = manual/auto/ia.
+- Migración **026** (`sospechoso`, `sospecha_motivo`/`origen`/`grupo`/`estado`), aplicada por MCP.
+- Futuro (anotado por Alejandro): ligar al POS para detectar "se compró 2 veces y no había salido".
 
 ## Cambios 2026-06-09 (b) — kiosko, equivalencias y rendimiento
 - **Pantalla de PIN (kiosko) rehecha mobile-first**: columna centrada y compacta (antes `justify-between`
