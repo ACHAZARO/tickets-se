@@ -2,7 +2,7 @@
 // Funcion PURA: recibe tickets normalizados y devuelve, por ticket, los motivos
 // de sospecha y una "clave de grupo" (para ligar tickets relacionados).
 //
-// ticket = { id, comercio, fecha: 'YYYY-MM-DD', monto: number, items: [{ pid, desc, cantidad, monto }] }
+// ticket = { id, suc, comercio, fecha: 'YYYY-MM-DD', monto: number, items: [{ pid, desc, cantidad, monto }] }
 // retorna { [id]: { motivos: string[], groupKey: string|null } }
 
 function diasEntre(a, b) {
@@ -16,6 +16,21 @@ function firmaCanasta(t) {
     .map(it => (it.pid ? `p:${it.pid}` : (it.desc ? `d:${String(it.desc).trim().toLowerCase()}` : '')))
     .filter(Boolean)
   return [...new Set(claves)].sort().join('|')
+}
+
+// Agrupa tickets por cercania de fecha (nuevo cluster cuando el hueco supera la ventana).
+// Asi dos dias consecutivos quedan juntos aunque el grupo total abarque meses.
+function clustersPorFecha(tickets, ventana) {
+  const conFecha = tickets.filter(t => t.fecha).sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0))
+  const clusters = []
+  let cur = []
+  for (const t of conFecha) {
+    if (cur.length === 0) { cur = [t]; continue }
+    if (diasEntre(cur[cur.length - 1].fecha, t.fecha) <= ventana) cur.push(t)
+    else { clusters.push(cur); cur = [t] }
+  }
+  if (cur.length) clusters.push(cur)
+  return clusters
 }
 
 function add(acc, id, motivo, groupKey) {
@@ -33,19 +48,23 @@ export function detectarSospechas(tickets, opts = {}) {
   const acc = {}
 
   // --- R1: canasta repetida (mismos productos, distinto total, fechas cercanas) ---
+  // Particion por sucursal + firma; dentro, clusters por cercania de fecha.
   const porFirma = {}
   for (const t of tickets) {
     const f = firmaCanasta(t)
     if (!f) continue
-    ;(porFirma[f] || (porFirma[f] = [])).push(t)
+    const k = `${t.suc || ''}::${f}`
+    ;(porFirma[k] || (porFirma[k] = [])).push(t)
   }
-  for (const [firma, grupo] of Object.entries(porFirma)) {
+  for (const grupo of Object.values(porFirma)) {
     if (grupo.length < 2) continue
-    const fechas = grupo.map(t => t.fecha).filter(Boolean).sort()
-    const span = fechas.length >= 2 ? diasEntre(fechas[0], fechas[fechas.length - 1]) : 0
-    const montos = new Set(grupo.map(t => Math.round(Number(t.monto) || 0)))
-    if (span <= ventanaCanasta && montos.size >= 2) {
-      for (const t of grupo) add(acc, t.id, 'Misma canasta, distinto total', `canasta:${firma}`)
+    for (const cluster of clustersPorFecha(grupo, ventanaCanasta)) {
+      if (cluster.length < 2) continue
+      const montos = new Set(cluster.map(t => Math.round(Number(t.monto) || 0)))
+      if (montos.size >= 2) {
+        const gk = `canasta:${cluster[0].id}`
+        for (const t of cluster) add(acc, t.id, 'Misma canasta, distinto total', gk)
+      }
     }
   }
 
@@ -55,15 +74,15 @@ export function detectarSospechas(tickets, opts = {}) {
     const com = (t.comercio || '').trim().toLowerCase()
     const monto = Math.round(Number(t.monto) || 0)
     if (!com || !monto) continue
-    const k = `${com}|${monto}`
+    const k = `${t.suc || ''}|${com}|${monto}`
     ;(porDup[k] || (porDup[k] = [])).push(t)
   }
-  for (const [k, grupo] of Object.entries(porDup)) {
+  for (const grupo of Object.values(porDup)) {
     if (grupo.length < 2) continue
-    const fechas = grupo.map(t => t.fecha).filter(Boolean).sort()
-    const span = fechas.length >= 2 ? diasEntre(fechas[0], fechas[fechas.length - 1]) : 0
-    if (span <= ventanaDup) {
-      for (const t of grupo) add(acc, t.id, 'Posible duplicado (mismo comercio y total, fechas cercanas)', `dup:${k}`)
+    for (const cluster of clustersPorFecha(grupo, ventanaDup)) {
+      if (cluster.length < 2) continue
+      const gk = `dup:${cluster[0].id}`
+      for (const t of cluster) add(acc, t.id, 'Posible duplicado (mismo comercio y total, fechas cercanas)', gk)
     }
   }
 
@@ -72,8 +91,7 @@ export function detectarSospechas(tickets, opts = {}) {
   for (const t of tickets) for (const it of (t.items || [])) {
     const cant = Number(it.cantidad), monto = Number(it.monto)
     if (!it.pid || !(cant > 0) || !(monto > 0)) continue
-    const u = monto / cant
-    ;(preciosPorProd[it.pid] || (preciosPorProd[it.pid] = [])).push(u)
+    ;(preciosPorProd[it.pid] || (preciosPorProd[it.pid] = [])).push(monto / cant)
   }
   const promProd = {}
   for (const [pid, arr] of Object.entries(preciosPorProd)) {

@@ -249,26 +249,30 @@ export default function TicketsPage() {
   }
 
   async function buscarSospechas() {
-    if (!sucursalId) { toast('Selecciona una sucursal para escanear', 'error'); return }
     setDetectando(true)
     try {
-      const { data, error } = await supabase.from('ticket_items')
+      // Escanea TODOS los tickets no rechazados (incluye pendientes: el fraude suele
+      // estar ahi). Si hay sucursal seleccionada, la acota; si es "Todas", la deteccion
+      // se particiona por sucursal sola.
+      let q = supabase.from('ticket_items')
         .select('registro_ticket_id, producto_catalogo_id, descripcion, cantidad, monto, registros_tickets!inner(id, comercio, fecha_ticket, monto, estado, sucursal_id, sospecha_estado)')
-        .eq('registros_tickets.estado', 'confirmado').eq('registros_tickets.sucursal_id', sucursalId)
+        .neq('registros_tickets.estado', 'rechazado')
         .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta).limit(12000)
+      if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+      const { data, error } = await q
       if (error) { toast('No se pudo escanear: ' + error.message, 'error'); return }
 
       // Reagrupa por ticket
-      const byTicket = new Map<string, { id: string; comercio: string | null; fecha: string | null; monto: number | null; estado: string; items: { pid: string | null; desc: string | null; cantidad: number | null; monto: number | null }[] }>()
-      for (const row of (data as unknown as Array<{ registro_ticket_id: string; producto_catalogo_id: string | null; descripcion: string | null; cantidad: number | null; monto: number | null; registros_tickets: { comercio: string | null; fecha_ticket: string | null; monto: number | null; sospecha_estado: string | null } | null }>) ?? []) {
+      const byTicket = new Map<string, { id: string; suc: string | null; comercio: string | null; fecha: string | null; monto: number | null; estado: string; items: { pid: string | null; desc: string | null; cantidad: number | null; monto: number | null }[] }>()
+      for (const row of (data as unknown as Array<{ registro_ticket_id: string; producto_catalogo_id: string | null; descripcion: string | null; cantidad: number | null; monto: number | null; registros_tickets: { comercio: string | null; fecha_ticket: string | null; monto: number | null; sucursal_id: string | null; sospecha_estado: string | null } | null }>) ?? []) {
         const r = row.registros_tickets
         if (!r) continue
         let t = byTicket.get(row.registro_ticket_id)
-        if (!t) { t = { id: row.registro_ticket_id, comercio: r.comercio, fecha: r.fecha_ticket, monto: r.monto, estado: r.sospecha_estado ?? 'abierta', items: [] }; byTicket.set(row.registro_ticket_id, t) }
+        if (!t) { t = { id: row.registro_ticket_id, suc: r.sucursal_id, comercio: r.comercio, fecha: r.fecha_ticket, monto: r.monto, estado: r.sospecha_estado ?? 'abierta', items: [] }; byTicket.set(row.registro_ticket_id, t) }
         t.items.push({ pid: row.producto_catalogo_id, desc: row.descripcion, cantidad: row.cantidad, monto: row.monto })
       }
       const lista = [...byTicket.values()]
-      const resultado = detectarSospechas(lista.map(t => ({ id: t.id, comercio: t.comercio, fecha: t.fecha, monto: t.monto, items: t.items })))
+      const resultado = detectarSospechas(lista.map(t => ({ id: t.id, suc: t.suc, comercio: t.comercio, fecha: t.fecha, monto: t.monto, items: t.items })))
 
       // Asigna un UUID por groupKey
       const grupoUUID = new Map<string, string>()
@@ -605,12 +609,12 @@ export default function TicketsPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-zinc-500 max-w-xl">Tickets marcados como sospechosos (por ti, por la IA o por el escaneo). Revisa, agrega el motivo y decide. No siempre son duplicados ni pares.</p>
-            <button onClick={buscarSospechas} disabled={detectando || !sucursalId}
+            <button onClick={buscarSospechas} disabled={detectando}
               className="rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 whitespace-nowrap">
               {detectando ? 'Escaneando…' : 'Buscar sospechas'}
             </button>
           </div>
-          {!sucursalId && <p className="text-xs text-amber-400">Selecciona una sucursal para escanear.</p>}
+          <p className="text-[11px] text-zinc-600">Escanea el rango de fechas de arriba (incluye pendientes). {sucursalId ? 'Sucursal actual.' : 'Todas las sucursales (compara dentro de cada una).'}</p>
           {fraudeGrupos.grupos.length === 0 && fraudeGrupos.sueltos.length === 0 ? (
             <p className="text-zinc-500 text-center py-12">Sin tickets sospechosos. Usa &quot;Buscar sospechas&quot; o marca uno manualmente desde su detalle.</p>
           ) : (

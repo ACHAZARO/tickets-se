@@ -23,6 +23,26 @@ describe('detectarSospechas', () => {
     assert.ok(!r['a'] || !r['a'].motivos.some(m => /canasta/i.test(m)))
   })
 
+  it('R1: un ticket viejo NO arrastra; solo el par cercano se marca', () => {
+    const tickets = [
+      { id: 'viejo', comercio: 'Costco', fecha: '2023-01-01', monto: 90, items: [{ pid: 'x', cantidad: 1, monto: 90 }] },
+      { id: 'a', comercio: 'Costco', fecha: '2026-06-08', monto: 100, items: [{ pid: 'x', cantidad: 1, monto: 100 }] },
+      { id: 'b', comercio: 'Costco', fecha: '2026-06-09', monto: 130, items: [{ pid: 'x', cantidad: 1, monto: 130 }] },
+    ]
+    const r = detectarSospechas(tickets)
+    assert.ok(r['a'] && r['b'] && r['a'].groupKey === r['b'].groupKey)
+    assert.ok(!r['viejo']) // su fecha esta lejos -> cluster propio de 1 -> no se marca
+  })
+
+  it('no cruza sucursales distintas', () => {
+    const tickets = [
+      { id: 'a', suc: 's1', comercio: 'X', fecha: '2026-06-08', monto: 100, items: [{ pid: 'x', cantidad: 1, monto: 100 }] },
+      { id: 'b', suc: 's2', comercio: 'X', fecha: '2026-06-09', monto: 130, items: [{ pid: 'x', cantidad: 1, monto: 130 }] },
+    ]
+    const r = detectarSospechas(tickets)
+    assert.ok(!r['a'] && !r['b']) // distinta sucursal -> no es la misma compra
+  })
+
   it('R2: posible duplicado mismo comercio y total en fechas cercanas', () => {
     const tickets = [
       { id: 'a', comercio: 'OXXO', fecha: '2026-06-08', monto: 250, items: [{ pid: 'p', cantidad: 1, monto: 250 }] },
