@@ -179,6 +179,21 @@ export default function TicketsPage() {
     return pb ? (urls[`${pb.bucket}/${pb.path}`] ?? null) : null
   }
 
+  // URL firmada REDIMENSIONADA para el modal: evita descargar la foto original de
+  // varios MB (que congelaba el panel). Si el transform falla, cae al original.
+  async function urlModal(t: Ticket): Promise<string | null> {
+    const pb = pathBucket(t)
+    if (!pb) return null
+    try {
+      const { data } = await supabase.storage.from(pb.bucket).createSignedUrl(pb.path, 3600, {
+        transform: { width: 1400, quality: 72, resize: 'contain' },
+      })
+      return data?.signedUrl ?? urlDe(t)
+    } catch {
+      return urlDe(t)
+    }
+  }
+
   function ticketBadges(t: Ticket): string[] {
     const out = new Set<string>()
     if (!t.sucursal_id) out.add('Sin sucursal')
@@ -199,7 +214,8 @@ export default function TicketsPage() {
       .eq('registro_ticket_id', t.id).order('created_at').order('id')
     const items = ((data as unknown as Item[]) ?? [])
     setOriginalDesc(Object.fromEntries(items.map(it => [it.id, it.descripcion])))
-    setDetalle({ ticket: t, items, url: urlDe(t) })
+    const urlModalImg = await urlModal(t)
+    setDetalle({ ticket: t, items, url: urlModalImg })
     setBusy(null)
   }
 
@@ -493,9 +509,9 @@ export default function TicketsPage() {
                 className="w-full flex items-center gap-4 rounded-xl bg-zinc-900 p-3 hover:bg-zinc-800/80 transition-colors text-left">
                 <div className="group relative h-14 w-14 rounded-lg bg-zinc-800 flex-shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {url && <img src={url} alt="" className="h-full w-full object-cover rounded-lg" />}
+                  {url && <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover rounded-lg" />}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {url && <img src={url} alt="" className="hidden md:group-hover:block absolute left-[60px] top-0 z-50 w-72 max-h-96 object-contain rounded-lg border border-zinc-600 shadow-2xl bg-zinc-950 pointer-events-none" />}
+                  {url && <img src={url} alt="" loading="lazy" decoding="async" className="hidden md:group-hover:block absolute left-[60px] top-0 z-50 w-72 max-h-96 object-contain rounded-lg border border-zinc-600 shadow-2xl bg-zinc-950 pointer-events-none" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -533,7 +549,7 @@ export default function TicketsPage() {
                 </div>
                 {detalle.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={detalle.url} alt="Ticket" className="w-full max-h-[64vh] object-contain rounded-xl bg-zinc-950" />
+                  <img src={detalle.url} alt="Ticket" decoding="async" className="w-full max-h-[64vh] object-contain rounded-xl bg-zinc-950" />
                 ) : <div className="h-64 rounded-xl bg-zinc-950 flex items-center justify-center text-zinc-600">Sin imagen</div>}
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => reintentarIA(detalle.ticket)} disabled={busy === 'ia'} className="rounded-xl bg-blue-600/80 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'ia' ? 'Leyendo...' : 'Volver a leer IA'}</button>

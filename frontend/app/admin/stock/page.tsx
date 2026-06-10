@@ -6,17 +6,37 @@ import { useSucursal } from '@/lib/sucursal-context'
 import { computeBaseUnits } from '@/lib/units.mjs'
 import { useToast } from '../ui'
 
+interface Cadena {
+  purchaseUnit: string | null
+  c1: number | null; u1: string | null   // nivel 1: 1 compra = c1 u1
+  c2: number | null; u2: string | null   // nivel 2: cada u1 = c2 u2
+}
 interface Fila {
   id: string            // producto_catalogo_id
   nombre: string
-  entradas: number      // unidades base compradas (confirmadas)
-  consumo: number       // unidades base consumidas
+  entradas: number      // unidades base (granular) compradas (confirmadas)
+  consumo: number       // unidades base (granular) consumidas
   disponible: number
   baseUnidad: string | null
+  cadena: Cadena
 }
 
 const hoyISO = () => new Date().toISOString().slice(0, 10)
 const num = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: 2 })
+
+// Convierte una cantidad en la unidad MAS granular a todas las vistas de la cadena,
+// de la unidad de compra (caja) a la granular (ml). Ej. 8520 ml -> "1 caja · 24 pz · 8,520 ml".
+function vistasCadena(granular: number, c: Cadena): { q: number; u: string }[] {
+  const c1 = Number(c.c1), c2 = Number(c.c2)
+  const u1 = c.u1?.trim() || null, u2 = c.u2?.trim() || null
+  if (Number.isFinite(c1) && c1 > 0 && u1 && Number.isFinite(c2) && c2 > 0 && u2) {
+    return [{ q: granular / (c1 * c2), u: c.purchaseUnit || 'u' }, { q: granular / c2, u: u1 }, { q: granular, u: u2 }]
+  }
+  if (Number.isFinite(c1) && c1 > 0 && u1) {
+    return [{ q: granular / c1, u: c.purchaseUnit || 'u' }, { q: granular, u: u1 }]
+  }
+  return [{ q: granular, u: c.purchaseUnit || '' }]
+}
 
 export default function StockPage() {
   const { sucursalId, sucursales } = useSucursal()
@@ -66,7 +86,12 @@ export default function StockPage() {
       let unidad = base.source.startsWith('equivalence') ? base.unit : ((prod.unidad_default ?? row.unidad)?.trim() || null)
       // Dato sucio: si la "unidad" coincide con el nombre del producto, no es una unidad real.
       if (unidad && unidad.toLowerCase() === prod.nombre.toLowerCase()) unidad = null
-      const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad }
+      const cadena: Cadena = {
+        purchaseUnit: (prod.unidad_default ?? row.unidad)?.trim() || null,
+        c1: prod.contiene_cantidad, u1: prod.contiene_unidad,
+        c2: prod.contiene_sub_cantidad, u2: prod.contiene_sub_unidad,
+      }
+      const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad, cadena }
       f.entradas += base.quantity
       if (unidad && f.baseUnidad && f.baseUnidad !== unidad) f.baseUnidad = 'mixta'
       else if (!f.baseUnidad) f.baseUnidad = unidad
@@ -135,7 +160,12 @@ export default function StockPage() {
             <tbody>
               {filtradas.map(f => (
                 <tr key={f.id} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
-                  <td className="px-4 py-2.5 text-zinc-200">{f.nombre}{f.baseUnidad ? <span className="text-zinc-600"> /{f.baseUnidad}</span> : ''}</td>
+                  <td className="px-4 py-2.5 text-zinc-200">
+                    <div>{f.nombre}{f.baseUnidad ? <span className="text-zinc-600"> /{f.baseUnidad}</span> : ''}</div>
+                    {f.cadena.c1 && f.cadena.u1 && (
+                      <div className="text-[11px] text-zinc-500">Disponible: {vistasCadena(f.disponible, f.cadena).map(v => `${num(v.q)} ${v.u}`).join(' · ')}</div>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-right text-zinc-300">{num(f.entradas)}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{num(f.consumo)}</td>
                   <td className={`px-4 py-2.5 text-right font-semibold ${f.disponible <= 0 ? 'text-red-400' : f.disponible < f.entradas * 0.2 ? 'text-amber-400' : 'text-emerald-400'}`}>{num(f.disponible)}</td>
