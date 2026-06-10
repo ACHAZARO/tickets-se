@@ -51,8 +51,7 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 - (sin pendientes)
 
 ### PENDIENTE MANUAL (Alejandro, en Supabase Dashboard)
-- Authentication > Sign In/Providers: **deshabilitar "Allow new users to sign up"** (no se puede por
-  código/MCP). La RLS ya es admin-only, pero esto cierra el registro anónimo del todo.
+- (sin pendientes) — "Allow new users to sign up" ya fue deshabilitado por Alejandro (2026-06-09).
 
 ## Stack
 - **Frontend**: Next.js 14 (Vercel), optimizado para movil + panel `/admin`
