@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-06-10.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-06-11.
 
 ## Coordinacion Claude + Codex
 - `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.
@@ -156,6 +156,35 @@ secciones** (contexto global, persistido en localStorage; "Todas" = global).
   fotos de celular, bloqueando antes del envio. Fix: timeout de 8s en la compresion
   (fallback a la foto original) + 45s en el fetch. Verificado: flujo completo en ~1.7s.
 - NOTA: el cache del telefono puede servir codigo viejo; probar en incognito para forzar la version nueva.
+
+## Cambios 2026-06-11 — Polish final: backlog y catálogo al máximo
+
+### Estado del sistema (post-sesión)
+| Sucursal | Confirmados | Rechazados | Pendientes |
+|---|---|---|---|
+| SANTA ELENA | 32 | 2 | **0** |
+| WINGS PALACE | 104 | 36 | **0** |
+
+### Catálogo
+- 158+ productos, 0 sin unidad, 0 sin categoría, 64+ con sinónimos.
+- Comercios: 30 activos, todos categorizados, duplicados eliminados.
+- Unidades normalizadas: bebidas en pz (no ml), métricas en canónico.
+
+### Tickets procesados en sesión
+- **Wings Palace**: 58 pendientes liquidados (1 banco rechazado, 7 OCR reprocesados y confirmados, 13 confirmados vía fix de datos, 37 ilegibles rechazados).
+- **Santa Elena**: 5 tickets nuevos (subidos ~10:52am) procesados y confirmados:
+  - `00fa617a` Xallapan panadería $1,140 — comercio asignado, unidades pz.
+  - `2317e8ff` SAN LUIS desechables $129 — unidad pz.
+  - `8b7d2508` PLÁSTICOS PALACIOS $255 — unidades pz.
+  - `b4867dcd` CHEDRAUI $31 — items OCR basura eliminados, producto real limpio.
+  - `331e9892` ilegible — rechazado.
+
+### Deuda resuelta esta sesión
+- 0 alertas sin resolver en tickets confirmados.
+- Fechas erróneas corregidas (2028/2029 → 2026).
+- JUGO KARL duplicado fusionado.
+
+---
 
 ## Cambios 2026-06-10 — Revision de fraude
 - **Nueva pestaña "Fraude"** en Tickets (5º chip rojo con conteo). Junta tickets sospechosos
