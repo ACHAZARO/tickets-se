@@ -21,7 +21,10 @@ sucursal. Todo en `main`, deploy automatico en Vercel.
 - Fix local: `reprocesar-ticket` intenta descargar primero desde `storage_path_archivo`/bucket `archivo` y luego cae a `storage_path_original`/bucket `por-revisar`. Si ambos fallan, responde JSON con `error` y `detalle` para depuracion.
 - Frontend Tickets: la accion de relectura invoca la Edge Function por `fetch` con token admin para leer el JSON de error real; el toast deja de mostrar solo el generico de Supabase "Edge Function returned...".
 - Frontend Tickets: los tickets `rechazado` ahora muestran motivo derivado (`duplicado`, `ilegible`, `fraude`, `manual` o motivo guardado en `gemini_raw`) y la lista trae `es_duplicado`/`duplicado_de` + metadatos de `alertas_tickets`.
-- Pendiente: Claude debe desplegar `reprocesar-ticket` (ver `AGENTS.md` > PENDIENTE DEPLOY). Hasta desplegar, produccion seguira con la funcion anterior.
+- Orden de renglones: nueva migracion 028 agrega `ticket_items.orden`. `procesar-ticket` y `reprocesar-ticket` guardan el indice que devuelve Gemini; Tickets y Sheets ordenan por `orden`.
+- Sinónimos/ligado al releer: el input de producto ahora se envia en el form. Si se liga/escribe producto y el texto OCR no fue editado, el renglon toma el nombre del producto y el texto detectado queda como sinonimo; no se renombra el catalogo al OCR por accidente.
+- Fraude vs alertas: tickets enviados a revision de fraude ya no cuentan ni aparecen en "Con alerta" mientras sigan en flujo de fraude.
+- Pendiente: Claude debe aplicar migracion 028 y desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket` (ver `AGENTS.md` > PENDIENTE DEPLOY). Hasta desplegar, produccion seguira con funciones anteriores.
 
 ---
 

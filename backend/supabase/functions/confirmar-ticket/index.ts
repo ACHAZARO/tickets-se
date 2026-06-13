@@ -138,6 +138,9 @@ serve(async (req: Request) => {
       .from('ticket_items')
       .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id ( nombre )')
       .eq('registro_ticket_id', registro_id)
+      .order('orden', { ascending: true })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
 
     const items = (itemsData ?? []).map((it: Record<string, unknown>) => ({
       descripcion: (it.descripcion as string) ?? null,

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { toCanonical } from '@/lib/units.mjs'
 import { detectarSospechas } from '@/lib/fraude.mjs'
+import { hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm } from '../ui'
 
 interface Item {
@@ -18,6 +19,7 @@ interface Item {
   producto_catalogo_id: string | null
   necesita_revision: boolean
   motivo_revision: string | null
+  orden: number | null
   categorias_gasto: { nombre: string } | null
 }
 interface CatalogProduct {
@@ -145,6 +147,7 @@ function emptyItem(ticketId: string): Omit<Item, 'categorias_gasto'> {
     producto_catalogo_id: null,
     necesita_revision: true,
     motivo_revision: 'producto_nuevo',
+    orden: null,
   }
 }
 
@@ -170,6 +173,7 @@ export default function TicketsPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [itemOrderSupported, setItemOrderSupported] = useState(true)
 
   useEffect(() => {
     let q = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
@@ -271,10 +275,32 @@ export default function TicketsPage() {
     setBusy('abrir')
     setEditando(true)
     await loadCatalogo(t.sucursal_id)
-    const { data } = await supabase.from('ticket_items')
-      .select('id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision, categorias_gasto:categoria_id(nombre)')
-      .eq('registro_ticket_id', t.id).order('created_at').order('id')
-    const items = ((data as unknown as Item[]) ?? [])
+    const selectBase = 'id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision, categorias_gasto:categoria_id(nombre)'
+    let items: Item[] = []
+    if (itemOrderSupported) {
+      const { data, error } = await supabase.from('ticket_items')
+        .select(`${selectBase}, orden`)
+        .eq('registro_ticket_id', t.id)
+        .order('orden', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+      if (error && error.message.toLowerCase().includes('orden')) {
+        setItemOrderSupported(false)
+      } else if (error) {
+        toast('No se pudieron cargar renglones: ' + error.message, 'error')
+      } else {
+        items = ((data as unknown as Item[]) ?? [])
+      }
+    }
+    if (!itemOrderSupported || items.length === 0) {
+      const { data, error } = await supabase.from('ticket_items')
+        .select(selectBase)
+        .eq('registro_ticket_id', t.id)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+      if (error) toast('No se pudieron cargar renglones: ' + error.message, 'error')
+      items = ((data as unknown as Item[]) ?? []).map(it => ({ ...it, orden: null }))
+    }
     setOriginalDesc(Object.fromEntries(items.map(it => [it.id, it.descripcion])))
     const urlModalImg = await urlModal(t)
     setDetalle({ ticket: t, items, url: urlModalImg })
@@ -286,6 +312,13 @@ export default function TicketsPage() {
     await supabase.from('registros_tickets').update({
       sospechoso: true, sospecha_motivo: motivo || 'Marcado manualmente', sospecha_origen: 'manual', sospecha_estado: 'abierta',
     }).eq('id', t.id)
+    setTickets(prev => prev.map(x => x.id === t.id ? {
+      ...x,
+      sospechoso: true,
+      sospecha_motivo: motivo || 'Marcado manualmente',
+      sospecha_origen: 'manual',
+      sospecha_estado: 'abierta',
+    } : x))
     toast('Enviado a revision de fraude')
     fetchTickets()
   }
@@ -378,7 +411,7 @@ export default function TicketsPage() {
 
   function agregarRenglon() {
     if (!detalle) return
-    const it = emptyItem(detalle.ticket.id)
+    const it = { ...emptyItem(detalle.ticket.id), orden: nextTicketItemOrder(detalle.items) }
     setOriginalDesc(prev => ({ ...prev, [it.id]: '' }))
     setDetalle({ ...detalle, items: [...detalle.items, { ...it, categorias_gasto: null }] })
   }
@@ -401,22 +434,34 @@ export default function TicketsPage() {
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, monto: total } : t))
   }
 
-  async function ensureProduct(it: Item, opts: { synonymText: string; baseQty: string; baseUnit: string; subQty: string; subUnit: string }) {
+  async function ensureProduct(it: Item, opts: { productName: string; synonymText: string; baseQty: string; baseUnit: string; subQty: string; subUnit: string }) {
     const sucId = detalle?.ticket.sucursal_id ?? null
     let productoId = it.producto_catalogo_id
-    const nombre = it.descripcion.trim()
-    if (!nombre || !it.categoria_id) return null
+    const rowName = it.descripcion.trim()
+    const typedProductName = opts.productName.trim()
+    const catalogName = typedProductName || rowName
+    if (!catalogName || !it.categoria_id) return null
+
+    if (!productoId) {
+      const local = catalogo.find(p => p.nombre.toLowerCase() === catalogName.toLowerCase())
+      if (local) productoId = local.id
+    }
 
     if (!productoId) {
       const { data: ex } = await supabase.from('catalogo_productos').select('id')
-        .ilike('nombre', nombre)
+        .ilike('nombre', catalogName)
         .or(`sucursal_id.is.null,sucursal_id.eq.${sucId ?? '00000000-0000-0000-0000-000000000000'}`)
         .limit(1).maybeSingle()
       if (ex) productoId = ex.id as string
       else {
         const { data: nuevo } = await supabase.from('catalogo_productos').insert({
-          nombre,
-          sinonimos: [],
+          nombre: catalogName,
+          sinonimos: mergeProductSynonyms({
+            detectedName: originalDesc[it.id] ?? '',
+            rowDescription: rowName,
+            finalCatalogName: catalogName,
+            manualText: opts.synonymText,
+          }),
           categoria_id: it.categoria_id,
           unidad_default: it.unidad || null,
           sucursal_id: sucId,
@@ -428,24 +473,24 @@ export default function TicketsPage() {
     if (productoId) {
       const { data: cur } = await supabase.from('catalogo_productos')
         .select('nombre, sinonimos').eq('id', productoId).single()
-      const finalName = (cur?.nombre as string | undefined) ?? nombre
-      const original = (originalDesc[it.id] ?? '').trim()
-      const manual = opts.synonymText.split(',').map(s => s.trim()).filter(Boolean)
-      const merged = new Map<string, string>()
-      for (const s of ((cur?.sinonimos as string[] | null) ?? [])) if (s.trim()) merged.set(s.trim().toLowerCase(), s.trim())
-      for (const s of [original, ...manual]) {
-        const clean = s.trim()
-        if (clean && clean.toLowerCase() !== finalName.toLowerCase()) merged.set(clean.toLowerCase(), clean)
-      }
+      const previousName = (cur?.nombre as string | undefined) ?? catalogName
+      const finalName = catalogName || previousName
       const baseQty = opts.baseQty.trim() === '' ? null : Number(opts.baseQty)
       const baseUnit = opts.baseUnit.trim() || null
       const subQty = opts.subQty.trim() === '' ? null : Number(opts.subQty)
       const subUnit = opts.subUnit.trim() || null
       const updatePayload: Record<string, unknown> = {
-        nombre,
+        nombre: finalName,
         categoria_id: it.categoria_id,
         unidad_default: it.unidad || null,
-        sinonimos: [...merged.values()],
+        sinonimos: mergeProductSynonyms({
+          existing: (cur?.sinonimos as string[] | null) ?? [],
+          detectedName: originalDesc[it.id] ?? '',
+          rowDescription: rowName,
+          oldCatalogName: previousName,
+          finalCatalogName: finalName,
+          manualText: opts.synonymText,
+        }),
       }
       if (Number.isFinite(baseQty as number) && (baseQty as number) > 0 && baseUnit) {
         updatePayload.contiene_cantidad = baseQty
@@ -468,7 +513,9 @@ export default function TicketsPage() {
     if (!detalle) return
     setBusy(it.id)
     const fd = new FormData(form)
+    const productNameInput = String(fd.get('productoNombre') ?? '').trim()
     const productoId = await ensureProduct(it, {
+      productName: productNameInput,
       synonymText: String(fd.get('sinonimos') ?? ''),
       baseQty: String(fd.get('baseQty') ?? ''),
       baseUnit: String(fd.get('baseUnit') ?? ''),
@@ -476,9 +523,15 @@ export default function TicketsPage() {
       subUnit: String(fd.get('subUnit') ?? ''),
     })
     const necesita = !it.categoria_id || !it.unidad || !productoId
-    const payload = {
+    const itemOrder = it.orden ?? nextTicketItemOrder(detalle.items)
+    const descripcionFinal = resolveItemDescription({
+      detectedName: originalDesc[it.id] ?? '',
+      rowDescription: it.descripcion,
+      productName: productNameInput,
+    })
+    const payload: Record<string, unknown> = {
       registro_ticket_id: detalle.ticket.id,
-      descripcion: it.descripcion.trim() || 'Producto',
+      descripcion: descripcionFinal,
       cantidad: it.cantidad,
       unidad: it.unidad || null,
       monto: it.monto,
@@ -487,28 +540,34 @@ export default function TicketsPage() {
       necesita_revision: necesita,
       motivo_revision: necesita ? (!it.categoria_id ? 'sin_categoria' : !it.unidad ? 'sin_unidad' : 'producto_nuevo') : null,
     }
+    if (itemOrderSupported) payload.orden = itemOrder
     let savedId = it.id
     if (it.id.startsWith('nuevo-')) {
-      const { data, error } = await supabase.from('ticket_items').insert(payload).select('id').single()
+      const insertQ = supabase.from('ticket_items').insert(payload)
+      const { data, error } = itemOrderSupported
+        ? await insertQ.select('id,orden').single()
+        : await insertQ.select('id').single()
       if (error) { toast(error.message, 'error'); setBusy(null); return }
-      savedId = data.id as string
+      savedId = (data as { id: string }).id
     } else {
       const { error } = await supabase.from('ticket_items').update(payload).eq('id', it.id)
       if (error) { toast(error.message, 'error'); setBusy(null); return }
     }
     await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', detalle.ticket.id).eq('tipo', 'producto_no_reconocido')
+    await loadCatalogo(detalle.ticket.sucursal_id)
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
     const currentItems = detalle.items.map(x => x.id === it.id ? {
         ...x,
         id: savedId,
-        descripcion: payload.descripcion,
-        cantidad: payload.cantidad,
-        unidad: payload.unidad,
-        monto: payload.monto,
-        categoria_id: payload.categoria_id,
+        descripcion: payload.descripcion as string,
+        cantidad: payload.cantidad as number | null,
+        unidad: payload.unidad as string | null,
+        monto: payload.monto as number | null,
+        categoria_id: payload.categoria_id as string | null,
         producto_catalogo_id: productoId,
         necesita_revision: necesita,
-        motivo_revision: payload.motivo_revision,
+        motivo_revision: payload.motivo_revision as string | null,
+        orden: itemOrderSupported ? itemOrder : x.orden,
         categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
       } : x)
     await syncTicketTotal(detalle.ticket.id, currentItems)
@@ -580,8 +639,9 @@ export default function TicketsPage() {
 
   const comerciosUnicos = [...new Set(tickets.map(t => t.comercio).filter((c): c is string => !!c))].sort()
   const baseTickets = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
-  const tieneAlerta = (t: Ticket) => (alertas[t.id]?.length ?? 0) > 0
   const esSospechosoAbierto = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta'
+  const estaEnFraude = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
+  const tieneAlerta = (t: Ticket) => hasReviewAlert(alertas[t.id] ?? [], estaEnFraude(t))
   const cuenta = {
     todos: baseTickets.length,
     pendientes: baseTickets.filter(t => t.estado === 'pendiente').length,
@@ -791,7 +851,7 @@ export default function TicketsPage() {
                           <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </div>
-                      <input list="catalogo-list"
+                      <input name="productoNombre" list="catalogo-list"
                         key={`prod-${it.id}-${it.producto_catalogo_id ?? 'new'}`}
                         defaultValue={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
                         onChange={e => {

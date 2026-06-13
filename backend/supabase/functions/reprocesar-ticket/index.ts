@@ -167,7 +167,7 @@ serve(async (req: Request) => {
     let anySinCategoria = false
     let anySinUnidad = false
     let anyProductoNuevo = false
-    const items = (rawItems.length ? rawItems : [{ descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null }]).map(it => {
+    const items = (rawItems.length ? rawItems : [{ descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null }]).map((it, index) => {
       const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
       const matched = matchProductInCatalog(desc, catalog.products)
       let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
@@ -187,6 +187,7 @@ serve(async (req: Request) => {
         producto_catalogo_id: matched?.id ?? null,
         necesita_revision: necesita,
         motivo_revision: motivo,
+        orden: index,
       }
     })
     await supabase.from('ticket_items').insert(items)

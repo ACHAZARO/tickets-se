@@ -286,7 +286,7 @@ async function procesarEnSegundoPlano(opts: {
     let anyProductoNuevo = false
     const itemsToInsert = (rawItems.length ? rawItems : [
       { descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null },
-    ]).map(it => {
+    ]).map((it, index) => {
       const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
       const matched = matchProductInCatalog(desc, catalog.products)
       if (matched) matchedIds.add(matched.id)
@@ -302,6 +302,7 @@ async function procesarEnSegundoPlano(opts: {
         cantidad: it.cantidad ?? null, unidad, monto: it.monto ?? null,
         categoria_id: cat?.id ?? null, producto_catalogo_id: matched?.id ?? null,
         necesita_revision: necesita, motivo_revision: motivo,
+        orden: index,
         categoria_nombre: cat?.nombre ?? null,
       }
     })

@@ -71,7 +71,10 @@ serve(async (req: Request) => {
     const [{ data: itemsData }, { data: suc }, { data: emp }] = await Promise.all([
       supabase.from('ticket_items')
         .select('descripcion, cantidad, unidad, monto, producto_catalogo_id, categorias_gasto:categoria_id ( nombre )')
-        .eq('registro_ticket_id', registro_id),
+        .eq('registro_ticket_id', registro_id)
+        .order('orden', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true }),
       supabase.from('sucursales').select('nombre').eq('id', reg.sucursal_id).maybeSingle(),
       supabase.from('empleados').select('nombre').eq('id', reg.empleado_id).maybeSingle(),
     ])
