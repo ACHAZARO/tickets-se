@@ -49,6 +49,20 @@ describe('computeBaseUnits', () => {
     assert.deepEqual(result, { quantity: 17040, unit: 'ml', source: 'equivalence2' })
   })
 
+  it('counts pieces of a named base item such as eggs', () => {
+    const result = computeBaseUnits({
+      productName: 'Huevo blanco cono',
+      quantity: 1,
+      purchaseUnit: 'cono',
+      containsQuantity: 30,
+      containsUnit: 'pz',
+      subQuantity: 1,
+      subUnit: 'huevo',
+    })
+
+    assert.deepEqual(result, { quantity: 30, unit: 'huevo', source: 'equivalence2' })
+  })
+
   it('formats missing quantity as a review marker', () => {
     assert.equal(formatBaseUnits(null), 'Revisar')
   })

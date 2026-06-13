@@ -8,6 +8,7 @@ import {
   resolveItemDescription,
   ticketFilterLabel,
   ticketStatusLabel,
+  buildEquivalenceUpdate,
 } from './ticket-workflow.mjs'
 
 test('mergeProductSynonyms keeps OCR text and old names as synonyms when product is renamed', () => {
@@ -59,4 +60,19 @@ test('ticketFilterLabel separates confirmation state from review queue', () => {
   assert.equal(ticketFilterLabel('pendientes'), 'Por confirmar')
   assert.equal(ticketFilterLabel('alertas'), 'Requieren revision')
   assert.equal(ticketFilterLabel('confirmados'), 'Confirmados')
+})
+
+test('buildEquivalenceUpdate models counted pieces of a base item', () => {
+  assert.deepEqual(buildEquivalenceUpdate({
+    baseQty: '30',
+    baseUnit: 'pz',
+    baseItem: 'huevo',
+    subQty: '',
+    subUnit: '',
+  }), {
+    contiene_cantidad: 30,
+    contiene_unidad: 'pz',
+    contiene_sub_cantidad: 1,
+    contiene_sub_unidad: 'huevo',
+  })
 })

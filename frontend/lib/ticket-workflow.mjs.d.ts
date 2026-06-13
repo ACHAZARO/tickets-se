@@ -17,3 +17,15 @@ export function resolveItemDescription(input?: {
 }): string
 export function ticketStatusLabel(status: string | null | undefined): string
 export function ticketFilterLabel(filter: string | null | undefined): string
+export function buildEquivalenceUpdate(input: {
+  baseQty?: string | number | null
+  baseUnit?: string | null
+  baseItem?: string | null
+  subQty?: string | number | null
+  subUnit?: string | null
+}): {
+  contiene_cantidad: number | null
+  contiene_unidad: string | null
+  contiene_sub_cantidad: number | null
+  contiene_sub_unidad: string | null
+}

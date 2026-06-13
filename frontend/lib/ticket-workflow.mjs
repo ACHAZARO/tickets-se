@@ -87,3 +87,46 @@ export function ticketFilterLabel(filter) {
   }
   return labels[String(filter ?? '')] ?? String(filter ?? '')
 }
+
+function cleanText(value) {
+  return String(value ?? '').trim()
+}
+
+function positiveNumber(value) {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * @param {{
+ *   baseQty?: string | number | null,
+ *   baseUnit?: string | null,
+ *   baseItem?: string | null,
+ *   subQty?: string | number | null,
+ *   subUnit?: string | null,
+ * }} input
+ */
+export function buildEquivalenceUpdate(input) {
+  const baseQty = positiveNumber(input?.baseQty)
+  const baseUnit = cleanText(input?.baseUnit) || null
+  const baseItem = cleanText(input?.baseItem) || null
+  const subQty = positiveNumber(input?.subQty)
+  const subUnit = cleanText(input?.subUnit) || null
+
+  const out = {
+    contiene_cantidad: baseQty,
+    contiene_unidad: baseUnit,
+    contiene_sub_cantidad: null,
+    contiene_sub_unidad: null,
+  }
+
+  if (!baseQty || !baseUnit) return out
+  if (subQty && subUnit) {
+    out.contiene_sub_cantidad = subQty
+    out.contiene_sub_unidad = subUnit
+  } else if (baseItem && baseItem.toLowerCase() !== baseUnit.toLowerCase()) {
+    out.contiene_sub_cantidad = 1
+    out.contiene_sub_unidad = baseItem
+  }
+  return out
+}

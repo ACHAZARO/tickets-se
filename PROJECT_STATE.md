@@ -25,6 +25,7 @@ sucursal. Todo en `main`, deploy automatico en Vercel.
 - Sinónimos/ligado al releer: el input de producto ahora se envia en el form. Si se liga/escribe producto y el texto OCR no fue editado, el renglon toma el nombre del producto y el texto detectado queda como sinonimo; no se renombra el catalogo al OCR por accidente.
 - Fraude vs alertas: tickets enviados a revision de fraude ya no cuentan ni aparecen en "Con alerta" mientras sigan en flujo de fraude.
 - Lenguaje UI Tickets: `pendiente` se muestra como "Por confirmar"; la cola antes llamada "Con alerta" ahora es "Requieren revision"; se quito el chip generico "Revisar ticket" para no mezclar estado con accion.
+- Equivalencias de inventario: Tickets y Catalogo permiten capturar `1 caja/cono = 30 pz de huevo`. Se guarda usando el segundo nivel existente (`30 pz`, cada `pz = 1 huevo`) para que Inventario/Stock muestren `30 huevo(s)` y no solo piezas genericas. No requiere migracion ni Edge Function nueva.
 - Pendiente: Claude debe aplicar migracion 028 y desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket` (ver `AGENTS.md` > PENDIENTE DEPLOY). Hasta desplegar, produccion seguira con funciones anteriores.
 
 ---
