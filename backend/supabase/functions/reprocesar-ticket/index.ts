@@ -8,6 +8,7 @@ import type { Catalog } from '../_shared/catalog.ts'
 
 // deno-lint-ignore no-explicit-any
 type SB = any
+type ImageCandidate = { bucket: 'archivo' | 'por-revisar'; path: string }
 
 interface GeminiItem {
   descripcion?: string
@@ -87,6 +88,28 @@ async function requireAdmin(supabase: SB, req: Request): Promise<boolean> {
   return !!data
 }
 
+async function downloadTicketImage(
+  supabase: SB,
+  reg: { storage_path_original?: string | null; storage_path_archivo?: string | null },
+) {
+  const candidates: ImageCandidate[] = []
+  if (reg.storage_path_archivo) candidates.push({ bucket: 'archivo', path: reg.storage_path_archivo })
+  if (reg.storage_path_original) candidates.push({ bucket: 'por-revisar', path: reg.storage_path_original })
+
+  let lastError = ''
+  for (const c of candidates) {
+    const { data, error } = await supabase.storage.from(c.bucket).download(c.path)
+    if (data) return { fileData: data, source: c, error: null as string | null }
+    lastError = `${c.bucket}/${c.path}: ${error?.message ?? 'sin datos'}`
+  }
+
+  return {
+    fileData: null,
+    source: null,
+    error: candidates.length ? lastError : 'ticket sin storage_path_original/storage_path_archivo',
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   const json = (body: unknown, status = 200) =>
@@ -104,11 +127,13 @@ serve(async (req: Request) => {
       .eq('id', registro_id).maybeSingle()
     if (!reg) return json({ error: 'Ticket no encontrado' }, 404)
 
-    const bucket = reg.storage_path_original ? 'por-revisar' : 'archivo'
-    const path = reg.storage_path_original ?? reg.storage_path_archivo
-    if (!path) return json({ error: 'Ticket sin imagen para releer' }, 400)
-    const { data: fileData, error: downloadError } = await supabase.storage.from(bucket).download(path)
-    if (downloadError || !fileData) return json({ error: 'No se pudo descargar la imagen' }, 500)
+    const { fileData, source, error: imageError } = await downloadTicketImage(supabase, reg)
+    if (!fileData || !source) {
+      return json({
+        error: 'No se pudo descargar la imagen para releer. Revisa si el archivo existe en Storage.',
+        detalle: imageError,
+      }, 500)
+    }
 
     const imageBytes = await fileData.arrayBuffer()
     const catalog: Catalog = await loadCatalog(reg.sucursal_id)

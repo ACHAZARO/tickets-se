@@ -41,6 +41,8 @@ interface Ticket {
   storage_path_archivo: string | null
   sucursal_id: string | null
   gemini_raw: Record<string, unknown> | null
+  es_duplicado: boolean | null
+  duplicado_de: string | null
   sucursales: { nombre: string } | null
   empleados: { nombre: string } | null
   sospechoso?: boolean
@@ -49,7 +51,13 @@ interface Ticket {
   sospecha_grupo?: string | null
   sospecha_estado?: string | null
 }
-interface AlertRow { registro_ticket_id: string; tipo: string; resuelta: boolean }
+interface AlertRow {
+  registro_ticket_id: string
+  tipo: string
+  resuelta: boolean
+  duplicado_de_id: string | null
+  correccion: Record<string, unknown> | null
+}
 
 const UNIDADES = ['pz', 'kg', 'g', 'ml', 'lt', 'caja', 'bulto', 'paquete', 'cono', 'charola', 'costal', 'reja', 'rollo', 'galon', 'six', 'docena', 'atado', 'manojo', 'otro']
 // Unidades "simples": no necesitan equivalencia (1 kg ya es base). Cualquier OTRA
@@ -84,6 +92,41 @@ function diaSiguienteISO(d: string): string {
   return dt.toISOString().slice(0, 10)
 }
 const fmt = (n: number | null) => n != null ? '$' + Number(n).toLocaleString('es-MX', { maximumFractionDigits: 2 }) : '-'
+const edgeFunctionsUrl = (
+  process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL ||
+  (process.env.NEXT_PUBLIC_SUPABASE_URL ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1` : '')
+).replace(/\/$/, '')
+
+function edgePayloadMessage(payload: Record<string, unknown> | null, fallback: string): string {
+  const err = payload?.error
+  const detail = payload?.detalle
+  const msg = typeof err === 'string' && err.trim() ? err : fallback
+  return typeof detail === 'string' && detail.trim() ? `${msg} (${detail})` : msg
+}
+
+async function invokeEdgeJson<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  if (!edgeFunctionsUrl) throw new Error('No esta configurada la URL de Edge Functions')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Sesion admin expirada. Vuelve a iniciar sesion.')
+
+  const res = await fetch(`${edgeFunctionsUrl}/${name}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  let payload: Record<string, unknown> | null = null
+  try {
+    const parsed = await res.json()
+    payload = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
+  } catch {
+    payload = null
+  }
+  if (!res.ok) throw new Error(edgePayloadMessage(payload, `Edge Function ${name} fallo (${res.status})`))
+  return payload as T
+}
 
 function pathBucket(t: Ticket): { bucket: string; path: string } | null {
   if (t.storage_path_archivo) return { bucket: 'archivo', path: t.storage_path_archivo }
@@ -113,7 +156,7 @@ export default function TicketsPage() {
   const [desde, setDesde] = useState(primerDiaMesISO())
   const [hasta, setHasta] = useState(hoyISO())
   const [tickets, setTickets] = useState<Ticket[]>([])
-  const [alertas, setAlertas] = useState<Record<string, string[]>>({})
+  const [alertas, setAlertas] = useState<Record<string, AlertRow[]>>({})
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [detalle, setDetalle] = useState<{ ticket: Ticket; items: Item[]; url: string | null } | null>(null)
@@ -146,7 +189,7 @@ export default function TicketsPage() {
   const fetchTickets = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
       .gte('created_at', desde).lt('created_at', diaSiguienteISO(hasta))
       .order('created_at', { ascending: false }).limit(600)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
@@ -159,11 +202,11 @@ export default function TicketsPage() {
     const ids = rows.map(t => t.id)
     if (ids.length) {
       const { data: alerts } = await supabase.from('alertas_tickets')
-        .select('registro_ticket_id, tipo, resuelta')
+        .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
         .in('registro_ticket_id', ids).eq('resuelta', false)
-      const map: Record<string, string[]> = {}
+      const map: Record<string, AlertRow[]> = {}
       for (const a of (alerts as AlertRow[] | null) ?? []) {
-        map[a.registro_ticket_id] = [...(map[a.registro_ticket_id] ?? []), a.tipo]
+        map[a.registro_ticket_id] = [...(map[a.registro_ticket_id] ?? []), a]
       }
       setAlertas(map)
     } else setAlertas({})
@@ -202,13 +245,24 @@ export default function TicketsPage() {
     }
   }
 
+  function rejectionReason(t: Ticket, rows: AlertRow[]): string {
+    const alertTypes = new Set(rows.map(a => a.tipo))
+    const rawReason = t.gemini_raw?._rechazo_motivo ?? t.gemini_raw?._motivo_rechazo
+    if (t.es_duplicado || t.duplicado_de || alertTypes.has('duplicado')) return 'duplicado'
+    if (alertTypes.has('ilegible')) return 'ilegible'
+    if (t.sospecha_estado === 'confirmada') return 'fraude'
+    if (typeof rawReason === 'string' && rawReason.trim()) return rawReason.trim().slice(0, 80)
+    return 'manual'
+  }
+
   function ticketBadges(t: Ticket): string[] {
     const out = new Set<string>()
+    const rows = alertas[t.id] ?? []
     if (!t.sucursal_id) out.add('Sin sucursal')
     if (!t.fecha_ticket) out.add('Sin fecha')
     if (t.gemini_raw?._fecha_asumida) out.add('Fecha asumida')
-    if (t.estado === 'rechazado') out.add('Rechazado')
-    for (const a of alertas[t.id] ?? []) out.add(ALERT_LABEL[a] ?? a)
+    if (t.estado === 'rechazado') out.add(`Rechazado: ${rejectionReason(t, rows)}`)
+    for (const a of rows) out.add(ALERT_LABEL[a.tipo] ?? a.tipo)
     if (out.size === 0 && t.estado !== 'confirmado') out.add('Revisar ticket')
     return [...out]
   }
@@ -486,25 +540,32 @@ export default function TicketsPage() {
 
   async function rechazarTicket(t: Ticket) {
     if (!(await confirm('Rechazar este ticket? No entra al arqueo.', { danger: true }))) return
-    await supabase.from('registros_tickets').update({ estado: 'rechazado' }).eq('id', t.id)
+    const geminiRaw = { ...(t.gemini_raw ?? {}), _rechazo_motivo: 'manual' }
+    await supabase.from('registros_tickets').update({ estado: 'rechazado', gemini_raw: geminiRaw }).eq('id', t.id)
     await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id)
-    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'rechazado' } } : d)
-    setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'rechazado' } : x))
+    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'rechazado', gemini_raw: geminiRaw } } : d)
+    setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'rechazado', gemini_raw: geminiRaw } : x))
+    setAlertas(prev => ({ ...prev, [t.id]: [] }))
   }
 
   async function reintentarIA(t: Ticket) {
     if (!(await confirm('Volver a leer con IA? Se reemplazan los renglones actuales.'))) return
     setBusy('ia')
-    const { error } = await supabase.functions.invoke('reprocesar-ticket', { body: { registro_id: t.id } })
-    setBusy(null)
-    if (error) { toast('No se pudo releer: ' + error.message, 'error'); return }
-    await fetchTickets()
-    // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
-    // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
-    const { data: fresh } = await supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
-      .eq('id', t.id).maybeSingle()
-    await abrirDetalle((fresh as unknown as Ticket) ?? t)
+    try {
+      await invokeEdgeJson<{ ok: boolean; items: number }>('reprocesar-ticket', { registro_id: t.id })
+      await fetchTickets()
+      // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
+      // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
+      const { data: fresh } = await supabase.from('registros_tickets')
+        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+        .eq('id', t.id).maybeSingle()
+      await abrirDetalle((fresh as unknown as Ticket) ?? t)
+      toast('Ticket releido con IA')
+    } catch (err) {
+      toast('No se pudo releer: ' + (err instanceof Error ? err.message : String(err)), 'error')
+    } finally {
+      setBusy(null)
+    }
   }
 
   async function eliminarTicket(t: Ticket) {

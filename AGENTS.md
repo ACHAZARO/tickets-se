@@ -54,7 +54,7 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
   update directo a `registros_tickets` (RLS admin). Si tocas, no re-marcar tickets ya `descartada`/`confirmada`.
 
 ### PENDIENTE DEPLOY (Claude)
-- (sin pendientes)
+- 2026-06-13 (Codex): desplegar `reprocesar-ticket` con fix de relectura. Causa raiz: tickets ya archivados conservan `storage_path_original`, pero el archivo fue movido a bucket `archivo`; la funcion ahora intenta `storage_path_archivo` primero y cae a `por-revisar`. Tambien devuelve `detalle` si Storage falla.
 
 ### PENDIENTE MANUAL (Alejandro, en Supabase Dashboard)
 - (sin pendientes) — "Allow new users to sign up" ya fue deshabilitado por Alejandro (2026-06-09).

@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-06-11.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-06-13.
 
 ## Coordinacion Claude + Codex
 - `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.
@@ -13,6 +13,15 @@
 App movil para que gerentes suban fotos de tickets de gasto. Gemini (vision)
 extrae los renglones, auto-categoriza, y el admin audita el costo vs ventas por
 sucursal. Todo en `main`, deploy automatico en Vercel.
+
+---
+
+## Cambios 2026-06-13 -- debug relectura IA y rechazo visible
+- Causa raiz del error intermitente al usar "Volver a leer IA": los tickets confirmados/auto-confirmados conservan `storage_path_original`, pero la imagen ya fue movida a `archivo`; `reprocesar-ticket` elegia `por-revisar` por existir esa columna y fallaba la descarga.
+- Fix local: `reprocesar-ticket` intenta descargar primero desde `storage_path_archivo`/bucket `archivo` y luego cae a `storage_path_original`/bucket `por-revisar`. Si ambos fallan, responde JSON con `error` y `detalle` para depuracion.
+- Frontend Tickets: la accion de relectura invoca la Edge Function por `fetch` con token admin para leer el JSON de error real; el toast deja de mostrar solo el generico de Supabase "Edge Function returned...".
+- Frontend Tickets: los tickets `rechazado` ahora muestran motivo derivado (`duplicado`, `ilegible`, `fraude`, `manual` o motivo guardado en `gemini_raw`) y la lista trae `es_duplicado`/`duplicado_de` + metadatos de `alertas_tickets`.
+- Pendiente: Claude debe desplegar `reprocesar-ticket` (ver `AGENTS.md` > PENDIENTE DEPLOY). Hasta desplegar, produccion seguira con la funcion anterior.
 
 ---
 
