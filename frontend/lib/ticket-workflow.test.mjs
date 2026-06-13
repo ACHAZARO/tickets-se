@@ -1,7 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription } from './ticket-workflow.mjs'
+import {
+  hasReviewAlert,
+  mergeProductSynonyms,
+  nextTicketItemOrder,
+  resolveItemDescription,
+  ticketFilterLabel,
+  ticketStatusLabel,
+} from './ticket-workflow.mjs'
 
 test('mergeProductSynonyms keeps OCR text and old names as synonyms when product is renamed', () => {
   const result = mergeProductSynonyms({
@@ -40,4 +47,16 @@ test('resolveItemDescription uses linked product name when OCR text was not manu
     rowDescription: 'Caja cerveza XX 24 pz',
     productName: 'Caja de cerveza XX',
   }), 'Caja cerveza XX 24 pz')
+})
+
+test('ticketStatusLabel uses operator-facing state names', () => {
+  assert.equal(ticketStatusLabel('pendiente'), 'Por confirmar')
+  assert.equal(ticketStatusLabel('confirmado'), 'Confirmado')
+  assert.equal(ticketStatusLabel('rechazado'), 'Rechazado')
+})
+
+test('ticketFilterLabel separates confirmation state from review queue', () => {
+  assert.equal(ticketFilterLabel('pendientes'), 'Por confirmar')
+  assert.equal(ticketFilterLabel('alertas'), 'Requieren revision')
+  assert.equal(ticketFilterLabel('confirmados'), 'Confirmados')
 })

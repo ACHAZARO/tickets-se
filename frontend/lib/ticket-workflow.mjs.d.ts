@@ -15,3 +15,5 @@ export function resolveItemDescription(input?: {
   rowDescription?: string
   productName?: string
 }): string
+export function ticketStatusLabel(status: string | null | undefined): string
+export function ticketFilterLabel(filter: string | null | undefined): string

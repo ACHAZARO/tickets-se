@@ -66,3 +66,24 @@ export function resolveItemDescription(input = {}) {
   const rowEdited = detectedName.toLowerCase() !== rowDescription.toLowerCase()
   return (!rowEdited && productName ? productName : rowDescription) || 'Producto'
 }
+
+export function ticketStatusLabel(status) {
+  const labels = {
+    pendiente: 'Por confirmar',
+    confirmado: 'Confirmado',
+    rechazado: 'Rechazado',
+    archivado: 'Archivado',
+  }
+  return labels[String(status ?? '')] ?? String(status ?? '')
+}
+
+export function ticketFilterLabel(filter) {
+  const labels = {
+    todos: 'Todos',
+    pendientes: 'Por confirmar',
+    alertas: 'Requieren revision',
+    confirmados: 'Confirmados',
+    fraude: 'Fraude',
+  }
+  return labels[String(filter ?? '')] ?? String(filter ?? '')
+}

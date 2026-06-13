@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { toCanonical } from '@/lib/units.mjs'
 import { detectarSospechas } from '@/lib/fraude.mjs'
-import { hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription } from '@/lib/ticket-workflow.mjs'
+import { hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription, ticketFilterLabel, ticketStatusLabel } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm } from '../ui'
 
 interface Item {
@@ -267,7 +267,6 @@ export default function TicketsPage() {
     if (t.gemini_raw?._fecha_asumida) out.add('Fecha asumida')
     if (t.estado === 'rechazado') out.add(`Rechazado: ${rejectionReason(t, rows)}`)
     for (const a of rows) out.add(ALERT_LABEL[a.tipo] ?? a.tipo)
-    if (out.size === 0 && t.estado !== 'confirmado') out.add('Revisar ticket')
     return [...out]
   }
 
@@ -707,11 +706,11 @@ export default function TicketsPage() {
 
       <div className="flex flex-wrap gap-2">
         {([
-          { k: 'todos', label: 'Todos', n: cuenta.todos, color: 'bg-zinc-700 text-zinc-100' },
-          { k: 'pendientes', label: 'Pendientes', n: cuenta.pendientes, color: 'bg-amber-600 text-white' },
-          { k: 'alertas', label: 'Con alerta', n: cuenta.alertas, color: 'bg-orange-600 text-white' },
-          { k: 'confirmados', label: 'Confirmados', n: cuenta.confirmados, color: 'bg-emerald-700 text-white' },
-          { k: 'fraude', label: 'Fraude', n: cuenta.fraude, color: 'bg-red-700 text-white' },
+          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos, color: 'bg-zinc-700 text-zinc-100' },
+          { k: 'pendientes', label: ticketFilterLabel('pendientes'), n: cuenta.pendientes, color: 'bg-amber-600 text-white' },
+          { k: 'alertas', label: ticketFilterLabel('alertas'), n: cuenta.alertas, color: 'bg-orange-600 text-white' },
+          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados, color: 'bg-emerald-700 text-white' },
+          { k: 'fraude', label: ticketFilterLabel('fraude'), n: cuenta.fraude, color: 'bg-red-700 text-white' },
         ] as const).map(c => (
           <button key={c.k} onClick={() => setFiltroEstado(c.k)}
             className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${filtroEstado === c.k ? c.color : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
@@ -776,7 +775,7 @@ export default function TicketsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm text-zinc-100 truncate">{t.comercio ?? 'Sin comercio'}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_COLOR[t.estado] ?? 'bg-zinc-800 text-zinc-400'}`}>{t.estado}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_COLOR[t.estado] ?? 'bg-zinc-800 text-zinc-400'}`}>{ticketStatusLabel(t.estado)}</span>
                     {badges.map(b => <span key={b} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300">{b}</span>)}
                   </div>
                   <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}</p>

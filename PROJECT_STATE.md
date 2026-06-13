@@ -24,6 +24,7 @@ sucursal. Todo en `main`, deploy automatico en Vercel.
 - Orden de renglones: nueva migracion 028 agrega `ticket_items.orden`. `procesar-ticket` y `reprocesar-ticket` guardan el indice que devuelve Gemini; Tickets y Sheets ordenan por `orden`.
 - Sinónimos/ligado al releer: el input de producto ahora se envia en el form. Si se liga/escribe producto y el texto OCR no fue editado, el renglon toma el nombre del producto y el texto detectado queda como sinonimo; no se renombra el catalogo al OCR por accidente.
 - Fraude vs alertas: tickets enviados a revision de fraude ya no cuentan ni aparecen en "Con alerta" mientras sigan en flujo de fraude.
+- Lenguaje UI Tickets: `pendiente` se muestra como "Por confirmar"; la cola antes llamada "Con alerta" ahora es "Requieren revision"; se quito el chip generico "Revisar ticket" para no mezclar estado con accion.
 - Pendiente: Claude debe aplicar migracion 028 y desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket` (ver `AGENTS.md` > PENDIENTE DEPLOY). Hasta desplegar, produccion seguira con funciones anteriores.
 
 ---
