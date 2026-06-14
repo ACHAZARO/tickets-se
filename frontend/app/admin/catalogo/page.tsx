@@ -154,7 +154,7 @@ export default function CatalogoPage() {
     if (nombreNuevo.toLowerCase() !== editProd.nombreOriginal.toLowerCase() && !sinonimos.some(s => s.toLowerCase() === editProd.nombreOriginal.toLowerCase())) {
       sinonimos.push(editProd.nombreOriginal)
     }
-    await supabase.from('catalogo_productos').update({
+    const { error } = await supabase.from('catalogo_productos').update({
       nombre: nombreNuevo,
       categoria_id: editProd.categoria_id,
       unidad_default: editProd.unidad || null,
@@ -164,6 +164,7 @@ export default function CatalogoPage() {
       contiene_sub_cantidad: equivalencia.contiene_sub_cantidad,
       contiene_sub_unidad: equivalencia.contiene_sub_unidad,
     }).eq('id', editProd.id)
+    if (error) { toast('No se pudo guardar el producto: ' + error.message, 'error'); return }
     setProductos(prev => prev.map(x => x.id === editProd.id
       ? { ...x, nombre: nombreNuevo, categoria_id: editProd.categoria_id, unidad_default: editProd.unidad || null, sinonimos, contiene_cantidad: equivalencia.contiene_cantidad, contiene_unidad: equivalencia.contiene_unidad, contiene_sub_cantidad: equivalencia.contiene_sub_cantidad, contiene_sub_unidad: equivalencia.contiene_sub_unidad }
       : x))

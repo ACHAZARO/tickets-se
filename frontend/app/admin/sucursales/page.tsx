@@ -63,7 +63,8 @@ export default function SucursalesPage() {
   const enlace = (slug: string) => `${origin}/sucursal/${slug}`
 
   async function toggleActiva(s: Sucursal) {
-    await supabase.from('sucursales').update({ activa: !s.activa }).eq('id', s.id)
+    const { error } = await supabase.from('sucursales').update({ activa: !s.activa }).eq('id', s.id)
+    if (error) { toast('No se pudo cambiar: ' + error.message, 'error'); return }
     setSucursales(prev => prev.map(x => x.id === s.id ? { ...x, activa: !x.activa } : x))
   }
 

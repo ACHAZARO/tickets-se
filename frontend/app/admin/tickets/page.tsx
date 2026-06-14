@@ -313,9 +313,10 @@ export default function TicketsPage() {
 
   // --- Revision de fraude ---
   async function marcarSospechoso(t: Ticket, motivo: string) {
-    await supabase.from('registros_tickets').update({
+    const { error } = await supabase.from('registros_tickets').update({
       sospechoso: true, sospecha_motivo: motivo || 'Marcado manualmente', sospecha_origen: 'manual', sospecha_estado: 'abierta',
     }).eq('id', t.id)
+    if (error) { toast('No se pudo marcar: ' + error.message, 'error'); return }
     setTickets(prev => prev.map(x => x.id === t.id ? {
       ...x,
       sospechoso: true,
@@ -328,15 +329,17 @@ export default function TicketsPage() {
   }
 
   async function resolverSospecha(t: Ticket, estado: 'descartada' | 'confirmada') {
-    await supabase.from('registros_tickets').update({
+    const { error } = await supabase.from('registros_tickets').update({
       sospecha_estado: estado, sospechoso: estado === 'confirmada',
     }).eq('id', t.id)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     toast(estado === 'descartada' ? 'Sospecha descartada' : 'Marcado como fraude')
     fetchTickets()
   }
 
   async function guardarMotivo(t: Ticket, motivo: string) {
-    await supabase.from('registros_tickets').update({ sospecha_motivo: motivo }).eq('id', t.id)
+    const { error } = await supabase.from('registros_tickets').update({ sospecha_motivo: motivo }).eq('id', t.id)
+    if (error) toast('No se pudo guardar el motivo: ' + error.message, 'error')
   }
 
   async function buscarSospechas() {
@@ -422,7 +425,10 @@ export default function TicketsPage() {
 
   async function borrarRenglon(it: Item) {
     if (!detalle) return
-    if (!it.id.startsWith('nuevo-')) await supabase.from('ticket_items').delete().eq('id', it.id)
+    if (!it.id.startsWith('nuevo-')) {
+      const { error } = await supabase.from('ticket_items').delete().eq('id', it.id)
+      if (error) { toast('No se pudo borrar el renglon: ' + error.message, 'error'); return }
+    }
     const nextItems = detalle.items.filter(x => x.id !== it.id)
     await syncTicketTotal(detalle.ticket.id, nextItems)
     setDetalle({ ...detalle, ticket: { ...detalle.ticket, monto: sumItems(nextItems) }, items: nextItems })
@@ -434,7 +440,8 @@ export default function TicketsPage() {
 
   async function syncTicketTotal(ticketId: string, items: Item[]) {
     const total = sumItems(items)
-    await supabase.from('registros_tickets').update({ monto: total }).eq('id', ticketId)
+    const { error } = await supabase.from('registros_tickets').update({ monto: total }).eq('id', ticketId)
+    if (error) { toast('No se pudo actualizar el total: ' + error.message, 'error'); return }
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, monto: total } : t))
   }
 
@@ -613,7 +620,8 @@ export default function TicketsPage() {
 
   async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
     const v = valor || null
-    await supabase.from('registros_tickets').update({ [campo]: v }).eq('id', id)
+    const { error } = await supabase.from('registros_tickets').update({ [campo]: v }).eq('id', id)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, [campo]: v } } : d)
     setTickets(prev => prev.map(x => x.id === id ? { ...x, [campo]: v } as Ticket : x))
   }

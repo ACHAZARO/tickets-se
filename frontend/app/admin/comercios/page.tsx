@@ -67,12 +67,14 @@ export default function ComerciosPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   async function setCategoria(c: Comercio, categoriaId: string) {
+    const { error } = await supabase.from('comercios').update({ categoria_id: categoriaId || null }).eq('id', c.id)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     setComercios(prev => prev.map(x => x.id === c.id ? { ...x, categoria_id: categoriaId || null } : x))
-    await supabase.from('comercios').update({ categoria_id: categoriaId || null }).eq('id', c.id)
   }
   async function eliminar(c: Comercio) {
     if (!(await confirm(`¿Olvidar el comercio "${c.nombre}"?`, { danger: true }))) return
-    await supabase.from('comercios').delete().eq('id', c.id)
+    const { error } = await supabase.from('comercios').delete().eq('id', c.id)
+    if (error) { toast('No se pudo olvidar: ' + error.message, 'error'); return }
     setComercios(prev => prev.filter(x => x.id !== c.id))
   }
 
