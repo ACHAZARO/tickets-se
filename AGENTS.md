@@ -55,12 +55,14 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 
 ### PENDIENTE DEPLOY (Claude)
 - 2026-06-14 (Claude, triage seguridad): **inyeccion de formulas en Sheets** corregida en
-  `_shared/google-sheets.ts` (commit e45b870: helper `sanitizarCelda`). PENDIENTE redeploy de
-  `procesar-ticket`, `confirmar-admin`, `confirmar-ticket` (importan el modulo; `reprocesar-ticket`
-  NO). OJO: el deploy de `procesar-ticket` arrastra el tema de transcripcion manual via MCP del
-  archivo grande; el repo ya esta reconciliado (commit 925d328). Esperando OK del usuario para
-  desplegar las 3. Mientras no se despliegue, prod sigue escribiendo a Sheets SIN saneo (riesgo
-  medium, hoja interna). Migracion **029 (storage admin-only) YA aplicada y verificada**.
+  `_shared/google-sheets.ts` (commit e45b870: helper `sanitizarCelda`).
+  - HECHO (Claude 2026-06-14): **desplegadas las 3** funciones que importan el modulo:
+    `confirmar-admin` **v5**, `procesar-ticket` **v28**, `confirmar-ticket` **v12**. `reprocesar-ticket`
+    NO lo importa. VERIFICADO: `google-sheets.ts` leido de vuelta byte a byte en confirmar-admin
+    (regex `sanitizarCelda` intacto); las 3 cargan sin error (confirmar-admin responde yaConfirmado,
+    procesar/confirmar-ticket responden 401 con token invalido, no 500). `procesar-ticket` v28 quedo
+    reconciliada (`.neq('estado','rechazado')` + `orden`), cerrando tambien el drift de 028.
+  - Migracion **029 (storage admin-only) YA aplicada y verificada**.
 - 2026-06-13 (Codex): aplicar migracion **028** (`ticket_items.orden`) y despues desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket`.
   - HECHO (Claude 2026-06-13): migracion **028 aplicada** por MCP. **`reprocesar-ticket` desplegado v3** (incluye el fix de relectura desde bucket `archivo` + `orden`). VERIFICADO: bundle ok, ACTIVE.
   - NO DESPLEGADO (Claude 2026-06-13): `procesar-ticket`, `confirmar-admin`, `confirmar-ticket`. Motivo: al comparar repo vs produccion encontre DRIFT — la `procesar-ticket` **v27 en produccion ya tenia** `.neq('estado','rechazado')` en `detectSmartDuplicate` que el **repo no tenia**. Desplegar el repo tal cual REGRESARIA produccion (falsos `posible_duplicado` contra tickets rechazados). El unico aporte de estas 3 era `orden`, que es **cosmetico** (el front ordena por insercion como fallback). Reconcilie el repo (commit 925d328: agregue el `.neq` faltante) para que un deploy futuro sea seguro, pero NO redesplegue para no arriesgar la funcion de entrada de tickets por transcripcion manual de algo cosmetico. Si se quiere `orden` en prod, hacer un deploy reconciliado y verificado de las 3.
