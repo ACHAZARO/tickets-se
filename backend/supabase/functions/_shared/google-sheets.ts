@@ -174,16 +174,26 @@ export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> 
   const items = registro.items.length ? registro.items : [
     { descripcion: null, cantidad: null, unidad: null, monto: registro.items.length ? null : null, categoria_gasto: null },
   ]
+  // Anti inyeccion de formulas (CWE-1236): los campos de texto vienen del OCR de
+  // Gemini sobre fotos arbitrarias. Si un valor arranca con = + - @ (o tab/CR),
+  // Sheets lo interpretaria como FORMULA (=HYPERLINK/=IMPORTDATA exfiltran datos;
+  // =A1*1000 corrompe totales). Anteponemos un apostrofo para forzarlo a texto.
+  // Numeros (cantidad/monto) y fecha quedan intactos para conservar el formato.
+  const sanitizarCelda = (v: unknown): string | number => {
+    if (typeof v === 'number') return v
+    const s = (v ?? '').toString()
+    return /^\s*[=+\-@\t\r]/.test(s) ? `'${s}` : s
+  }
   const rows = items.map(it => [
     registro.fecha_ticket ?? '',
-    registro.folio_ticket ?? '',
-    registro.comercio ?? '',
-    it.descripcion ?? '',
+    sanitizarCelda(registro.folio_ticket ?? ''),
+    sanitizarCelda(registro.comercio ?? ''),
+    sanitizarCelda(it.descripcion ?? ''),
     it.cantidad ?? '',
-    it.unidad ?? '',
+    sanitizarCelda(it.unidad ?? ''),
     it.monto ?? '',
-    it.categoria_gasto ?? '',
-    registro.empleado_nombre,
+    sanitizarCelda(it.categoria_gasto ?? ''),
+    sanitizarCelda(registro.empleado_nombre),
     registro.storage_path,
     registro.confirmado_en,
   ])
