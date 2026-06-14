@@ -28,6 +28,13 @@ sucursal. Todo en `main`, deploy automatico en Vercel.
 - Equivalencias de inventario: Tickets y Catalogo permiten capturar `1 caja/cono = 30 pz de huevo`. Se guarda usando el segundo nivel existente (`30 pz`, cada `pz = 1 huevo`) para que Inventario/Stock muestren `30 huevo(s)` y no solo piezas genericas. No requiere migracion ni Edge Function nueva.
 - Pendiente: Claude debe aplicar migracion 028 y desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket` (ver `AGENTS.md` > PENDIENTE DEPLOY). Hasta desplegar, produccion seguira con funciones anteriores.
 
+### Cambios 2026-06-13 (Claude) — auditoria de venta: bug de sesion, seguridad, kiosko, deploy parcial
+- **BUG REPORTADO RESUELTO** (commit 2803d1c, desplegado): token de sesion del admin vencido (pestana abierta >1h) rompia confirmar (401, "no va a completados") y ensenar productos (insert al catalogo bloqueado por RLS y el error se TRAGABA en silencio). Reproducido a nivel API. Fix: `ensureFreshSession()` + auth explicito en `lib/supabase.ts`, refresco al volver a la pestana en `layout`, `confirmarTicket` reintenta, `ensureProduct` ya no traga el error.
+- **Seguridad** (mig 027 = `hardening_rpc_grants_v2`, commit 7153366): cerro RPCs ejecutables por `anon` (`verificar_pin` fuerza bruta, `limpiar_imagenes_antiguas`), `admin_guardar_empleado` exige admin real, `set_updated_at` search_path fijo.
+- **Kiosko** (commit a4e0e1d): PIN ya no muestra 429/5xx como "PIN incorrecto"; error de red ya no cae en "404" muerto (solo PGRST116); fetch de PIN con timeout 15s; `FileReader` usa onload/onerror (no onloadend) -> no mas pantalla en blanco.
+- **Deploy parcial de las edge functions pendientes**: migracion **028 aplicada**; **`reprocesar-ticket` v3 desplegado** (fix de relectura desde bucket `archivo` -> resuelve el error "No se pudo releer"). Las otras 3 NO se desplegaron: el repo `procesar-ticket` habia driftado (le faltaba `.neq('estado','rechazado')` que prod v27 ya tiene); se reconcilio el repo (commit 925d328) pero no se redesplego porque su unico aporte (`orden`) es cosmetico. Ver `AGENTS.md` > PENDIENTE DEPLOY.
+- **Pendiente de triage**: auditoria multi-agente (8 dimensiones) dejo hallazgos SIN verificar (se corto por limite de sesion): CORS abierto en edge functions, politicas de storage, inyeccion de formulas en Sheets, mutaciones que ignoran error con refresh optimista, queries `.limit()` sin ORDER BY. Ninguno confirmado.
+
 ---
 
 ## Como funciona AL MOMENTO (flujo real)

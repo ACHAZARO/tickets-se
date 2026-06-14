@@ -54,7 +54,9 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
   update directo a `registros_tickets` (RLS admin). Si tocas, no re-marcar tickets ya `descartada`/`confirmada`.
 
 ### PENDIENTE DEPLOY (Claude)
-- 2026-06-13 (Codex): aplicar migracion **028** (`ticket_items.orden`) y despues desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket`. Incluye: fix de relectura desde bucket `archivo`, orden estable de renglones segun lectura IA, y orden de renglones al mandar a Sheets.
+- 2026-06-13 (Codex): aplicar migracion **028** (`ticket_items.orden`) y despues desplegar `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin` y `confirmar-ticket`.
+  - HECHO (Claude 2026-06-13): migracion **028 aplicada** por MCP. **`reprocesar-ticket` desplegado v3** (incluye el fix de relectura desde bucket `archivo` + `orden`). VERIFICADO: bundle ok, ACTIVE.
+  - NO DESPLEGADO (Claude 2026-06-13): `procesar-ticket`, `confirmar-admin`, `confirmar-ticket`. Motivo: al comparar repo vs produccion encontre DRIFT — la `procesar-ticket` **v27 en produccion ya tenia** `.neq('estado','rechazado')` en `detectSmartDuplicate` que el **repo no tenia**. Desplegar el repo tal cual REGRESARIA produccion (falsos `posible_duplicado` contra tickets rechazados). El unico aporte de estas 3 era `orden`, que es **cosmetico** (el front ordena por insercion como fallback). Reconcilie el repo (commit 925d328: agregue el `.neq` faltante) para que un deploy futuro sea seguro, pero NO redesplegue para no arriesgar la funcion de entrada de tickets por transcripcion manual de algo cosmetico. Si se quiere `orden` en prod, hacer un deploy reconciliado y verificado de las 3.
 
 ### PENDIENTE MANUAL (Alejandro, en Supabase Dashboard)
 - (sin pendientes) — "Allow new users to sign up" ya fue deshabilitado por Alejandro (2026-06-09).
