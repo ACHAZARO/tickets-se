@@ -92,14 +92,14 @@ async function detectSmartDuplicate(
 ): Promise<string | null> {
   if (folio) {
     const { data } = await supabase.from('registros_tickets').select('id')
-      .eq('sucursal_id', sucursalId).eq('folio_ticket', folio)
+      .eq('sucursal_id', sucursalId).eq('folio_ticket', folio).neq('estado', 'rechazado')
       .gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString())
       .limit(1).maybeSingle()
     if (data) return data.id as string
   }
   if (comercio && monto && fecha) {
     const { data } = await supabase.from('registros_tickets').select('id')
-      .eq('sucursal_id', sucursalId).eq('fecha_ticket', fecha).ilike('comercio', comercio)
+      .eq('sucursal_id', sucursalId).eq('fecha_ticket', fecha).ilike('comercio', comercio).neq('estado', 'rechazado')
       .gte('monto', monto * 0.9).lte('monto', monto * 1.1)
       .limit(1).maybeSingle()
     if (data) return data.id as string
