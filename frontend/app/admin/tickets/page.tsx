@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, ensureFreshSession } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { toCanonical } from '@/lib/units.mjs'
 import { detectarSospechas } from '@/lib/fraude.mjs'
@@ -458,7 +458,7 @@ export default function TicketsPage() {
         .limit(1).maybeSingle()
       if (ex) productoId = ex.id as string
       else {
-        const { data: nuevo } = await supabase.from('catalogo_productos').insert({
+        const { data: nuevo, error: insErr } = await supabase.from('catalogo_productos').insert({
           nombre: catalogName,
           sinonimos: mergeProductSynonyms({
             detectedName: originalDesc[it.id] ?? '',
@@ -470,6 +470,9 @@ export default function TicketsPage() {
           unidad_default: it.unidad || null,
           sucursal_id: sucId,
         }).select('id').single()
+        // NO tragarse el error: si RLS bloquea (sesion vencida) el producto no se
+        // crea y el usuario creeria que se guardo. Lo propagamos para avisarle.
+        if (insErr) throw new Error('No se pudo guardar el producto en el catalogo. ' + (insErr.message.toLowerCase().includes('row-level') ? 'Tu sesion expiro: recarga la pagina e intenta de nuevo.' : insErr.message))
         productoId = nuevo?.id ?? null
       }
     }
@@ -501,7 +504,8 @@ export default function TicketsPage() {
           subUnit: opts.subUnit,
         }))
       }
-      await supabase.from('catalogo_productos').update(updatePayload).eq('id', productoId)
+      const { error: updErr } = await supabase.from('catalogo_productos').update(updatePayload).eq('id', productoId)
+      if (updErr) throw new Error('No se pudo actualizar el producto en el catalogo. ' + (updErr.message.toLowerCase().includes('row-level') ? 'Tu sesion expiro: recarga la pagina e intenta de nuevo.' : updErr.message))
     }
     return productoId
   }
@@ -509,17 +513,25 @@ export default function TicketsPage() {
   async function guardarItemTicket(it: Item, form: HTMLFormElement) {
     if (!detalle) return
     setBusy(it.id)
+    await ensureFreshSession()
     const fd = new FormData(form)
     const productNameInput = String(fd.get('productoNombre') ?? '').trim()
-    const productoId = await ensureProduct(it, {
-      productName: productNameInput,
-      synonymText: String(fd.get('sinonimos') ?? ''),
-      baseQty: String(fd.get('baseQty') ?? ''),
-      baseUnit: String(fd.get('baseUnit') ?? ''),
-      baseItem: String(fd.get('baseItem') ?? ''),
-      subQty: String(fd.get('subQty') ?? ''),
-      subUnit: String(fd.get('subUnit') ?? ''),
-    })
+    let productoId: string | null = null
+    try {
+      productoId = await ensureProduct(it, {
+        productName: productNameInput,
+        synonymText: String(fd.get('sinonimos') ?? ''),
+        baseQty: String(fd.get('baseQty') ?? ''),
+        baseUnit: String(fd.get('baseUnit') ?? ''),
+        baseItem: String(fd.get('baseItem') ?? ''),
+        subQty: String(fd.get('subQty') ?? ''),
+        subUnit: String(fd.get('subUnit') ?? ''),
+      })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'No se pudo guardar el producto', 'error')
+      setBusy(null)
+      return
+    }
     const necesita = !it.categoria_id || !it.unidad || !productoId
     const itemOrder = it.orden ?? nextTicketItemOrder(detalle.items)
     const descripcionFinal = resolveItemDescription({
@@ -586,10 +598,16 @@ export default function TicketsPage() {
 
   async function confirmarTicket(t: Ticket) {
     setBusy('confirmar')
-    const { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } })
+    await ensureFreshSession()
+    let { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } })
+    if (error) {
+      // Posible token vencido (401): refresca la sesion y reintenta una vez.
+      await supabase.auth.refreshSession()
+      ;({ error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } }))
+    }
     if (!error) await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('resuelta', false)
     setBusy(null)
-    if (error) { toast('No se pudo confirmar: ' + error.message, 'error'); return }
+    if (error) { toast('No se pudo confirmar: ' + error.message + ' (si dice sesion/401, recarga la pagina)', 'error'); return }
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'confirmado' } } : d)
     setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'confirmado' } : x))
     setAlertas(prev => ({ ...prev, [t.id]: [] }))

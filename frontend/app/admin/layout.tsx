@@ -43,7 +43,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setUser(session?.user ?? null)
     })
 
-    return () => subscription.unsubscribe()
+    // Al volver a la pestana (tras dejarla horas en segundo plano) refrescamos la
+    // sesion: getSession() renueva el token si vencio, evitando que el primer
+    // "Confirmar" o "Guardar y ensenar" falle con 401 / bloqueo RLS silencioso.
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') supabase.auth.getSession()
+    }
+    document.addEventListener('visibilitychange', refreshOnVisible)
+    window.addEventListener('focus', refreshOnVisible)
+
+    return () => {
+      subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', refreshOnVisible)
+      window.removeEventListener('focus', refreshOnVisible)
+    }
   }, [router, pathname])
 
   if (loading) {
