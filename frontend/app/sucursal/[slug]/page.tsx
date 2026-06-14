@@ -21,6 +21,7 @@ export default function PinPage({ params }: PageProps) {
   const [pin, setPin] = useState<string>('')
   const [state, setState] = useState<PinState>('idle')
   const [shake, setShake] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('PIN incorrecto. Intenta de nuevo.')
 
   // Fetch sucursal name
   useEffect(() => {
@@ -31,11 +32,14 @@ export default function PinPage({ params }: PageProps) {
         .eq('slug', slug)
         .single()
 
-      if (error || !data) {
-        setNotFound(true)
-      } else {
+      if (data) {
         setSucursalNombre(data.nombre)
+        return
       }
+      // PGRST116 = "no rows": la sucursal realmente no existe -> 404.
+      // Cualquier otro error (red movil intermitente) NO debe bloquear la pantalla:
+      // el PIN valida el slug server-side, asi que dejamos teclear igual.
+      if (error && error.code === 'PGRST116') setNotFound(true)
     }
     fetchSucursal()
   }, [slug])
@@ -65,11 +69,24 @@ export default function PinPage({ params }: PageProps) {
 
     setState('loading')
 
+    const showError = (msg: string) => {
+      setErrorMsg(msg)
+      setState('error')
+      setPin('')
+      triggerShake()
+      setTimeout(() => setState('idle'), 1800)
+    }
+
+    // Timeout: si la red movil se cuelga (socket sin RST) el teclado quedaria
+    // bloqueado indefinidamente. Abortamos a los 15s y reactivamos el teclado.
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 15000)
     try {
       const res = await fetch(`${EDGE_FUNCTIONS_URL}/verificar-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug, pin }),
+        signal: ctrl.signal,
       })
 
       const data = await res.json().catch(() => ({}))
@@ -82,18 +99,22 @@ export default function PinPage({ params }: PageProps) {
           JSON.stringify({ empleadoId: data.empleado_id, sessionToken: data.session_token, timestamp: Date.now() })
         )
         router.push(`/sucursal/${slug}/subir`)
+        return
+      }
+      // Distinguir el caso real para no confundir al gerente:
+      // 429 = rate limit por sucursal (PIN puede ser correcto); 5xx = error del sistema.
+      if (res.status === 429) {
+        showError('Demasiados intentos. Espera 1 minuto e intenta de nuevo.')
+      } else if (res.status >= 500) {
+        showError('Error del sistema. Intenta de nuevo en un momento.')
       } else {
-        // PIN incorrecto o sucursal invalida
-        setState('error')
-        setPin('')
-        triggerShake()
-        setTimeout(() => setState('idle'), 1500)
+        showError('PIN incorrecto. Intenta de nuevo.')
       }
     } catch {
-      setState('error')
-      setPin('')
-      triggerShake()
-      setTimeout(() => setState('idle'), 1500)
+      // abort (timeout) o red caida
+      showError('Sin conexion. Revisa tu internet e intenta de nuevo.')
+    } finally {
+      clearTimeout(timer)
     }
   }, [pin, slug, state, router, triggerShake])
 
@@ -148,8 +169,8 @@ export default function PinPage({ params }: PageProps) {
           </div>
 
           {/* Altura reservada: el teclado no salta al aparecer/desaparecer el error */}
-          <p className="h-5 text-sm font-medium text-red-400" role="status" aria-live="polite">
-            {state === 'error' ? 'PIN incorrecto. Intenta de nuevo.' : ''}
+          <p className="min-h-5 text-sm font-medium text-red-400 text-center px-2" role="status" aria-live="polite">
+            {state === 'error' ? errorMsg : ''}
           </p>
         </div>
 

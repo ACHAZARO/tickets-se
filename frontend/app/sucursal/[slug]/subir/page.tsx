@@ -88,9 +88,22 @@ export default function SubirPage({ params }: PageProps) {
     setErrorMsg('')
 
     const reader = new FileReader()
-    reader.onloadend = () => {
+    // onload SOLO en exito. onloadend tambien dispara al fallar/abortar con
+    // result=null, lo que dejaba la pantalla en blanco sin botones.
+    reader.onload = () => {
+      if (!reader.result) {
+        setErrorMsg('No se pudo leer la foto. Intenta de nuevo o elige otra.')
+        setState('error')
+        return
+      }
       setImagePreview(reader.result as string)
       setState('preview')
+    }
+    reader.onerror = () => {
+      setImageFile(null)
+      setImageFiles([])
+      setErrorMsg('No se pudo leer la foto. Intenta de nuevo o elige otra.')
+      setState('error')
     }
     reader.readAsDataURL(files[0])
   }, [])
