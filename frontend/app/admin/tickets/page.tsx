@@ -563,7 +563,6 @@ export default function TicketsPage() {
       const { error } = await supabase.from('ticket_items').update(payload).eq('id', it.id)
       if (error) { toast(error.message, 'error'); setBusy(null); return }
     }
-    await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', detalle.ticket.id).eq('tipo', 'producto_no_reconocido')
     await loadCatalogo(detalle.ticket.sucursal_id)
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
     const currentItems = detalle.items.map(x => x.id === it.id ? {
@@ -581,12 +580,35 @@ export default function TicketsPage() {
         categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
       } : x)
     await syncTicketTotal(detalle.ticket.id, currentItems)
+
+    // Resolver las alertas de renglon que ya no aplican y REFRESCAR el estado de la
+    // lista. Sin esto, la etiqueta "Productos nuevos" y el filtro "Requieren revision"
+    // quedaban viejos y el ticket parecia seguir pendiente aunque ya se guardo.
+    const algunRenglonPendiente = currentItems.some(x => x.necesita_revision)
+    const tiposAResolver = algunRenglonPendiente
+      ? ['producto_no_reconocido']
+      : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria']
+    await supabase.from('alertas_tickets').update({ resuelta: true })
+      .eq('registro_ticket_id', detalle.ticket.id).in('tipo', tiposAResolver)
+    const { data: openAlerts } = await supabase.from('alertas_tickets')
+      .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
+      .eq('registro_ticket_id', detalle.ticket.id).eq('resuelta', false)
+    const alertasRestantes = (openAlerts as AlertRow[] | null) ?? []
+    setAlertas(prev => ({ ...prev, [detalle.ticket.id]: alertasRestantes }))
+
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, monto: sumItems(currentItems) }, items: currentItems } : d)
     setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
     setBusy(null)
     // Feedback visible: que SE NOTE que se guardo el renglon.
     setSavedFlash(prev => ({ ...prev, [savedId]: true }))
     setTimeout(() => setSavedFlash(prev => { const n = { ...prev }; delete n[savedId]; return n }), 2500)
+
+    // El usuario espera "guardar = listo": si el ticket quedo limpio (todos los
+    // renglones revisados y sin alertas) y aun esta pendiente, lo confirmamos para
+    // que se vaya a Completados de una vez, sin tener que buscar otro boton.
+    if (!algunRenglonPendiente && alertasRestantes.length === 0 && detalle.ticket.estado !== 'confirmado') {
+      await confirmarTicket(detalle.ticket)
+    }
   }
 
   async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
