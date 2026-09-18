@@ -34,10 +34,14 @@
   alias FEMSA=Propimex=Coca-Cola), `_shared/precios.ts`.
 - 3 pases de revision (workflows) + pruebas Deno de fechas/comercios.
 
+- `procesar-ticket` v29 desplegado (Alejandro autorizo). Humo: las 3 funciones arrancan y dan 401 sin sesion.
+- Commit f95d529 en `main` local (build de Next OK).
+
 **PENDIENTE (bloqueado):**
-- `procesar-ticket` NO desplegado aun (el permiso de deploy a produccion pidio confirmacion de Alejandro).
-  Mientras siga v28, las rafagas siguen fallando a la manera vieja. Desplegar ANTES del frontend.
-- Frontend (filtro por fecha del ticket, boton "Releer con IA (N sin leer)", alertas en tandas) sin push.
+- **git push da 403** ("Permission to ACHAZARO/tickets-se.git denied to ACHAZARO"): la credencial guardada
+  en Git Credential Manager solo tiene LECTURA. Alejandro debe renovarla (Administrador de credenciales de
+  Windows -> borrar git:https://github.com -> `git push origin main` y entrar por el navegador). Hasta
+  entonces Vercel sigue con el frontend viejo (compatible con el backend nuevo; la etiqueta ia_sin_leer se ve cruda).
 - Alejandro: activar facturacion Gemini (aistudio.google.com/projects -> tickets-se -> Set up billing) e
   iniciar sesion en el navegador integrado para: prueba de modelos (3.1/3.5 flash-lite, 3.6/3.8 flash vs 2.5),
   releer ~370 tickets WP candidatos a agosto, revision uno por uno + FEMSA.
