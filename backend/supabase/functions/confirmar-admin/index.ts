@@ -37,7 +37,7 @@ serve(async (req: Request) => {
     if (!(await requireAdmin(supabase, req))) return json({ error: 'No autorizado' }, 401)
 
     const { data: reg } = await supabase.from('registros_tickets')
-      .select('id, estado, storage_path_original, storage_path_archivo, sucursal_id, empleado_id, fecha_ticket, folio_ticket, comercio')
+      .select('id, estado, storage_path_original, storage_path_archivo, sucursal_id, empleado_id, fecha_ticket, folio_ticket, comercio, sheets_row_id')
       .eq('id', registro_id).maybeSingle()
     if (!reg) return json({ error: 'Registro no encontrado' }, 404)
 
@@ -46,6 +46,8 @@ serve(async (req: Request) => {
     // CLAIM atomico: un solo request gana la confirmacion. Si llegan dos clics o
     // llamadas concurrentes, solo el ganador manda a Sheets (evita doble fila).
     if (reg.estado === 'confirmado') return json({ ok: true, yaConfirmado: true })
+    // Sin fecha el ticket quedaria invisible en el arqueo (filtra por fecha del ticket).
+    if (!reg.fecha_ticket) return json({ error: 'El ticket no tiene fecha: ponla antes de confirmar.' }, 422)
     const { data: claimRows } = await supabase.from('registros_tickets')
       .update({ estado: 'confirmado', confirmado_en: now.toISOString() })
       .eq('id', registro_id).neq('estado', 'confirmado').select('id')
@@ -88,8 +90,10 @@ serve(async (req: Request) => {
     }))
 
     // Ya ganamos el claim arriba: mandamos a Sheets exactamente una vez.
+    // Si el ticket ya tiene fila en Sheets (se confirmo antes y se volvio a leer), no se
+    // manda otra vez para no duplicar la fila.
     let sheetsRowId: string | null = null
-    try {
+    if (!reg.sheets_row_id) try {
       sheetsRowId = await enviarAGoogleSheets({
         fecha_ticket: reg.fecha_ticket ?? null,
         folio_ticket: reg.folio_ticket ?? null,
@@ -108,6 +112,9 @@ serve(async (req: Request) => {
     }).eq('id', registro_id)
 
     // Registra precios de los renglones ligados a un producto durante la revision.
+    // Primero quita los de este ticket (de la lectura inicial o de una confirmacion previa)
+    // para no duplicar historial y no sesgar el promedio del precio anomalo.
+    await supabase.from('precio_historial').delete().eq('registro_ticket_id', registro_id)
     const vistos = new Set<string>()
     for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
       const pid = it.producto_catalogo_id as string | null

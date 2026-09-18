@@ -1,6 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0'
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts'
 import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -9,60 +8,12 @@ import {
 } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
+import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
+import { detectSmartDuplicate } from '../_shared/duplicados.ts'
+import type { GeminiItem } from '../_shared/gemini.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
-
-interface GeminiItem {
-  descripcion?: string
-  cantidad?: number | null
-  unidad?: string | null
-  monto?: number | null
-  categoria?: string | null
-}
-interface GeminiResult {
-  comercio?: string | null
-  fecha?: string | null
-  folio_ticket?: string | null
-  monto_total?: number | null
-  confianza?: string
-  items?: GeminiItem[]
-}
-
-function buildGeminiPrompt(catalogContext: string): string {
-  return `Analiza esta imagen de un ticket o comprobante de gasto. Un ticket puede contener VARIOS productos (renglones). Extrae la informacion en este formato JSON exacto:
-{
-  "comercio": "nombre del establecimiento o null",
-  "fecha": "YYYY-MM-DD o null si no se puede determinar",
-  "folio_ticket": "numero de ticket, nota o factura, o null",
-  "monto_total": numero decimal del total del ticket o null,
-  "confianza": "alta si los datos son claros, media si algunos son ambiguos, baja si es ilegible o muy borroso",
-  "items": [
-    {
-      "descripcion": "texto literal del producto tal como aparece en el ticket",
-      "cantidad": numero o null,
-      "unidad": "kg, g (gramos), pz, ml, lt, caja, bulto, paquete, rollo, galon u otro, o null si no se indica",
-      "monto": numero decimal del precio de ese renglon o null,
-      "categoria": "una de las categorias validas listadas abajo, o null si ninguna aplica"
-    }
-  ]
-}
-
-${catalogContext}
-
-Reglas importantes:
-- Crea un objeto dentro de "items" por CADA producto o renglon del ticket. No agrupes varios productos en uno.
-- La "descripcion" debe ser LITERAL: conserva codigos, abreviaturas y texto raro tal como lo lees. NO reemplaces la descripcion por el nombre del catalogo.
-- Asigna a cada renglon la categoria MAS ESPECIFICA que aplique de la lista de categorias validas. Si de plano ninguna aplica, usa null en "categoria".
-- USA EL NOMBRE DEL COMERCIO para decidir la categoria. Ejemplos: en una gasolinera o "centro gasolinero", palabras como "gas", "magna", "premium", "diesel" son COMBUSTIBLE para auto (categoria de gasolina/combustible), NO gas de cocina. En cambio "Gas LP", "gas de cocina" o un comercio tipo "Gas de Xalapa" si es gas de cocina.
-- Si un renglon esta abreviado, cortado o con error de dedo pero se parece a un producto conocido (ej. "popt" o "popote", "azuc" o "azucar", "serv" o "servilletas"), usa el catalogo SOLO para categoria/unidad. Conserva la descripcion literal leida.
-- Si un producto coincide con uno de los productos conocidos (o uno de sus sinonimos/marcas), usa su categoria y unidad, pero NO cambies la descripcion literal.
-- Si una nota tiene UN SOLO producto y un total (ej. "alitas 50 pzas $850"), pon ese total como el "monto" de ese producto Y en "monto_total".
-- Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
-- Si el ticket tiene un DESCUENTO, promocion o rebaja (dinero que se resta del total), captúralo como un renglon APARTE: "descripcion": "Descuento", "categoria": "Descuentos" y "monto" NEGATIVO (el ahorro, ej. -50). No lo restes de los otros renglones.
-- Incluye tambien el texto escrito a mano en tu analisis.
-Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
-}
 
 async function verifySessionToken(
   token: string, jwtSecret: string
@@ -86,31 +37,11 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 // deno-lint-ignore no-explicit-any
 type SB = any
 
-async function detectSmartDuplicate(
-  supabase: SB, sucursalId: string, folio: string | null,
-  comercio: string | null, monto: number | null, fecha: string | null
-): Promise<string | null> {
-  if (folio) {
-    const { data } = await supabase.from('registros_tickets').select('id')
-      .eq('sucursal_id', sucursalId).eq('folio_ticket', folio).neq('estado', 'rechazado')
-      .gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString())
-      .limit(1).maybeSingle()
-    if (data) return data.id as string
-  }
-  if (comercio && monto && fecha) {
-    const { data } = await supabase.from('registros_tickets').select('id')
-      .eq('sucursal_id', sucursalId).eq('fecha_ticket', fecha).ilike('comercio', comercio).neq('estado', 'rechazado')
-      .gte('monto', monto * 0.9).lte('monto', monto * 1.1)
-      .limit(1).maybeSingle()
-    if (data) return data.id as string
-  }
-  return null
-}
-
 async function createAlert(supabase: SB, registroId: string, tipo: string, dupId?: string): Promise<void> {
-  await supabase.from('alertas_tickets').insert({
+  const { error } = await supabase.from('alertas_tickets').insert({
     registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null,
   })
+  if (error) console.error(`createAlert(${tipo}) fallo:`, error.message)
 }
 
 async function notifyAlertEmail(registroId: string, tipo: string): Promise<void> {
@@ -215,36 +146,6 @@ async function registrarPrecios(
   return anomalia
 }
 
-function parseGemini(text: string): GeminiResult {
-  const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-  return JSON.parse(clean) as GeminiResult
-}
-
-async function callGeminiWithFallback(
-  genAI: GoogleGenerativeAI, imagePart: unknown, prompt: string
-): Promise<{ datos: GeminiResult; modelo: string }> {
-  const envModel = Deno.env.get('GEMINI_MODEL')
-  const candidatos = [
-    ...(envModel ? [envModel] : []),
-    'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
-    'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-1.5-flash-latest',
-  ].filter((m, i, a) => a.indexOf(m) === i)
-
-  let lastErr = ''
-  for (const mname of candidatos) {
-    try {
-      const model = genAI.getGenerativeModel({ model: mname })
-      // deno-lint-ignore no-explicit-any
-      const result = await model.generateContent([imagePart as any, prompt])
-      return { datos: parseGemini(result.response.text()), modelo: mname }
-    } catch (err) {
-      lastErr = String(err)
-      console.error(`Gemini fallo con ${mname}:`, lastErr.slice(0, 160))
-    }
-  }
-  return { datos: { confianza: 'baja', items: [], _error: lastErr } as GeminiResult, modelo: '' }
-}
-
 // Procesamiento pesado en segundo plano: Gemini + items + alertas + auto-confirma.
 async function procesarEnSegundoPlano(opts: {
   supabase: SB; registroId: string; sucursalId: string; empleadoId: string
@@ -252,33 +153,59 @@ async function procesarEnSegundoPlano(opts: {
 }): Promise<void> {
   const { supabase, registroId, sucursalId, empleadoId, imageBytes, mime, storagePath } = opts
   try {
-    const catalog: Catalog = await loadCatalog(sucursalId)
-    const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog))
-    const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
-    const imagePart = { inlineData: { mimeType: mime, data: encodeBase64(imageBytes) } }
+    // Marca "en proceso": si Supabase corta el proceso en segundo plano a media lectura,
+    // el panel lo detecta (pendiente con _ia_en_proceso viejo) y lo ofrece para releer.
+    await supabase.from('registros_tickets').update({
+      gemini_raw: { items: [], _ia_en_proceso: new Date().toISOString() },
+    }).eq('id', registroId)
 
-    const { datos, modelo } = await callGeminiWithFallback(genAI, imagePart, prompt)
-    ;(datos as Record<string, unknown>)._modelo = modelo
+    const catalog: Catalog = await loadCatalog(sucursalId)
+    const hoy = fechaMexico()
+    const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog), hoy)
+
+    const lectura = await leerTicketConGemini({ imagenBase64: encodeBase64(imageBytes), mimeType: mime, prompt })
+    if (!lectura.datos) {
+      // La IA NO leyo el ticket (sin cuota, saturada, etc.). No es "ilegible" ni se inventa
+      // fecha: queda marcado para releer (boton "Volver a leer IA" / releer en lote).
+      await supabase.from('registros_tickets').update({
+        gemini_raw: { items: [], _ia_fallo: lectura.fallo, _error: lectura.error, _intentos: lectura.intentos },
+      }).eq('id', registroId)
+      await createAlert(supabase, registroId, 'ia_sin_leer')
+      return
+    }
+    const datos = lectura.datos
+    ;(datos as Record<string, unknown>)._modelo = lectura.modelo
 
     let rawItems: GeminiItem[] = Array.isArray(datos.items) ? datos.items : []
     rawItems = rawItems.filter(it => it && (it.descripcion || it.monto != null))
     const montoTotal = datos.monto_total ?? (rawItems.length
       ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null : null)
 
-    // Si Gemini no leyo una fecha valida, usar la fecha de subida (hoy) para que
-    // el ticket NO quede invisible en el arqueo/lista (filtrados por fecha).
-    const hoy = new Date().toISOString().slice(0, 10)
-    const fechaValida = !!(datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha))
-    const fechaTicket = fechaValida ? datos.fecha! : hoy
-    if (!fechaValida) (datos as Record<string, unknown>)._fecha_asumida = true
+    // Si Gemini no leyo una fecha real (o leyo un año imposible), corregir el año si dia/mes
+    // sirven, o usar la fecha de subida; en ambos casos queda marcada como asumida.
+    const { fecha: fechaTicket, asumida } = resolverFecha(datos.fecha, hoy)
+    const fechaValida = !asumida
+    if (asumida) {
+      ;(datos as Record<string, unknown>)._fecha_asumida = true
+      if (datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
+    }
 
-    await supabase.from('registros_tickets').update({
+    const { error: headerErr } = await supabase.from('registros_tickets').update({
       fecha_ticket: fechaTicket,
       folio_ticket: datos.folio_ticket ?? null,
       comercio: datos.comercio ?? null,
       monto: montoTotal,
       gemini_raw: datos as unknown as Record<string, unknown>,
     }).eq('id', registroId)
+    if (headerErr) {
+      // Sin encabezado guardado no se sigue (evita confirmar un ticket sin fecha/monto).
+      console.error('registros_tickets update:', headerErr)
+      await supabase.from('registros_tickets').update({
+        gemini_raw: { items: [], _ia_fallo: 'otro', _error: 'no se pudo guardar la lectura: ' + headerErr.message },
+      }).eq('id', registroId)
+      await createAlert(supabase, registroId, 'ia_sin_leer')
+      return
+    }
 
     const matchedIds = new Set<string>()
     let anySinCategoria = false
@@ -340,10 +267,12 @@ async function procesarEnSegundoPlano(opts: {
     const precioAnomalo = await registrarPrecios(supabase, itemsToInsert, catalog, sucursalId, registroId, fechaTicket)
 
     let hayAlerta = false
+    // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
+    // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.
     const dupId = await detectSmartDuplicate(
-      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket
+      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registroId,
     )
-    if (dupId && dupId !== registroId) {
+    if (dupId) {
       await createAlert(supabase, registroId, 'posible_duplicado', dupId)
       notifyAlertEmail(registroId, 'posible_duplicado'); hayAlerta = true
     }

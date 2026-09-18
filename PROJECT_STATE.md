@@ -1,6 +1,47 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-06-13.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-18.
+
+## Sesion 2026-09-18 (Claude) -- IA "no funciona": era CUOTA, no calidad (EN CURSO)
+**Diagnostico (con evidencia en BD + logs):**
+- La API key de Gemini esta en TIER GRATIS (~20-25 lecturas/dia por modelo). El gerente sube en rafagas
+  (14-jul: ~250, 6-ago: ~250, 11-sep: ~200): se leian ~55-80 y TODO lo demas fallaba. 500 tickets (496 WP)
+  quedaron como "ilegible" + fecha = dia de subida INVENTADA + renglon relleno "Ticket" ligado a
+  "Viaje de agua" (alguien enseño "Ticket" como sinonimo). El `_error` guardado era el 404 de
+  gemini-1.5-flash-latest (ultimo de la cadena; 2.0-flash y 2.0-flash-lite tambien ya dan 404).
+- Donde Gemini SI leyo, la categoria fue correcta ~95% (699/734 renglones confirmados). Fallas reales:
+  notas a mano, productos fuera del catalogo, gastos sin categoria posible (Moto Servicio, Internet,
+  Vacaciones/Prima = nomina, Viaje de agua), tickets de gas LP (toma al CLIENTE "RESTAURANT WINGS PALACE"
+  como comercio y hace 12-34 renglones basura).
+- Filtro de Tickets usaba FECHA DE SUBIDA (created_at): por eso se colaban tickets de julio en agosto.
+- **Google Sheets NUNCA ha funcionado**: 0 confirmados con sheets_row_id desde junio. Log: JSON.parse del
+  secret GOOGLE_SERVICE_ACCOUNT_KEY falla ("Expected property name... position 1") -> secret mal guardado.
+  Decision Alejandro: arreglar y rellenar historial DESPUES de dejar tickets bien clasificados.
+- Duplicado factura+ticket (FEMSA/Cervezas): detectSmartDuplicate se encontraba A SI MISMO (sin excludeId)
+  y los duplicados reales pasaban. Julio: 3 pares confirmados contados doble (Cervezas $668, Cervezas
+  $3,836.88, FEMSA $1,422) -> enviados a pestaña Fraude (grupos 6f1c2a10-...-0701/0702/0703), sin rechazar.
+- gemini-2.5-flash podria apagarse el 16-oct-2026 (doc Firebase; ai.google.dev no lo confirma).
+
+**Hecho y desplegado:**
+- Migracion **030** (`030_alerta_ia_sin_leer.sql`): alerta nueva `ia_sin_leer`; 500 fallidos re-etiquetados
+  (fecha/monto NULL, sin relleno); sinonimo "Ticket" quitado; 59 pendientes con año imposible corregidos
+  (año/volteo DD-MM, alerta sin_fecha). Respaldo en esquema `respaldo.r030_*` (no expuesto por API).
+- `confirmar-admin` v6 (no confirma sin fecha; no reenvia a Sheets si ya hay fila; precio_historial sin duplicar).
+- `reprocesar-ticket` v4 (modulo compartido, orden seguro insertar->encabezado->borrar, modo `solo_leer`+`modelo`
+  para comparar modelos, `solo_si_sin_leer` para el lote, precio/monto anomalo, rechazado sigue rechazado).
+- Nuevos `_shared/gemini.ts` (REST sin SDK, rondas de reintento, fallo 'cuota'/'saturado', fechas en hora
+  de Mexico + correccion de año, modelo@nivel de razonamiento), `_shared/duplicados.ts` (regla factura+ticket,
+  alias FEMSA=Propimex=Coca-Cola), `_shared/precios.ts`.
+- 3 pases de revision (workflows) + pruebas Deno de fechas/comercios.
+
+**PENDIENTE (bloqueado):**
+- `procesar-ticket` NO desplegado aun (el permiso de deploy a produccion pidio confirmacion de Alejandro).
+  Mientras siga v28, las rafagas siguen fallando a la manera vieja. Desplegar ANTES del frontend.
+- Frontend (filtro por fecha del ticket, boton "Releer con IA (N sin leer)", alertas en tandas) sin push.
+- Alejandro: activar facturacion Gemini (aistudio.google.com/projects -> tickets-se -> Set up billing) e
+  iniciar sesion en el navegador integrado para: prueba de modelos (3.1/3.5 flash-lite, 3.6/3.8 flash vs 2.5),
+  releer ~370 tickets WP candidatos a agosto, revision uno por uno + FEMSA.
+- 45 confirmados con fecha imposible (32 WP, 13 SE) NO tocados: revisar a mano (los WP de agosto en la revision).
 
 ## Coordinacion Claude + Codex
 - `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.

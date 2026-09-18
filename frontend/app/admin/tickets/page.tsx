@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { supabase, ensureFreshSession } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
@@ -81,6 +81,7 @@ const ALERT_LABEL: Record<string, string> = {
   posible_duplicado: 'Posible duplicado',
   duplicado: 'Duplicado',
   ilegible: 'Ilegible',
+  ia_sin_leer: 'IA no lo leyo',
   producto_no_reconocido: 'Productos nuevos',
   sin_unidad: 'Sin unidad',
   sin_fecha: 'Fecha asumida',
@@ -93,6 +94,8 @@ function primerDiaMesISO(): string {
   return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
 const hoyISO = () => new Date().toISOString().slice(0, 10)
+const LIMITE_TICKETS = 1000
+
 function diaSiguienteISO(d: string): string {
   const dt = new Date(d + 'T00:00:00')
   dt.setDate(dt.getDate() + 1)
@@ -131,7 +134,10 @@ async function invokeEdgeJson<T>(name: string, body: Record<string, unknown>): P
   } catch {
     payload = null
   }
-  if (!res.ok) throw new Error(edgePayloadMessage(payload, `Edge Function ${name} fallo (${res.status})`))
+  if (!res.ok) {
+    // Se adjuntan status y cuerpo para que quien llama decida por el campo (p.ej. fallo:'cuota').
+    throw Object.assign(new Error(edgePayloadMessage(payload, `Edge Function ${name} fallo (${res.status})`)), { status: res.status, payload })
+  }
   return payload as T
 }
 
@@ -174,10 +180,18 @@ export default function TicketsPage() {
   const [comercioFiltro, setComercioFiltro] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados' | 'fraude'>('todos')
   const [detectando, setDetectando] = useState(false)
+  const [releyendo, setReleyendo] = useState<{ hechos: number; total: number } | null>(null)
+  const cancelarLote = useRef(false)
+  const montado = useRef(true)
+  useEffect(() => {
+    montado.current = true
+    return () => { montado.current = false; cancelarLote.current = true }
+  }, [])
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
   const [itemOrderSupported, setItemOrderSupported] = useState(true)
 
   useEffect(() => {
@@ -199,26 +213,36 @@ export default function TicketsPage() {
     setLoading(true)
     let q = supabase.from('registros_tickets')
       .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
-      .gte('created_at', desde).lt('created_at', diaSiguienteISO(hasta))
-      .order('created_at', { ascending: false }).limit(600)
+      // Periodo por FECHA DEL TICKET (igual que el Dashboard). Antes filtraba por fecha
+      // de subida y se colaban tickets de julio subidos en agosto. Los que aun no
+      // tienen fecha (IA sin leer, duplicados) entran por su fecha de subida.
+      // La subida se compara en hora de Mexico (-06:00, sin horario de verano desde 2022).
+      .or(`and(fecha_ticket.gte.${desde},fecha_ticket.lte.${hasta}),and(fecha_ticket.is.null,created_at.gte."${desde}T00:00:00-06:00",created_at.lt."${diaSiguienteISO(hasta)}T00:00:00-06:00")`)
+      .order('created_at', { ascending: false }).limit(LIMITE_TICKETS)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
     const { data, error } = await q
     if (error) { setLoadError(error.message); setTickets([]); setLoading(false); return }
-    setLoadError(null)
     const rows = (data as unknown as Ticket[]) ?? []
+    setLoadError(null)
+    setAviso(rows.length >= LIMITE_TICKETS
+      ? `Se muestran solo los ${LIMITE_TICKETS} tickets mas recientes del periodo; acorta el rango de fechas para ver todos.`
+      : null)
     setTickets(rows)
 
+    // Alertas en tandas: con cientos de ids la URL del .in() pasa el limite del gateway
+    // (~640 ids) y la consulta fallaba en silencio (cola "Requieren revision" vacia).
     const ids = rows.map(t => t.id)
-    if (ids.length) {
-      const { data: alerts } = await supabase.from('alertas_tickets')
+    const map: Record<string, AlertRow[]> = {}
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data: alerts, error: alertErr } = await supabase.from('alertas_tickets')
         .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
-        .in('registro_ticket_id', ids).eq('resuelta', false)
-      const map: Record<string, AlertRow[]> = {}
+        .in('registro_ticket_id', ids.slice(i, i + 300)).eq('resuelta', false)
+      if (alertErr) { setAviso('No se pudieron cargar las alertas (las etiquetas pueden faltar): ' + alertErr.message); break }
       for (const a of (alerts as AlertRow[] | null) ?? []) {
         map[a.registro_ticket_id] = [...(map[a.registro_ticket_id] ?? []), a]
       }
-      setAlertas(map)
-    } else setAlertas({})
+    }
+    setAlertas(map)
 
     const byBucket: Record<string, string[]> = { archivo: [], 'por-revisar': [] }
     for (const t of rows) { const pb = pathBucket(t); if (pb) byBucket[pb.bucket].push(pb.path) }
@@ -233,6 +257,8 @@ export default function TicketsPage() {
   }, [desde, hasta, sucursalId])
 
   useEffect(() => { fetchTickets() }, [fetchTickets])
+  const fetchRef = useRef(fetchTickets)
+  fetchRef.current = fetchTickets
 
   function urlDe(t: Ticket): string | null {
     const pb = pathBucket(t)
@@ -592,9 +618,11 @@ export default function TicketsPage() {
     // lista. Sin esto, la etiqueta "Productos nuevos" y el filtro "Requieren revision"
     // quedaban viejos y el ticket parecia seguir pendiente aunque ya se guardo.
     const algunRenglonPendiente = currentItems.some(x => x.necesita_revision)
+    // 'ia_sin_leer' se cierra en cuanto el admin captura renglones a mano: asi el lote
+    // "Releer con IA" ya no pisa esa captura.
     const tiposAResolver = algunRenglonPendiente
-      ? ['producto_no_reconocido']
-      : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria']
+      ? ['producto_no_reconocido', 'ia_sin_leer']
+      : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria', 'ia_sin_leer']
     await supabase.from('alertas_tickets').update({ resuelta: true })
       .eq('registro_ticket_id', detalle.ticket.id).in('tipo', tiposAResolver)
     const { data: openAlerts } = await supabase.from('alertas_tickets')
@@ -629,6 +657,14 @@ export default function TicketsPage() {
   async function confirmarTicket(t: Ticket) {
     setBusy('confirmar')
     await ensureFreshSession()
+    // Sin fecha el ticket no entra al Dashboard (filtra por fecha del ticket). Se lee fresca
+    // de la BD: la fecha recien escrita se guarda al salir del campo y puede ir en camino.
+    const { data: actual } = await supabase.from('registros_tickets').select('fecha_ticket').eq('id', t.id).maybeSingle()
+    if (!actual?.fecha_ticket) {
+      setBusy(null)
+      toast('Pon la fecha del ticket antes de confirmarlo', 'error')
+      return
+    }
     let { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } })
     if (error) {
       // Posible token vencido (401): refresca la sesion y reintenta una vez.
@@ -673,6 +709,60 @@ export default function TicketsPage() {
     }
   }
 
+  // Relee en lote, uno por uno, los tickets que la IA no pudo leer. El servidor salta los que
+  // ya tienen renglones capturados a mano (solo_si_sin_leer). Los que salen limpios (sin
+  // alertas) se confirman solos, igual que en la subida normal; el resto queda en revision.
+  // Se detiene si Gemini se queda sin cuota, si la sesion vence, tras 3 errores seguidos o
+  // si se sale de la pagina.
+  async function releerSinLeer(lista: Ticket[]) {
+    if (!lista.length || releyendo) return
+    if (!(await confirm(`Volver a leer con IA ${lista.length} ticket(s) que la IA no pudo leer? Los que salgan limpios se confirman solos; el resto queda en "Requieren revision". Tarda unos segundos por ticket; no cierres la pagina.`))) return
+    cancelarLote.current = false
+    let leidos = 0, confirmados = 0, omitidos = 0, ilegibles = 0, conError = 0, falloConfirmar = 0, seguidos = 0
+    let motivoCorte = ''
+    setReleyendo({ hechos: 0, total: lista.length })
+    for (let i = 0; i < lista.length; i++) {
+      if (cancelarLote.current) { motivoCorte = 'Lote detenido.'; break }
+      if (i % 20 === 0) await ensureFreshSession()
+      try {
+        const r = await invokeEdgeJson<{ ok: boolean; alertas?: string[] }>('reprocesar-ticket', { registro_id: lista[i].id, solo_si_sin_leer: true })
+        leidos++; seguidos = 0
+        if (r.ok && (r.alertas ?? []).length === 0) {
+          let { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: lista[i].id } })
+          if (error) {
+            await supabase.auth.refreshSession()
+            ;({ error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: lista[i].id } }))
+          }
+          if (error) falloConfirmar++
+          else confirmados++
+        }
+      } catch (err) {
+        const e = err as Error & { status?: number; payload?: Record<string, unknown> | null }
+        // Resultados de UN ticket (no cortan el lote): ya capturado (409) o foto ilegible (422).
+        if (e.status === 409) { omitidos++; seguidos = 0 }
+        else if (e.status === 422) { ilegibles++; seguidos = 0 }
+        else {
+          conError++
+          if (e.payload?.fallo === 'cuota') { motivoCorte = 'Gemini se quedo sin cuota; intenta mas tarde.'; break }
+          if (e.status === 401 || /sesion/i.test(e.message)) { motivoCorte = 'La sesion vencio; recarga la pagina.'; break }
+          // Una foto que no se pudo descargar es problema de ese ticket; lo demas cuenta como error seguido.
+          if (!/imagen/i.test(e.message) && ++seguidos >= 3) { motivoCorte = `3 errores seguidos (ultimo: ${e.message}).`; break }
+        }
+      }
+      setReleyendo({ hechos: i + 1, total: lista.length })
+    }
+    setReleyendo(null)
+    if (!montado.current) return
+    // fetchRef: recarga con los filtros VIGENTES (pudieron cambiar mientras corria el lote).
+    await fetchRef.current()
+    const aRevision = leidos - confirmados - falloConfirmar
+    const resumen = `Releidos ${leidos} de ${lista.length}: ${confirmados} confirmados, ${aRevision} a revision` +
+      (ilegibles ? `, ${ilegibles} ilegibles` : '') + (omitidos ? `, ${omitidos} omitidos (ya capturados)` : '') +
+      (falloConfirmar ? `, ${falloConfirmar} leidos pero sin poder confirmar (estan en "Por confirmar"; confirmalos a mano)` : '') +
+      (conError ? `, ${conError} con error` : '')
+    toast(motivoCorte ? `${motivoCorte} ${resumen}` : resumen, motivoCorte ? 'error' : undefined)
+  }
+
   async function eliminarTicket(t: Ticket) {
     if (!(await confirm('Eliminar este ticket? Se borran registro, renglones y foto. No se puede deshacer.', { danger: true }))) return
     const pb = pathBucket(t)
@@ -687,7 +777,16 @@ export default function TicketsPage() {
   const baseTickets = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
   const esSospechosoAbierto = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta'
   const estaEnFraude = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
-  const tieneAlerta = (t: Ticket) => hasReviewAlert(alertas[t.id] ?? [], estaEnFraude(t))
+  // Un pendiente SIN fecha tambien requiere revision (no entraria al Dashboard al confirmarlo).
+  const tieneAlerta = (t: Ticket) => hasReviewAlert(alertas[t.id] ?? [], estaEnFraude(t)) ||
+    (t.estado === 'pendiente' && !t.fecha_ticket && !estaEnFraude(t))
+  // Sin leer = alerta ia_sin_leer, o pendiente que quedo "en proceso" mas de 10 min (el
+  // proceso en segundo plano se corto a media lectura).
+  // Los que estan en revision de fraude no entran al lote (el lote confirma solo los limpios).
+  const sinLeer = baseTickets.filter(t => !estaEnFraude(t) && (
+    (alertas[t.id] ?? []).some(a => a.tipo === 'ia_sin_leer') ||
+    (t.estado === 'pendiente' && typeof t.gemini_raw?._ia_en_proceso === 'string' &&
+      Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) > 10 * 60_000)))
   const cuenta = {
     todos: baseTickets.length,
     pendientes: baseTickets.filter(t => t.estado === 'pendiente').length,
@@ -765,11 +864,22 @@ export default function TicketsPage() {
             <span className={`text-xs rounded-full px-1.5 ${filtroEstado === c.k ? 'bg-black/20' : 'bg-zinc-800'}`}>{c.n}</span>
           </button>
         ))}
+        {(sinLeer.length > 0 || releyendo) && (
+          <button onClick={() => releerSinLeer(sinLeer)} disabled={!!releyendo}
+            className="rounded-lg bg-blue-600/80 hover:bg-blue-600 disabled:opacity-60 text-white text-sm font-medium px-3 py-1.5">
+            {releyendo ? `Leyendo ${releyendo.hechos}/${releyendo.total}…` : `Releer con IA (${sinLeer.length} sin leer)`}
+          </button>
+        )}
       </div>
 
       {loadError && (
         <div className="rounded-xl bg-red-950/40 border border-red-800/50 px-4 py-3 text-sm text-red-300">
           No se pudieron cargar los tickets: {loadError}
+        </div>
+      )}
+      {aviso && (
+        <div className="rounded-xl bg-amber-950/40 border border-amber-800/50 px-4 py-3 text-sm text-amber-300">
+          {aviso}
         </div>
       )}
       {filtroEstado === 'fraude' ? (

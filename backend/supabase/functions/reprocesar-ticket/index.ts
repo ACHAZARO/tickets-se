@@ -1,82 +1,27 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0'
 import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveCategoria } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
+import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
+import { detectSmartDuplicate } from '../_shared/duplicados.ts'
+import { hayPrecioAnomalo } from '../_shared/precios.ts'
+
+// Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
+// lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
+// Parametros opcionales:
+// - modelo + solo_leer: PRUEBA de un modelo; devuelve la lectura sin tocar la BD.
+// - solo_si_sin_leer: para el lote; se niega (409) si el ticket ya tiene renglones o ya
+//   no esta marcado como "IA no lo leyo" (no pisar capturas manuales).
 
 // deno-lint-ignore no-explicit-any
 type SB = any
 type ImageCandidate = { bucket: 'archivo' | 'por-revisar'; path: string }
 
-interface GeminiItem {
-  descripcion?: string
-  cantidad?: number | null
-  unidad?: string | null
-  monto?: number | null
-  categoria?: string | null
-}
-interface GeminiResult {
-  comercio?: string | null
-  fecha?: string | null
-  folio_ticket?: string | null
-  monto_total?: number | null
-  confianza?: string
-  items?: GeminiItem[]
-}
-
-function prompt(catalogContext: string): string {
-  return `Vuelve a leer este ticket de gasto. Extrae JSON exacto:
-{
-  "comercio": "nombre o null",
-  "fecha": "YYYY-MM-DD o null",
-  "folio_ticket": "folio o null",
-  "monto_total": numero o null,
-  "confianza": "alta|media|baja",
-  "items": [{"descripcion":"texto literal leido", "cantidad": numero o null, "unidad": "kg|g|pz|ml|lt|caja|bulto|paquete|rollo|galon|otro|null", "monto": numero o null, "categoria": "categoria valida o null"}]
-}
-
-${catalogContext}
-
-Reglas:
-- Conserva descripcion literal. No reemplaces codigos por nombres bonitos del catalogo.
-- Usa catalogo solo para categoria/unidad cuando coincida.
-- Un renglon por producto. No agrupes productos.
-- Si no estas seguro, confianza "baja".
-- Responde solo JSON.`
-}
-
-function parseGemini(text: string): GeminiResult {
-  return JSON.parse(text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')) as GeminiResult
-}
-
-async function callGemini(genAI: GoogleGenerativeAI, imagePart: unknown, textPrompt: string): Promise<GeminiResult> {
-  const envModel = Deno.env.get('GEMINI_MODEL')
-  const modelos = [
-    ...(envModel ? [envModel] : []),
-    'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest',
-  ].filter((m, i, a) => a.indexOf(m) === i)
-  let lastErr = ''
-  for (const name of modelos) {
-    try {
-      const model = genAI.getGenerativeModel({ model: name })
-      // deno-lint-ignore no-explicit-any
-      const result = await model.generateContent([imagePart as any, textPrompt])
-      const datos = parseGemini(result.response.text())
-      ;(datos as Record<string, unknown>)._modelo = name
-      ;(datos as Record<string, unknown>)._reproceso_manual = true
-      return datos
-    } catch (err) {
-      lastErr = String(err)
-      console.error(`Gemini reproceso fallo con ${name}:`, lastErr.slice(0, 160))
-    }
-  }
-  return { confianza: 'baja', items: [], _error: lastErr } as GeminiResult
-}
-
-async function createAlert(supabase: SB, registroId: string, tipo: string): Promise<void> {
-  await supabase.from('alertas_tickets').insert({ registro_ticket_id: registroId, tipo })
+async function createAlert(supabase: SB, registroId: string, tipo: string, dupId?: string): Promise<void> {
+  const { error } = await supabase.from('alertas_tickets').insert({ registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null })
+  if (error) console.error(`createAlert(${tipo}) fallo:`, error.message)
 }
 
 async function requireAdmin(supabase: SB, req: Request): Promise<boolean> {
@@ -117,15 +62,30 @@ serve(async (req: Request) => {
 
   try {
     if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-    const { registro_id } = await req.json().catch(() => ({}))
+    const { registro_id, modelo, solo_leer, solo_si_sin_leer } = await req.json().catch(() => ({})) as {
+      registro_id?: string; modelo?: string; solo_leer?: boolean; solo_si_sin_leer?: boolean
+    }
     if (!registro_id) return json({ error: 'registro_id requerido' }, 400)
+    if (modelo !== undefined && !/^[a-z0-9.\-]{3,60}(@(minimal|low|medium|high))?$/.test(String(modelo))) return json({ error: 'modelo invalido' }, 400)
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
     if (!(await requireAdmin(supabase, req))) return json({ error: 'No autorizado' }, 401)
     const { data: reg } = await supabase.from('registros_tickets')
-      .select('id, sucursal_id, storage_path_original, storage_path_archivo')
+      .select('id, sucursal_id, estado, created_at, gemini_raw, storage_path_original, storage_path_archivo')
       .eq('id', registro_id).maybeSingle()
     if (!reg) return json({ error: 'Ticket no encontrado' }, 404)
+
+    const { data: viejos } = await supabase.from('ticket_items').select('id').eq('registro_ticket_id', registro_id)
+    const idsViejos = ((viejos ?? []) as { id: string }[]).map(r => r.id)
+
+    if (solo_si_sin_leer && !solo_leer) {
+      const { data: abierta } = await supabase.from('alertas_tickets').select('id')
+        .eq('registro_ticket_id', registro_id).eq('tipo', 'ia_sin_leer').eq('resuelta', false).limit(1)
+      const enProceso = !!(reg.gemini_raw as Record<string, unknown> | null)?._ia_en_proceso
+      if (idsViejos.length > 0 || (!(abierta ?? []).length && !enProceso)) {
+        return json({ omitido: true, motivo: 'El ticket ya tiene renglones o ya no esta marcado como sin leer.' }, 409)
+      }
+    }
 
     const { fileData, source, error: imageError } = await downloadTicketImage(supabase, reg)
     if (!fileData || !source) {
@@ -137,37 +97,57 @@ serve(async (req: Request) => {
 
     const imageBytes = await fileData.arrayBuffer()
     const catalog: Catalog = await loadCatalog(reg.sucursal_id)
-    const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
-    const datos = await callGemini(genAI, {
-      inlineData: { mimeType: fileData.type || 'image/jpeg', data: encodeBase64(imageBytes) },
-    }, prompt(buildCatalogPromptContext(catalog)))
+    // Referencia de fecha = dia (hora de Mexico) en que se SUBIO el ticket, no hoy: un ticket
+    // subido el 6-ago no puede ser de septiembre, y si no trae fecha se asume la de subida.
+    const fechaSubida = fechaMexico(new Date(String(reg.created_at ?? new Date().toISOString())))
+    const inicio = Date.now()
+    const lectura = await leerTicketConGemini({
+      imagenBase64: encodeBase64(imageBytes),
+      mimeType: fileData.type || 'image/jpeg',
+      prompt: buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida),
+      modelos: modelo ? [modelo] : undefined,
+    })
+    if (solo_leer) {
+      return json({
+        ok: !!lectura.datos, modelo: lectura.modelo || modelo || null, ms: Date.now() - inicio,
+        datos: lectura.datos, fallo: lectura.fallo, error: lectura.error?.slice(0, 300) ?? null, intentos: lectura.intentos,
+      }, lectura.datos ? 200 : 503)
+    }
+    if (!lectura.datos) {
+      return json({
+        error: explicarFallo(lectura.fallo) + ' No se cambio nada del ticket.',
+        fallo: lectura.fallo,
+        detalle: lectura.error?.slice(0, 300) ?? null,
+      }, 503)
+    }
+    const datos = lectura.datos
+    ;(datos as Record<string, unknown>)._modelo = lectura.modelo
+    ;(datos as Record<string, unknown>)._reproceso_manual = true
 
     const rawItems = (Array.isArray(datos.items) ? datos.items : []).filter(it => it && (it.descripcion || it.monto != null))
-    // No destruir los renglones existentes si la IA no devolvio nada util (falla total).
-    if (rawItems.length === 0 && datos.confianza === 'baja') {
-      return json({ error: 'La IA no pudo releer el ticket. No se cambio nada; intenta de nuevo.' }, 422)
+    // No destruir los renglones existentes si la IA no devolvio renglones utiles.
+    if (rawItems.length === 0) {
+      if (solo_si_sin_leer) {
+        // En el lote: la IA SI leyo pero no hay renglones (foto ilegible). Sale de la cola de
+        // "sin leer" como 'ilegible' para no volver a gastar Gemini en cada corrida.
+        await supabase.from('alertas_tickets').update({ resuelta: true })
+          .eq('registro_ticket_id', registro_id).eq('tipo', 'ia_sin_leer').eq('resuelta', false)
+        await createAlert(supabase, registro_id, 'ilegible')
+        await supabase.from('registros_tickets').update({ gemini_raw: datos as unknown as Record<string, unknown> }).eq('id', registro_id)
+      }
+      return json({ error: 'La IA no encontro renglones en el ticket (imagen ilegible o vacia). No se cambio nada.', fallo: 'sin_renglones' }, 422)
     }
-    const montoTotal = datos.monto_total ?? (rawItems.length ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null : null)
-    const hoy = new Date().toISOString().slice(0, 10)
-    const fechaValida = !!(datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha))
-    const fechaTicket = fechaValida ? datos.fecha! : hoy
-    if (!fechaValida) (datos as Record<string, unknown>)._fecha_asumida = true
-
-    await supabase.from('ticket_items').delete().eq('registro_ticket_id', registro_id)
-    await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', registro_id).eq('resuelta', false)
-    await supabase.from('registros_tickets').update({
-      estado: 'pendiente',
-      fecha_ticket: fechaTicket,
-      folio_ticket: datos.folio_ticket ?? null,
-      comercio: datos.comercio ?? null,
-      monto: montoTotal,
-      gemini_raw: datos as unknown as Record<string, unknown>,
-    }).eq('id', registro_id)
+    const montoTotal = datos.monto_total ?? (rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null)
+    const { fecha: fechaTicket, asumida } = resolverFecha(datos.fecha, fechaSubida)
+    if (asumida) {
+      ;(datos as Record<string, unknown>)._fecha_asumida = true
+      if (datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
+    }
 
     let anySinCategoria = false
     let anySinUnidad = false
     let anyProductoNuevo = false
-    const items = (rawItems.length ? rawItems : [{ descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null }]).map((it, index) => {
+    const items = rawItems.map((it, index) => {
       const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
       const matched = matchProductInCatalog(desc, catalog.products)
       let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
@@ -190,14 +170,56 @@ serve(async (req: Request) => {
         orden: index,
       }
     })
-    await supabase.from('ticket_items').insert(items)
+    // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total a ese renglon.
+    if (montoTotal != null && items.length === 1 && !(Number(items[0].monto) > 0)) items[0].monto = montoTotal
 
-    if (!fechaValida) await createAlert(supabase, registro_id, 'sin_fecha')
-    if (datos.confianza === 'baja') await createAlert(supabase, registro_id, 'ilegible')
-    if (anySinCategoria || anyProductoNuevo) await createAlert(supabase, registro_id, 'producto_no_reconocido')
-    if (anySinUnidad) await createAlert(supabase, registro_id, 'sin_unidad')
+    // Orden seguro: 1) insertar lo nuevo, 2) actualizar encabezado, 3) borrar lo viejo.
+    // Si algo falla a medio camino se deshace lo nuevo y el ticket queda como estaba.
+    const { data: nuevos, error: itemsErr } = await supabase.from('ticket_items').insert(items).select('id')
+    if (itemsErr) {
+      console.error('reprocesar ticket_items insert:', itemsErr)
+      return json({ error: 'No se pudieron guardar los renglones releidos. No se cambio nada.', detalle: itemsErr.message }, 500)
+    }
+    // Un rechazado sigue rechazado (p.ej. duplicado exacto): releerlo no debe revivirlo.
+    const rechazado = reg.estado === 'rechazado'
+    const { error: headerErr } = await supabase.from('registros_tickets').update({
+      estado: rechazado ? 'rechazado' : 'pendiente',
+      fecha_ticket: fechaTicket,
+      folio_ticket: datos.folio_ticket ?? null,
+      comercio: datos.comercio ?? null,
+      monto: montoTotal,
+      gemini_raw: datos as unknown as Record<string, unknown>,
+    }).eq('id', registro_id)
+    if (headerErr) {
+      console.error('reprocesar registros_tickets update:', headerErr)
+      const idsNuevos = ((nuevos ?? []) as { id: string }[]).map(r => r.id)
+      if (idsNuevos.length) await supabase.from('ticket_items').delete().in('id', idsNuevos)
+      return json({ error: 'No se pudo guardar la lectura. No se cambio nada.', detalle: headerErr.message }, 500)
+    }
+    if (idsViejos.length) await supabase.from('ticket_items').delete().in('id', idsViejos)
+    // Los precios registrados con los renglones viejos ya no aplican (se registran al confirmar).
+    await supabase.from('precio_historial').delete().eq('registro_ticket_id', registro_id)
+    await supabase.from('alertas_tickets').update({ resuelta: true })
+      .eq('registro_ticket_id', registro_id).eq('resuelta', false).neq('tipo', 'duplicado')
 
-    return json({ ok: true, items: items.length })
+    const alertas: string[] = []
+    const dupId = await detectSmartDuplicate(
+      supabase, reg.sucursal_id, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registro_id,
+    )
+    if (dupId) { await createAlert(supabase, registro_id, 'posible_duplicado', dupId); alertas.push('posible_duplicado') }
+    if (asumida) { await createAlert(supabase, registro_id, 'sin_fecha'); alertas.push('sin_fecha') }
+    if (datos.confianza === 'baja') { await createAlert(supabase, registro_id, 'ilegible'); alertas.push('ilegible') }
+    if (anySinCategoria || anyProductoNuevo) { await createAlert(supabase, registro_id, 'producto_no_reconocido'); alertas.push('producto_no_reconocido') }
+    if (anySinUnidad) { await createAlert(supabase, registro_id, 'sin_unidad'); alertas.push('sin_unidad') }
+    // Misma revision de precios que la subida normal (solo lectura; el historial se guarda al confirmar).
+    if (await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)) {
+      await createAlert(supabase, registro_id, 'precio_anomalo'); alertas.push('precio_anomalo')
+    }
+    // Sin total no se puede auditar el gasto: no confirmar solo.
+    if (!(Number(montoTotal) > 0)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
+    if (rechazado) alertas.push('rechazado')
+
+    return json({ ok: true, items: items.length, modelo: lectura.modelo, fecha: fechaTicket, posible_duplicado: dupId, alertas })
   } catch (err) {
     console.error('Error reprocesar-ticket:', err)
     return json({ error: 'Error interno' }, 500)
