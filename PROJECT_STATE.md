@@ -43,6 +43,19 @@ en pestana Fraude grupos ...0801/0802; se confirmo solo la factura). Confirmados
 d0073b34 (concepto ilegible $30), 19150aa9 (cantidades encimadas), 05a5f504 ($78 sin desglose: hielo $46 + bolsas $32 estimado).
 Sin foto en Storage: 72c96e80 (y 0e77486c, a7239aef de antes).
 
+**2a revision (18-sep, tarde): carga WP del 5/6-ago (resulto ser casi todo JULIO) + viejos del 11-sep + 12 confirmados de agosto.**
+262 tickets releidos con 3.8 (177) y revisados contra foto (11 revisores): 125 bien, 112 corregidos, 21 dudosos, 4 copias.
+Migraciones **040** (95 productos nuevos, sinonimos a 133), **041** (lecturas corregidas), **042** (IEPS PIAYS proporcional,
+3 rechazos por copia, 7 grupos de Fraude ...0901-0907: 4 factura+ticket/remision de Cervezas y Refrescos, reimpresion Nutrioli,
+"gas compras Aps" $1,350 sin ticket de gasera firmado por Fer Villanueva y subido 2 veces, doble cobro JugoKarl 16784/16704;
+3 posibles alteraciones cbb10061/32feb23d/d88af3f5; 19 revisar_gerente). 253 confirmados; 6 pendientes (4 duplicados,
+gas compras, JugoKarl). Motos con nombre (Lindsay, Fer Villanueva) -> Extras + revisar_gerente.
+**ESTADO AGOSTO WP: 187 confirmados, TODOS revisados contra foto y cuadrados al centavo (renglones = total con IVA) = $108,627.11.**
+Pendientes agosto (6): 1095886d (19/02?), 1b112f3d (cabrito $804), fd300835 (alteracion), 11fc5f27 y a5b4e428 (duplicados de
+factura), a7239aef (sin foto). JULIO parcial: 228 confirmados (210 revisados), falta la carga del 13/14-jul (180 sin leer + ~29
+leidos con 2.5). Patrones para vigilar: jugo de limon JugoKarl $258/galon en julio vs $173 en agosto; moto servicio $74 prom en
+julio (hasta $140) vs $50 normal.
+
 **Gastos CON IVA (decision Alejandro 2026-09-18, "mas facil de cotejar"):** `_shared/montos.ts` suma el impuesto SOLO a los
 renglones que lo pagan: acepta la diferencia como impuesto si subtotal (o subtotal antes del descuento) = suma de renglones y
 subtotal+IVA(+IEPS) = total; IVA parejo 16% -> proporcional; si no, busca la tasa por renglon (0/8/16/IEPS+IVA, solucion unica);
@@ -57,9 +70,8 @@ Respaldos r038_items, r039_items. Los confirmados viejos que no cuadran por otra
 - **Tope de gasto Gemini**: Alejandro lo subio a MX$500 (18-sep). Gastado ~MX$130 al cierre del 18-sep. Faltan de WP: 165 sin leer de la carga 5/6-ago (~MX$45),
   ~75 leidos con 2.5 pendientes (46 de ago, 29 del 11-sep; releer ~MX$20) y julio (180 sin leer + 29). Alejandro debe
   subir el tope a ~MX$300 (AI Studio > Spend > Set spend cap) antes de seguir.
-- **git push** (main ~9 commits adelante): Alejandro corre `git push origin main` en su terminal (PowerShell, sin `&&`)
-  y autoriza en el navegador. Hasta entonces Vercel sirve el frontend viejo (sin filtro por fecha de ticket ni boton de lote).
-- Llave de Gemini pegada por error en el chat el 18-sep: ROTARLA (crear otra en AI Studio, pegarla en Supabase, borrar la vieja).
+- git push HECHO 18-sep (Alejandro, login por codigo: `git config --global credential.gitHubAuthModes device`). Vercel en produccion con 26a47e0.
+- Llave de Gemini rotada 18-sep (nueva ...4GUA en Supabase, probada). Alejandro debe BORRAR la vieja ...rcXw en AI Studio.
 - Santa Elena: "AVE ACTION FRY 10L" global esta en categoria Desechables (es aceite -> Insumos); emparejador nuevo ya aplica,
   pero su historial de precios sigue con lo viejo (reconstruir como 036 cuando se revise SE).
 - Borrar tablas temporales `public._tmp_firmas` y `public._tmp_bake` al terminar la revision de agosto.
