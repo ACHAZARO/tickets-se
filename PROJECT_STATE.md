@@ -47,6 +47,20 @@
 - Mejora pendiente del matcher de catalogo: hoy liga al PRIMER producto con una palabra en comun (no al mejor);
   "moto" podria ligar mal. Proponer scoring + bandera "solo exacto" en el siguiente deploy.
 
+- Migracion **032**: alerta `revisar_gerente` ("Revisar con gerente", motivo en correccion->>'motivo'); 2 motos
+  WP con nombre -> Extras + revisar_gerente; catalogo SE "Moto (envio)"->Extras, "Moto insumos"->Otros;
+  WP "Envio al dueño (Ale moto)"->Extras. Santa Elena "MOTO" se queda en Extras (decision Alejandro).
+- Migracion **033**: 45 confirmados con fecha imposible revisados contra la FOTO (2 lectores por foto; 32 de acuerdo,
+  13 decididos con reglas). 10 con revisar_gerente (5 pipas de gas sin fecha legible -> fecha de subida; remision
+  cerveza $2,565 con fecha tapada; La Abejita 09/03 ambiguo; nota de feb subida en ago = posible re-cobro; etc.).
+  Impresora de ruta de Cervezas y Refrescos imprime MES-DIA-AÑO; sicarx (Doña Tere, Tipico Araucarias) DIA/MES.
+  Respaldo respaldo.r033_fechas. Tabla temporal public._tmp_firmas (ligas firmadas de fotos): BORRAR al terminar.
+- **Facturacion Gemini (revisado en AI Studio 2026-09-18)**: proyecto TICKETS SE (gen-lang-client-0656779549) en
+  Tier 1 prepago, "My Billing Account", creditos MX$500 (2-jun) + MX$500 (7-jun), saldo MX$998.23, vencen 1-jul-2027,
+  recarga automatica ACTIVADA (Visa 1428), tope mensual MX$100. El "MX$4,336.40" es el TOPE del tier, no gasto.
+  **HALLAZGO: ese proyecto tiene 0 solicitudes en 28 dias -> la app usa OTRA llave (proyecto gratis).** Unica llave
+  del proyecto pagado: "...rcXw". Alejandro debe pegarla en Supabase > Edge Functions > Secrets > GEMINI_API_KEY.
+
 **PENDIENTE (bloqueado):**
 - **git push da 403** ("Permission to ACHAZARO/tickets-se.git denied to ACHAZARO"): la credencial guardada
   en Git Credential Manager solo tiene LECTURA. Alejandro debe renovarla (Administrador de credenciales de
