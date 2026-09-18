@@ -37,10 +37,20 @@
 - `procesar-ticket` v29 desplegado (Alejandro autorizo). Humo: las 3 funciones arrancan y dan 401 sin sesion.
 - Commit f95d529 en `main` local (build de Next OK).
 
+- Migracion **031** (aplicada): categoria global **"Otros gastos operativos"** (operativa). Reglas de Alejandro:
+  "Moto servicio" (lleva insumos) -> Otros; envio tipo "Ale moto" (comida al dueño) -> Extras; "moto + otro
+  nombre" (ej. "Moto servicio Fav Villarroel", "Motos Servicios de Marquez escobar y steven") -> PREGUNTAR;
+  Vacaciones/prima vacacional -> Otros; Viaje de agua -> Otros y MONITOREAR frecuencia (posible robo hormiga).
+  Productos: "Moto servicio" (WP), "Vacaciones y prima vacacional" (global), "Viaje de agua 10,000 litros" movido;
+  4 renglones confirmados de agua movidos. Respaldo respaldo.r031_*. Santa Elena "MOTO" (22 renglones, Extras)
+  SIN tocar: falta decision de Alejandro.
+- Mejora pendiente del matcher de catalogo: hoy liga al PRIMER producto con una palabra en comun (no al mejor);
+  "moto" podria ligar mal. Proponer scoring + bandera "solo exacto" en el siguiente deploy.
+
 **PENDIENTE (bloqueado):**
 - **git push da 403** ("Permission to ACHAZARO/tickets-se.git denied to ACHAZARO"): la credencial guardada
   en Git Credential Manager solo tiene LECTURA. Alejandro debe renovarla (Administrador de credenciales de
-  Windows -> borrar git:https://github.com -> `git push origin main` y entrar por el navegador). Hasta
+  Windows -> borrar SOLO git:https://ACHAZARO@github.com (la usa solo tickets-se; CheckPro usa la otra) -> `git push origin main` y entrar por el navegador). Hasta
   entonces Vercel sigue con el frontend viejo (compatible con el backend nuevo; la etiqueta ia_sin_leer se ve cruda).
 - Alejandro: activar facturacion Gemini (aistudio.google.com/projects -> tickets-se -> Set up billing) e
   iniciar sesion en el navegador integrado para: prueba de modelos (3.1/3.5 flash-lite, 3.6/3.8 flash vs 2.5),
