@@ -37,9 +37,11 @@ export interface LecturaIA {
 // Orden de preferencia. GEMINI_MODEL (secret, admite lista separada por comas) va primero.
 // NO incluir modelos retirados: gemini-1.5-*, gemini-2.0-flash y gemini-2.0-flash-lite ya dan 404.
 // Un modelo Gemini 3.x puede llevar nivel de razonamiento con '@': 'gemini-3.1-flash-lite@minimal'.
-// Provisional hasta la prueba de modelos con tickets reales (2026-09-18): el 2.5 podria
-// apagarse el 16-oct-2026 segun la doc de Firebase; 3.1-flash-lite es respaldo con cuota propia.
-export const MODELOS_DEFAULT = ['gemini-2.5-flash', 'gemini-3.1-flash-lite@minimal', 'gemini-2.5-flash-lite']
+// Elegido con prueba sobre 22 tickets reales de Wings Palace (2026-09-18), contra lectura verdad:
+//   3.8-flash: 17/22 perfectos, 99% renglones, 3 renglones basura, ~US$0.015/ticket
+//   3.1-pro-preview: 13/22 (respaldo de otro modelo = otra cuota); 3.1-flash-lite@minimal: 10/22, barato.
+//   2.5-flash (el anterior): 8/22, y podria apagarse el 16-oct-2026.
+export const MODELOS_DEFAULT = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite@minimal']
 
 export function modelosCandidatos(): string[] {
   const env = (Deno.env.get('GEMINI_MODEL') ?? '').split(',').map(s => s.trim()).filter(Boolean)
