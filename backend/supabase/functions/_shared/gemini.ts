@@ -19,6 +19,7 @@ export interface GeminiResult {
   tipo_documento?: string | null
   subtotal?: number | null
   iva?: number | null
+  ieps?: number | null
   monto_total?: number | null
   confianza?: string
   items?: GeminiItem[]
@@ -57,6 +58,7 @@ export function buildGeminiPrompt(catalogContext: string, hoyISO: string): strin
   "tipo_documento": "ticket | factura | nota_a_mano | remision | otro",
   "subtotal": numero antes de IVA si aparece, o null,
   "iva": numero de IVA si aparece desglosado, o null,
+  "ieps": numero de IEPS si aparece desglosado aparte, o null,
   "monto_total": numero decimal del total a pagar, o null,
   "confianza": "alta si los datos son claros, media si algunos son ambiguos, baja si es ilegible o muy borroso",
   "items": [

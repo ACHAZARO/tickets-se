@@ -43,8 +43,18 @@ en pestana Fraude grupos ...0801/0802; se confirmo solo la factura). Confirmados
 d0073b34 (concepto ilegible $30), 19150aa9 (cantidades encimadas), 05a5f504 ($78 sin desglose: hielo $46 + bolsas $32 estimado).
 Sin foto en Storage: 72c96e80 (y 0e77486c, a7239aef de antes).
 
+**Gastos CON IVA (decision Alejandro 2026-09-18, "mas facil de cotejar"):** `_shared/montos.ts` suma el impuesto SOLO a los
+renglones que lo pagan: acepta la diferencia como impuesto si subtotal (o subtotal antes del descuento) = suma de renglones y
+subtotal+IVA(+IEPS) = total; IVA parejo 16% -> proporcional; si no, busca la tasa por renglon (0/8/16/IEPS+IVA, solucion unica);
+si nada cuadra NO reparte y alerta `monto_anomalo` (noCuadra: tickets 0.5%, notas a mano 2%; renglones null cuentan 0 salvo que
+todos sean null). Gemini ahora tambien devuelve `ieps`. Marca en gemini_raw: `_impuestos_sumados` (pesos). Admin (page.tsx):
+el total leido manda; si los renglones no suman sale aviso ("captura los importes con IVA"). Revision adversarial de 3 agentes
+encontro 17 problemas en la 1a version (ver commit). Migraciones **038** (19 facturas de agosto) y **039** (IVA por renglon en
+3 facturas mixtas + 18 facturas viejas confirmadas con 16% exacto, 11 WP / 7 SE; historial de precios WP reconstruido con IVA).
+Respaldos r038_items, r039_items. Los confirmados viejos que no cuadran por otra razon se arreglan al revisarlos contra la foto.
+
 **PENDIENTE:**
-- **Tope de gasto Gemini**: hoy ~MX$65-70 de MX$100 del mes. Faltan de WP: 165 sin leer de la carga 5/6-ago (~MX$45),
+- **Tope de gasto Gemini**: Alejandro lo subio a MX$500 (18-sep). Gastado ~MX$130 al cierre del 18-sep. Faltan de WP: 165 sin leer de la carga 5/6-ago (~MX$45),
   ~75 leidos con 2.5 pendientes (46 de ago, 29 del 11-sep; releer ~MX$20) y julio (180 sin leer + 29). Alejandro debe
   subir el tope a ~MX$300 (AI Studio > Spend > Set spend cap) antes de seguir.
 - **git push** (main ~9 commits adelante): Alejandro corre `git push origin main` en su terminal (PowerShell, sin `&&`)

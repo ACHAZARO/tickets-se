@@ -457,19 +457,32 @@ export default function TicketsPage() {
       if (error) { toast('No se pudo borrar el renglon: ' + error.message, 'error'); return }
     }
     const nextItems = detalle.items.filter(x => x.id !== it.id)
-    await syncTicketTotal(detalle.ticket.id, nextItems)
-    setDetalle({ ...detalle, ticket: { ...detalle.ticket, monto: sumItems(nextItems) }, items: nextItems })
+    const total = await syncTicketTotal(detalle.ticket, nextItems)
+    setDetalle({ ...detalle, ticket: { ...detalle.ticket, monto: total }, items: nextItems })
   }
 
   function sumItems(items: Item[]): number {
     return items.reduce((s, item) => s + (Number(item.monto) || 0), 0)
   }
 
-  async function syncTicketTotal(ticketId: string, items: Item[]) {
-    const total = sumItems(items)
-    const { error } = await supabase.from('registros_tickets').update({ monto: total }).eq('id', ticketId)
-    if (error) { toast('No se pudo actualizar el total: ' + error.message, 'error'); return }
-    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, monto: total } : t))
+  // Los gastos van CON IVA: si el ticket trae un total leido, ese total manda y los renglones
+  // deben sumarlo (en facturas, importe impreso + su IVA). Solo en captura manual (sin total
+  // leido) el total es la suma de renglones.
+  async function syncTicketTotal(ticket: Ticket, items: Item[]): Promise<number> {
+    const suma = Math.round(sumItems(items) * 100) / 100
+    const total = Number(ticket.monto)
+    if (Number(ticket.gemini_raw?.monto_total) > 0 && total > 0) {
+      if (Math.abs(total - suma) <= Math.max(1, total * 0.005)) return total
+      // Si el total leido estaba mal, el admin puede tomar la suma de renglones como total.
+      const usarSuma = window.confirm(`Los renglones suman $${suma.toFixed(2)} y el total del ticket es $${total.toFixed(2)}.\n\n` +
+        `Aceptar: el total del ticket pasa a ser $${suma.toFixed(2)} (el total leido estaba mal).\n` +
+        `Cancelar: se deja $${total.toFixed(2)} (captura los importes CON IVA para que cuadren).`)
+      if (!usarSuma) return total
+    }
+    const { error } = await supabase.from('registros_tickets').update({ monto: suma }).eq('id', ticket.id)
+    if (error) { toast('No se pudo actualizar el total: ' + error.message, 'error'); return total }
+    setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, monto: suma } : t))
+    return suma
   }
 
   async function ensureProduct(it: Item, opts: { productName: string; synonymText: string; baseQty: string; baseUnit: string; baseItem: string; subQty: string; subUnit: string }) {
@@ -613,7 +626,7 @@ export default function TicketsPage() {
         orden: itemOrderSupported ? itemOrder : x.orden,
         categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
       } : x)
-    await syncTicketTotal(detalle.ticket.id, currentItems)
+    const totalTicket = await syncTicketTotal(detalle.ticket, currentItems)
 
     // Resolver las alertas de renglon que ya no aplican y REFRESCAR el estado de la
     // lista. Sin esto, la etiqueta "Productos nuevos" y el filtro "Requieren revision"
@@ -632,7 +645,7 @@ export default function TicketsPage() {
     const alertasRestantes = (openAlerts as AlertRow[] | null) ?? []
     setAlertas(prev => ({ ...prev, [detalle.ticket.id]: alertasRestantes }))
 
-    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, monto: sumItems(currentItems) }, items: currentItems } : d)
+    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, monto: totalTicket }, items: currentItems } : d)
     setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
     setBusy(null)
     // Feedback visible: que SE NOTE que se guardo el renglon.

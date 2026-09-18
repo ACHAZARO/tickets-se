@@ -11,6 +11,7 @@ import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
 import { guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
+import { aplicarImpuestos, impuestosPorRenglon, noCuadra, sinTotal } from '../_shared/montos.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
@@ -148,23 +149,6 @@ async function procesarEnSegundoPlano(opts: {
       if (datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
     }
 
-    const { error: headerErr } = await supabase.from('registros_tickets').update({
-      fecha_ticket: fechaTicket,
-      folio_ticket: datos.folio_ticket ?? null,
-      comercio: datos.comercio ?? null,
-      monto: montoTotal,
-      gemini_raw: datos as unknown as Record<string, unknown>,
-    }).eq('id', registroId)
-    if (headerErr) {
-      // Sin encabezado guardado no se sigue (evita confirmar un ticket sin fecha/monto).
-      console.error('registros_tickets update:', headerErr)
-      await supabase.from('registros_tickets').update({
-        gemini_raw: { items: [], _ia_fallo: 'otro', _error: 'no se pudo guardar la lectura: ' + headerErr.message },
-      }).eq('id', registroId)
-      await createAlert(supabase, registroId, 'ia_sin_leer')
-      return
-    }
-
     const matchedIds = new Set<string>()
     let anySinCategoria = false
     let anySinUnidad = false
@@ -197,6 +181,30 @@ async function procesarEnSegundoPlano(opts: {
     const conMonto = itemsToInsert.filter(it => it.monto != null && Number(it.monto) > 0)
     if (montoTotal != null && conMonto.length === 0 && itemsToInsert.length === 1) {
       itemsToInsert[0].monto = montoTotal
+    }
+    // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo
+    // pagan para que sumen el total pagado (gastos CON IVA).
+    const impuestos = impuestosPorRenglon(itemsToInsert, montoTotal, datos)
+    if (impuestos) {
+      aplicarImpuestos(itemsToInsert, impuestos, Number(montoTotal))
+      ;(datos as Record<string, unknown>)._impuestos_sumados = Math.round(impuestos.reduce((s, x) => s + x, 0) * 100) / 100
+    }
+    const montoNoCuadra = sinTotal(itemsToInsert, montoTotal) || noCuadra(itemsToInsert, montoTotal, datos.tipo_documento)
+    const { error: headerErr } = await supabase.from('registros_tickets').update({
+      fecha_ticket: fechaTicket,
+      folio_ticket: datos.folio_ticket ?? null,
+      comercio: datos.comercio ?? null,
+      monto: montoTotal,
+      gemini_raw: datos as unknown as Record<string, unknown>,
+    }).eq('id', registroId)
+    if (headerErr) {
+      // Sin encabezado guardado no se sigue (evita confirmar un ticket sin fecha/monto).
+      console.error('registros_tickets update:', headerErr)
+      await supabase.from('registros_tickets').update({
+        gemini_raw: { items: [], _ia_fallo: 'otro', _error: 'no se pudo guardar la lectura: ' + headerErr.message },
+      }).eq('id', registroId)
+      await createAlert(supabase, registroId, 'ia_sin_leer')
+      return
     }
 
     const { error: itemsErr } = await supabase.from('ticket_items').insert(
@@ -243,6 +251,8 @@ async function procesarEnSegundoPlano(opts: {
     if (!fechaValida) { await createAlert(supabase, registroId, 'sin_fecha'); hayAlerta = true }
     if (anySinCategoria || anyProductoNuevo) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
     if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
+    // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
+    if (montoNoCuadra) { await createAlert(supabase, registroId, 'monto_anomalo'); hayAlerta = true }
     if (precioAnomalo) {
       await createAlert(supabase, registroId, 'precio_anomalo')
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true

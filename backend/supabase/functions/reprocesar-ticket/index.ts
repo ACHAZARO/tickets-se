@@ -8,6 +8,7 @@ import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, res
 import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
 import { hayPrecioAnomalo } from '../_shared/precios.ts'
+import { aplicarImpuestos, impuestosPorRenglon, noCuadra, sinTotal } from '../_shared/montos.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
 // lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
@@ -186,6 +187,13 @@ serve(async (req: Request) => {
     })
     // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total a ese renglon.
     if (montoTotal != null && items.length === 1 && !(Number(items[0].monto) > 0)) items[0].monto = montoTotal
+    // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo
+    // pagan para que sumen el total pagado (gastos CON IVA).
+    const impuestos = impuestosPorRenglon(items, montoTotal, datos)
+    if (impuestos) {
+      aplicarImpuestos(items, impuestos, Number(montoTotal))
+      ;(datos as Record<string, unknown>)._impuestos_sumados = Math.round(impuestos.reduce((s, x) => s + x, 0) * 100) / 100
+    }
 
     // Orden seguro: 1) insertar lo nuevo, 2) actualizar encabezado, 3) borrar lo viejo.
     // Si algo falla a medio camino se deshace lo nuevo y el ticket queda como estaba.
@@ -231,8 +239,8 @@ serve(async (req: Request) => {
     if (await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)) {
       await createAlert(supabase, registro_id, 'precio_anomalo'); alertas.push('precio_anomalo')
     }
-    // Sin total no se puede auditar el gasto: no confirmar solo.
-    if (!(Number(montoTotal) > 0)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
+    // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
+    if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
     if (rechazado) alertas.push('rechazado')
 
     return json({ ok: true, items: items.length, modelo: lectura.modelo, fecha: fechaTicket, posible_duplicado: dupId, alertas })
