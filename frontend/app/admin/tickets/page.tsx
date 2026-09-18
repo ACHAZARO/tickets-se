@@ -82,6 +82,7 @@ const ALERT_LABEL: Record<string, string> = {
   duplicado: 'Duplicado',
   ilegible: 'Ilegible',
   ia_sin_leer: 'IA no lo leyo',
+  revisar_gerente: 'Revisar con gerente',
   producto_no_reconocido: 'Productos nuevos',
   sin_unidad: 'Sin unidad',
   sin_fecha: 'Fecha asumida',
@@ -954,6 +955,9 @@ export default function TicketsPage() {
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
                 <p className="text-xs text-zinc-500">{detalle.ticket.sucursales?.nombre ?? 'Sin sucursal'} · subido por {detalle.ticket.empleados?.nombre ?? 'Desconocido'}</p>
                 <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300">{b}</span>)}</div>
+                {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente').map((a, i) => (
+                  <p key={i} className="mt-2 text-xs text-sky-300">Revisar con gerente: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
+                ))}
               </div>
               <button onClick={() => setDetalle(null)} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">x</button>
             </div>
