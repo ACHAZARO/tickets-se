@@ -10,7 +10,7 @@ import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
-import { mediana } from '../_shared/precios.ts'
+import { guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
@@ -102,49 +102,6 @@ async function aprenderProductos(
       })
     } catch (e) { console.error('aprenderProductos:', e) }
   }
-}
-
-// Registra el precio unitario (monto/cantidad) de cada renglon ligado a un producto,
-// guarda historial y detecta saltos fuertes vs el precio de referencia.
-async function registrarPrecios(
-  supabase: SB,
-  items: { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[],
-  catalog: Catalog, sucursalId: string, registroId: string, fecha: string
-): Promise<boolean> {
-  let anomalia = false
-  for (const it of items) {
-    const pid = it.producto_catalogo_id
-    const monto = Number(it.monto)
-    const cant = Number(it.cantidad)
-    if (!pid || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
-    const unit = monto / cant
-    const prod = catalog.products.find(p => p.id === pid)
-    try {
-      // Compara contra la mediana de hasta 5 compras previas (una compra mal capturada no
-      // mueve la referencia), y solo si ya hay >=3 registros (para no alertar mientras se forma la base).
-      const { data: previos } = await supabase.from('precio_historial')
-        .select('precio_unitario').eq('producto_catalogo_id', pid)
-        .order('created_at', { ascending: false }).limit(5)
-      await supabase.from('precio_historial').insert({
-        producto_catalogo_id: pid, sucursal_id: sucursalId,
-        registro_ticket_id: registroId, precio_unitario: unit, fecha,
-      })
-      await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
-
-      const prev = (previos ?? []).map((r: { precio_unitario: number }) => Number(r.precio_unitario))
-        .filter((n: number) => Number.isFinite(n) && n > 0)
-      // misma unidad: si el producto tiene unidad_default, el renglon debe coincidir
-      const mismaUnidad = !prod?.unidad_default || !it.unidad || it.unidad === prod.unidad_default
-      if (prev.length >= 3 && mismaUnidad) {
-        const ref = mediana(prev)
-        if (ref > 0) {
-          const ratio = unit / ref
-          if (ratio > 1.4 || ratio < 0.6) anomalia = true // +40% o -40% vs mediana
-        }
-      }
-    } catch (e) { console.error('registrarPrecios:', e) }
-  }
-  return anomalia
 }
 
 // Procesamiento pesado en segundo plano: Gemini + items + alertas + auto-confirma.
@@ -264,8 +221,9 @@ async function procesarEnSegundoPlano(opts: {
     // No auto-aprender productos desde IA: una lectura mala contamina el catalogo.
     // Los productos nuevos se confirman/ensenan manualmente desde Tickets.
 
-    // Precios: guarda historial y detecta saltos fuertes vs referencia.
-    const precioAnomalo = await registrarPrecios(supabase, itemsToInsert, catalog, sucursalId, registroId, fechaTicket)
+    // Precios: detecta saltos fuertes vs la mediana de compras confirmadas. El historial se
+    // guarda solo al confirmar (aqui abajo si sale limpio, o en confirmar-admin tras revision).
+    const precioAnomalo = await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
 
     let hayAlerta = false
     // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
@@ -293,6 +251,7 @@ async function procesarEnSegundoPlano(opts: {
     // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.
     if (!hayAlerta) {
       await autoConfirmar(supabase, registroId, sucursalId, empleadoId, storagePath, itemsToInsert)
+      await guardarPrecios(supabase, itemsToInsert, catalog.products, sucursalId, registroId, fechaTicket)
     }
   } catch (err) {
     console.error('Error en procesamiento de fondo:', err)

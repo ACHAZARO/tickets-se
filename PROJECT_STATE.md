@@ -2,74 +2,58 @@
 
 > Estado vivo del proyecto. Ultima actualizacion: 2026-09-18.
 
-## Sesion 2026-09-18 (Claude) -- IA "no funciona": era CUOTA, no calidad (EN CURSO)
+## Sesion 2026-09-18 (Claude) -- IA de lectura: cuota, modelo, catalogo y agosto WP revisado
 **Diagnostico (con evidencia en BD + logs):**
-- La API key de Gemini esta en TIER GRATIS (~20-25 lecturas/dia por modelo). El gerente sube en rafagas
-  (14-jul: ~250, 6-ago: ~250, 11-sep: ~200): se leian ~55-80 y TODO lo demas fallaba. 500 tickets (496 WP)
-  quedaron como "ilegible" + fecha = dia de subida INVENTADA + renglon relleno "Ticket" ligado a
-  "Viaje de agua" (alguien enseño "Ticket" como sinonimo). El `_error` guardado era el 404 de
-  gemini-1.5-flash-latest (ultimo de la cadena; 2.0-flash y 2.0-flash-lite tambien ya dan 404).
-- Donde Gemini SI leyo, la categoria fue correcta ~95% (699/734 renglones confirmados). Fallas reales:
-  notas a mano, productos fuera del catalogo, gastos sin categoria posible (Moto Servicio, Internet,
-  Vacaciones/Prima = nomina, Viaje de agua), tickets de gas LP (toma al CLIENTE "RESTAURANT WINGS PALACE"
-  como comercio y hace 12-34 renglones basura).
-- Filtro de Tickets usaba FECHA DE SUBIDA (created_at): por eso se colaban tickets de julio en agosto.
-- **Google Sheets NUNCA ha funcionado**: 0 confirmados con sheets_row_id desde junio. Log: JSON.parse del
-  secret GOOGLE_SERVICE_ACCOUNT_KEY falla ("Expected property name... position 1") -> secret mal guardado.
-  Decision Alejandro: arreglar y rellenar historial DESPUES de dejar tickets bien clasificados.
-- Duplicado factura+ticket (FEMSA/Cervezas): detectSmartDuplicate se encontraba A SI MISMO (sin excludeId)
-  y los duplicados reales pasaban. Julio: 3 pares confirmados contados doble (Cervezas $668, Cervezas
-  $3,836.88, FEMSA $1,422) -> enviados a pestaña Fraude (grupos 6f1c2a10-...-0701/0702/0703), sin rechazar.
-- gemini-2.5-flash podria apagarse el 16-oct-2026 (doc Firebase; ai.google.dev no lo confirma).
+- La IA "no funcionaba" por CUOTA: la llave de Gemini era de un proyecto GRATIS (~20-25 lecturas/dia). El gerente
+  sube en rafagas (14-jul ~250, 5/6-ago ~250, 11-sep ~200) y casi todo fallaba -> 500 tickets "ilegibles" con fecha
+  inventada. Alejandro cambio GEMINI_API_KEY por la llave del proyecto pagado TICKETS SE (gen-lang-client-0656779549,
+  Tier 1 prepago, creditos ~MX$1,000, TOPE MENSUAL MX$100, recarga automatica APAGADA).
+- Modelo: prueba sobre 22 tickets reales con lectura verdad -> **gemini-3.8-flash 17/22 perfectos** (2.5-flash 8/22,
+  3.1-pro 13/22, flash-lite 10/22). ~US$0.015 por ticket (~MX$0.27). Cadena: 3.8-flash -> 3.1-pro-preview -> 3.1-flash-lite@minimal.
+- El emparejador de catalogo ligaba al PRIMER producto con UNA palabra en comun ("queso americano" -> "dedos de queso",
+  Heineken/Fanta/Sidral -> Coca-Cola por "355ML", "LITROS" -> Viaje de agua). Eso inflaba "precio anomalo".
+- El historial de precios se llenaba AL SUBIR (tickets sin revisar) y con totales como precio unitario (gas LP $77/L).
+- Duplicado factura+ticket: la regla 3 marcaba como duplicado compras que se repiten (pipa $1,160 semanal, pan $55,
+  Nutrioli $785, gas). Ahora solo si UNO de los dos documentos es factura. Reales: Cervezas y Refrescos (no FEMSA).
+- Google Sheets NUNCA ha funcionado (secret GOOGLE_SERVICE_ACCOUNT_KEY mal guardado). Se arregla y rellena DESPUES.
 
-**Hecho y desplegado:**
-- Migracion **030** (`030_alerta_ia_sin_leer.sql`): alerta nueva `ia_sin_leer`; 500 fallidos re-etiquetados
-  (fecha/monto NULL, sin relleno); sinonimo "Ticket" quitado; 59 pendientes con año imposible corregidos
-  (año/volteo DD-MM, alerta sin_fecha). Respaldo en esquema `respaldo.r030_*` (no expuesto por API).
-- `confirmar-admin` v6 (no confirma sin fecha; no reenvia a Sheets si ya hay fila; precio_historial sin duplicar).
-- `reprocesar-ticket` v4 (modulo compartido, orden seguro insertar->encabezado->borrar, modo `solo_leer`+`modelo`
-  para comparar modelos, `solo_si_sin_leer` para el lote, precio/monto anomalo, rechazado sigue rechazado).
-- Nuevos `_shared/gemini.ts` (REST sin SDK, rondas de reintento, fallo 'cuota'/'saturado', fechas en hora
-  de Mexico + correccion de año, modelo@nivel de razonamiento), `_shared/duplicados.ts` (regla factura+ticket,
-  alias FEMSA=Propimex=Coca-Cola), `_shared/precios.ts`.
-- 3 pases de revision (workflows) + pruebas Deno de fechas/comercios.
+**Desplegado (Edge Functions):** procesar-ticket v34, reprocesar-ticket v8, confirmar-admin v8.
+- `_shared/gemini.ts` (REST, rondas de reintento, fallo cuota/saturado, fechas hora Mexico, modelo@nivel),
+  `_shared/catalog.ts` (emparejador por puntaje: mayoria de palabras, presentacion 325ml vs 1.18L, singulares, prefijos Costco),
+  `_shared/duplicados.ts` (factura+ticket solo con una factura; alias FEMSA=Propimex=Coca-Cola),
+  `_shared/precios.ts` (anomalo = +-40% vs MEDIANA de ultimas 5, min 3 previas; `guardarPrecios` solo al CONFIRMAR, misma unidad).
+- reprocesar-ticket: `solo_leer`+`modelo` (probar modelos), `solo_si_sin_leer` (lote), **`desde_guardada`** (rehace renglones,
+  ligas y alertas desde gemini_raw SIN pagar Gemini; usar tras ensenar sinonimos). Ya no borra `revisar_gerente`.
+- confirmar-admin v8 se desplego con un `_shared/catalog.ts` recortado (solo tipos; import type): en el proximo deploy usar el real.
 
-- `procesar-ticket` v29 desplegado (Alejandro autorizo). Humo: las 3 funciones arrancan y dan 401 sin sesion.
-- Commit f95d529 en `main` local (build de Next OK).
+**Migraciones aplicadas:** 030 (alerta ia_sin_leer, 500 fallidos re-etiquetados), 031 (categoria "Otros gastos operativos"),
+032 (alerta revisar_gerente + motos), 033 (45 fechas imposibles de confirmados), **034** (catalogo WP: 102 productos nuevos,
+sinonimos a 50, duplicados Coca-Cola 12pk/Cajas H21/Fibra metalica fusionados, basura "Total"/"Precio politros"/"Tom"
+desactivada, renombres Maracuya/Cebolla morada/Jugo de naranja galon/Bohemia (tenia una E cirilica)/Jamon FUD; gas 6-jun
+confirmado que reportaba $710 corregido a $700), **035** (lectura corregida de los 150 tickets en gemini_raw._revision),
+**036** (historial de precios WP reconstruido solo con confirmados, 184 precios / 67 productos), **037** (cierre agosto).
+Respaldos: esquema `respaldo.r030_*`, `r031_*`, `r033_fechas`, `r034_catalogo`, `r034_items_wp`, `r034_precio_historial`, `r034_tickets`.
 
-- Migracion **031** (aplicada): categoria global **"Otros gastos operativos"** (operativa). Reglas de Alejandro:
-  "Moto servicio" (lleva insumos) -> Otros; envio tipo "Ale moto" (comida al dueño) -> Extras; "moto + otro
-  nombre" (ej. "Moto servicio Fav Villarroel", "Motos Servicios de Marquez escobar y steven") -> PREGUNTAR;
-  Vacaciones/prima vacacional -> Otros; Viaje de agua -> Otros y MONITOREAR frecuencia (posible robo hormiga).
-  Productos: "Moto servicio" (WP), "Vacaciones y prima vacacional" (global), "Viaje de agua 10,000 litros" movido;
-  4 renglones confirmados de agua movidos. Respaldo respaldo.r031_*. Santa Elena "MOTO" (22 renglones, Extras)
-  SIN tocar: falta decision de Alejandro.
-- Mejora pendiente del matcher de catalogo: hoy liga al PRIMER producto con una palabra en comun (no al mejor);
-  "moto" podria ligar mal. Proponer scoring + bandera "solo exacto" en el siguiente deploy.
+**Agosto Wings Palace (carga del 11-sep, 150 tickets) -- HECHO:** releidos con 3.8-flash, revisados UNO POR UNO contra la
+foto (10 revisores; 75 bien, 63 corregidos -sobre todo notas a mano-, 12 dudosos). 145 confirmados. 5 quedan pendientes
+con "Revisar con gerente": 1095886d (dice 19/02, se puso 19/08), 1b112f3d (cabrito+mixiote $804: insumo o Extras?),
+fd300835 (numeros encimados, posible alteracion), 11fc5f27 y a5b4e428 (duplicados de factura de Cervezas y Refrescos,
+en pestana Fraude grupos ...0801/0802; se confirmo solo la factura). Confirmados con nota (dudas menores, total cuadra):
+60e2df27 (sin dia -> 1-ago), 0a115581 (precio encimado, 170 = precio usual), d20f1541 ($141 vs $144), f1cf8eea ($12 vs $14),
+d0073b34 (concepto ilegible $30), 19150aa9 (cantidades encimadas), 05a5f504 ($78 sin desglose: hielo $46 + bolsas $32 estimado).
+Sin foto en Storage: 72c96e80 (y 0e77486c, a7239aef de antes).
 
-- Migracion **032**: alerta `revisar_gerente` ("Revisar con gerente", motivo en correccion->>'motivo'); 2 motos
-  WP con nombre -> Extras + revisar_gerente; catalogo SE "Moto (envio)"->Extras, "Moto insumos"->Otros;
-  WP "Envio al dueño (Ale moto)"->Extras. Santa Elena "MOTO" se queda en Extras (decision Alejandro).
-- Migracion **033**: 45 confirmados con fecha imposible revisados contra la FOTO (2 lectores por foto; 32 de acuerdo,
-  13 decididos con reglas). 10 con revisar_gerente (5 pipas de gas sin fecha legible -> fecha de subida; remision
-  cerveza $2,565 con fecha tapada; La Abejita 09/03 ambiguo; nota de feb subida en ago = posible re-cobro; etc.).
-  Impresora de ruta de Cervezas y Refrescos imprime MES-DIA-AÑO; sicarx (Doña Tere, Tipico Araucarias) DIA/MES.
-  Respaldo respaldo.r033_fechas. Tabla temporal public._tmp_firmas (ligas firmadas de fotos): BORRAR al terminar.
-- **Facturacion Gemini (revisado en AI Studio 2026-09-18)**: proyecto TICKETS SE (gen-lang-client-0656779549) en
-  Tier 1 prepago, "My Billing Account", creditos MX$500 (2-jun) + MX$500 (7-jun), saldo MX$998.23, vencen 1-jul-2027,
-  recarga automatica ACTIVADA (Visa 1428), tope mensual MX$100. El "MX$4,336.40" es el TOPE del tier, no gasto.
-  **HALLAZGO: ese proyecto tiene 0 solicitudes en 28 dias -> la app usa OTRA llave (proyecto gratis).** Unica llave
-  del proyecto pagado: "...rcXw". Alejandro debe pegarla en Supabase > Edge Functions > Secrets > GEMINI_API_KEY.
-
-**PENDIENTE (bloqueado):**
-- **git push da 403** ("Permission to ACHAZARO/tickets-se.git denied to ACHAZARO"): la credencial guardada
-  en Git Credential Manager solo tiene LECTURA. Alejandro debe renovarla (Administrador de credenciales de
-  Windows -> borrar SOLO git:https://ACHAZARO@github.com (la usa solo tickets-se; CheckPro usa la otra) -> `git push origin main` y entrar por el navegador). Hasta
-  entonces Vercel sigue con el frontend viejo (compatible con el backend nuevo; la etiqueta ia_sin_leer se ve cruda).
-- Alejandro: activar facturacion Gemini (aistudio.google.com/projects -> tickets-se -> Set up billing) e
-  iniciar sesion en el navegador integrado para: prueba de modelos (3.1/3.5 flash-lite, 3.6/3.8 flash vs 2.5),
-  releer ~370 tickets WP candidatos a agosto, revision uno por uno + FEMSA.
-- 45 confirmados con fecha imposible (32 WP, 13 SE) NO tocados: revisar a mano (los WP de agosto en la revision).
+**PENDIENTE:**
+- **Tope de gasto Gemini**: hoy ~MX$65-70 de MX$100 del mes. Faltan de WP: 165 sin leer de la carga 5/6-ago (~MX$45),
+  ~75 leidos con 2.5 pendientes (46 de ago, 29 del 11-sep; releer ~MX$20) y julio (180 sin leer + 29). Alejandro debe
+  subir el tope a ~MX$300 (AI Studio > Spend > Set spend cap) antes de seguir.
+- **git push** (main ~9 commits adelante): Alejandro corre `git push origin main` en su terminal (PowerShell, sin `&&`)
+  y autoriza en el navegador. Hasta entonces Vercel sirve el frontend viejo (sin filtro por fecha de ticket ni boton de lote).
+- Llave de Gemini pegada por error en el chat el 18-sep: ROTARLA (crear otra en AI Studio, pegarla en Supabase, borrar la vieja).
+- Santa Elena: "AVE ACTION FRY 10L" global esta en categoria Desechables (es aceite -> Insumos); emparejador nuevo ya aplica,
+  pero su historial de precios sigue con lo viejo (reconstruir como 036 cuando se revise SE).
+- Borrar tablas temporales `public._tmp_firmas` y `public._tmp_bake` al terminar la revision de agosto.
+- Sheets: arreglar secret y rellenar historial (todos los confirmados tienen sheets_row_id NULL).
 
 ## Coordinacion Claude + Codex
 - `CLAUDE.md` y `AGENTS.md` son la guia estable para ambos agentes; mantenerlos sincronizados.

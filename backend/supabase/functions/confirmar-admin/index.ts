@@ -2,6 +2,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
+import { guardarPrecios } from '../_shared/precios.ts'
+import type { CatalogProduct } from '../_shared/catalog.ts'
 
 // Confirma un ticket revisado por el ADMIN: archiva la imagen, manda 1 fila por
 // item a Google Sheets y pone estado=confirmado (para que entre al arqueo).
@@ -111,26 +113,14 @@ serve(async (req: Request) => {
       ...(sheetsRowId ? { sheets_row_id: sheetsRowId } : {}),
     }).eq('id', registro_id)
 
-    // Registra precios de los renglones ligados a un producto durante la revision.
-    // Primero quita los de este ticket (de la lectura inicial o de una confirmacion previa)
-    // para no duplicar historial y no sesgar el promedio del precio anomalo.
-    await supabase.from('precio_historial').delete().eq('registro_ticket_id', registro_id)
-    const vistos = new Set<string>()
-    for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
-      const pid = it.producto_catalogo_id as string | null
-      const monto = Number(it.monto)
-      const cant = Number(it.cantidad)
-      if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
-      vistos.add(pid)
-      const unit = monto / cant
-      try {
-        await supabase.from('precio_historial').insert({
-          producto_catalogo_id: pid, sucursal_id: reg.sucursal_id,
-          registro_ticket_id: registro_id, precio_unitario: unit, fecha: reg.fecha_ticket ?? null,
-        })
-        await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
-      } catch (e) { console.error('precio (confirmar-admin):', e) }
-    }
+    // Registra precios de los renglones ligados a un producto (reemplaza los de este ticket si
+    // se confirmo antes). Se salta renglones en otra unidad que la del producto.
+    const lineas = (itemsData ?? []) as { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[]
+    const ids = [...new Set(lineas.map(it => it.producto_catalogo_id).filter(Boolean))] as string[]
+    const { data: prods } = ids.length
+      ? await supabase.from('catalogo_productos').select('id, unidad_default').in('id', ids)
+      : { data: [] }
+    await guardarPrecios(supabase, lineas, (prods ?? []) as CatalogProduct[], reg.sucursal_id, registro_id, reg.fecha_ticket ?? null)
 
     return json({ ok: true })
   } catch (err) {

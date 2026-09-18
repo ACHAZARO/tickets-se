@@ -10,6 +10,35 @@ export function mediana(nums: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
+// Guarda en el historial el precio unitario de cada producto del ticket. Solo se llama al
+// CONFIRMAR: una lectura sin revisar (pendiente) no debe ensuciar la referencia de precios.
+// Salta renglones en otra unidad que la del producto (limones por pieza vs por kg).
+export async function guardarPrecios(
+  supabase: SB,
+  items: { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[],
+  productos: CatalogProduct[],
+  sucursalId: string, registroId: string, fecha: string | null,
+): Promise<void> {
+  await supabase.from('precio_historial').delete().eq('registro_ticket_id', registroId)
+  const vistos = new Set<string>()
+  for (const it of items) {
+    const pid = it.producto_catalogo_id
+    const monto = Number(it.monto)
+    const cant = Number(it.cantidad)
+    if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+    const prod = productos.find(p => p.id === pid)
+    if (prod?.unidad_default && it.unidad && it.unidad !== prod.unidad_default) continue
+    vistos.add(pid)
+    const unit = monto / cant
+    try {
+      await supabase.from('precio_historial').insert({
+        producto_catalogo_id: pid, sucursal_id: sucursalId, registro_ticket_id: registroId, precio_unitario: unit, fecha,
+      })
+      await supabase.from('catalogo_productos').update({ precio_referencia: unit }).eq('id', pid)
+    } catch (e) { console.error('guardarPrecios:', e) }
+  }
+}
+
 // Revisa (SIN escribir nada) si algun renglon ligado a un producto trae un precio unitario
 // muy distinto (+-40%) a la mediana de sus ultimas 5 compras. Misma regla que procesar-ticket;
 // requiere 3+ compras previas y la misma unidad. excluirRegistroId evita compararse consigo mismo.
