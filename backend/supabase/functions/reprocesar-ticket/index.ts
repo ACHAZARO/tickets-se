@@ -5,6 +5,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveCategoria } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
 import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
+import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
 import { hayPrecioAnomalo } from '../_shared/precios.ts'
 
@@ -14,6 +15,9 @@ import { hayPrecioAnomalo } from '../_shared/precios.ts'
 // - modelo + solo_leer: PRUEBA de un modelo; devuelve la lectura sin tocar la BD.
 // - solo_si_sin_leer: para el lote; se niega (409) si el ticket ya tiene renglones o ya
 //   no esta marcado como "IA no lo leyo" (no pisar capturas manuales).
+// - desde_guardada: NO llama a Gemini; rehace renglones, ligas al catalogo y alertas desde la
+//   lectura ya guardada (gemini_raw). Sirve tras ensenar sinonimos o mejorar el emparejador.
+//   Solo tickets pendientes (no toca confirmados).
 
 // deno-lint-ignore no-explicit-any
 type SB = any
@@ -62,8 +66,8 @@ serve(async (req: Request) => {
 
   try {
     if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-    const { registro_id, modelo, solo_leer, solo_si_sin_leer } = await req.json().catch(() => ({})) as {
-      registro_id?: string; modelo?: string; solo_leer?: boolean; solo_si_sin_leer?: boolean
+    const { registro_id, modelo, solo_leer, solo_si_sin_leer, desde_guardada } = await req.json().catch(() => ({})) as {
+      registro_id?: string; modelo?: string; solo_leer?: boolean; solo_si_sin_leer?: boolean; desde_guardada?: boolean
     }
     if (!registro_id) return json({ error: 'registro_id requerido' }, 400)
     if (modelo !== undefined && !/^[a-z0-9.\-]{3,60}(@(minimal|low|medium|high))?$/.test(String(modelo))) return json({ error: 'modelo invalido' }, 400)
@@ -87,26 +91,36 @@ serve(async (req: Request) => {
       }
     }
 
-    const { fileData, source, error: imageError } = await downloadTicketImage(supabase, reg)
-    if (!fileData || !source) {
-      return json({
-        error: 'No se pudo descargar la imagen para releer. Revisa si el archivo existe en Storage.',
-        detalle: imageError,
-      }, 500)
-    }
-
-    const imageBytes = await fileData.arrayBuffer()
     const catalog: Catalog = await loadCatalog(reg.sucursal_id)
     // Referencia de fecha = dia (hora de Mexico) en que se SUBIO el ticket, no hoy: un ticket
     // subido el 6-ago no puede ser de septiembre, y si no trae fecha se asume la de subida.
     const fechaSubida = fechaMexico(new Date(String(reg.created_at ?? new Date().toISOString())))
+
     const inicio = Date.now()
-    const lectura = await leerTicketConGemini({
-      imagenBase64: encodeBase64(imageBytes),
-      mimeType: fileData.type || 'image/jpeg',
-      prompt: buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida),
-      modelos: modelo ? [modelo] : undefined,
-    })
+    let lectura: LecturaIA
+    if (desde_guardada && !solo_leer) {
+      const raw = reg.gemini_raw as (GeminiResult & Record<string, unknown>) | null
+      if (reg.estado !== 'pendiente') return json({ omitido: true, motivo: 'Solo se rehacen tickets pendientes.' }, 409)
+      if (!raw || raw._ia_fallo || raw._ia_en_proceso || !Array.isArray(raw.items) || !raw.items.length) {
+        return json({ omitido: true, motivo: 'El ticket no tiene una lectura guardada util.' }, 409)
+      }
+      lectura = { datos: raw, modelo: String(raw._modelo ?? ''), fallo: null, error: null, intentos: ['guardada'] }
+    } else {
+      const { fileData, source, error: imageError } = await downloadTicketImage(supabase, reg)
+      if (!fileData || !source) {
+        return json({
+          error: 'No se pudo descargar la imagen para releer. Revisa si el archivo existe en Storage.',
+          detalle: imageError,
+        }, 500)
+      }
+      const imageBytes = await fileData.arrayBuffer()
+      lectura = await leerTicketConGemini({
+        imagenBase64: encodeBase64(imageBytes),
+        mimeType: fileData.type || 'image/jpeg',
+        prompt: buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida),
+        modelos: modelo ? [modelo] : undefined,
+      })
+    }
     if (solo_leer) {
       return json({
         ok: !!lectura.datos, modelo: lectura.modelo || modelo || null, ms: Date.now() - inicio,
@@ -199,12 +213,14 @@ serve(async (req: Request) => {
     if (idsViejos.length) await supabase.from('ticket_items').delete().in('id', idsViejos)
     // Los precios registrados con los renglones viejos ya no aplican (se registran al confirmar).
     await supabase.from('precio_historial').delete().eq('registro_ticket_id', registro_id)
+    // 'revisar_gerente' es decision de una persona: releer no la borra.
     await supabase.from('alertas_tickets').update({ resuelta: true })
-      .eq('registro_ticket_id', registro_id).eq('resuelta', false).neq('tipo', 'duplicado')
+      .eq('registro_ticket_id', registro_id).eq('resuelta', false).not('tipo', 'in', '(duplicado,revisar_gerente)')
 
     const alertas: string[] = []
     const dupId = await detectSmartDuplicate(
       supabase, reg.sucursal_id, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registro_id,
+      datos.tipo_documento ?? null,
     )
     if (dupId) { await createAlert(supabase, registro_id, 'posible_duplicado', dupId); alertas.push('posible_duplicado') }
     if (asumida) { await createAlert(supabase, registro_id, 'sin_fecha'); alertas.push('sin_fecha') }

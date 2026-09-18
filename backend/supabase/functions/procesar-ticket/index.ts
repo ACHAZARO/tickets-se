@@ -10,6 +10,7 @@ import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
+import { mediana } from '../_shared/precios.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
@@ -119,8 +120,8 @@ async function registrarPrecios(
     const unit = monto / cant
     const prod = catalog.products.find(p => p.id === pid)
     try {
-      // Compara contra el promedio de hasta 5 compras previas (no contra una sola),
-      // y solo si ya hay >=2 registros (para no alertar mientras se forma la base).
+      // Compara contra la mediana de hasta 5 compras previas (una compra mal capturada no
+      // mueve la referencia), y solo si ya hay >=3 registros (para no alertar mientras se forma la base).
       const { data: previos } = await supabase.from('precio_historial')
         .select('precio_unitario').eq('producto_catalogo_id', pid)
         .order('created_at', { ascending: false }).limit(5)
@@ -134,11 +135,11 @@ async function registrarPrecios(
         .filter((n: number) => Number.isFinite(n) && n > 0)
       // misma unidad: si el producto tiene unidad_default, el renglon debe coincidir
       const mismaUnidad = !prod?.unidad_default || !it.unidad || it.unidad === prod.unidad_default
-      if (prev.length >= 2 && mismaUnidad) {
-        const avg = prev.reduce((s: number, n: number) => s + n, 0) / prev.length
-        if (avg > 0) {
-          const ratio = unit / avg
-          if (ratio > 1.4 || ratio < 0.6) anomalia = true // +40% o -40% vs promedio
+      if (prev.length >= 3 && mismaUnidad) {
+        const ref = mediana(prev)
+        if (ref > 0) {
+          const ratio = unit / ref
+          if (ratio > 1.4 || ratio < 0.6) anomalia = true // +40% o -40% vs mediana
         }
       }
     } catch (e) { console.error('registrarPrecios:', e) }
@@ -271,6 +272,7 @@ async function procesarEnSegundoPlano(opts: {
     // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.
     const dupId = await detectSmartDuplicate(
       supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registroId,
+      datos.tipo_documento ?? null,
     )
     if (dupId) {
       await createAlert(supabase, registroId, 'posible_duplicado', dupId)

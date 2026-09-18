@@ -47,11 +47,13 @@ const sumarDias = (fecha: string, dias: number) => new Date(Date.parse(fecha + '
 // 2) mismo comercio + misma fecha + monto (±10%);
 // 3) FACTURA + TICKET de la misma compra: comercio parecido, monto (±1.5%) y fechas a ±10 dias
 //    (la factura CFDI suele llevar otra fecha, otro folio y la razon social completa).
+//    Solo si UNO de los dos es factura y el otro no: dos notas o dos facturas con folios
+//    distintos y el mismo monto son compras que se repiten (pipa de agua, pan, gas), no duplicados.
 // excludeId evita que un ticket se detecte a si mismo.
 export async function detectSmartDuplicate(
   supabase: SB, sucursalId: string, folio: string | null,
   comercio: string | null, monto: number | null, fecha: string | null,
-  excludeId?: string,
+  excludeId?: string, tipoDocumento?: string | null,
 ): Promise<string | null> {
   const noSelf = excludeId ?? '00000000-0000-0000-0000-000000000000'
   if (folio) {
@@ -74,13 +76,15 @@ export async function detectSmartDuplicate(
     if (data) return data.id as string
   }
   if (comercio && monto && monto > 0 && fecha && tokensComercio(comercio).size > 0) {
-    const { data } = await supabase.from('registros_tickets').select('id, comercio')
+    const { data } = await supabase.from('registros_tickets').select('id, comercio, tipo:gemini_raw->>tipo_documento')
       .eq('sucursal_id', sucursalId).neq('estado', 'rechazado').neq('id', noSelf)
       .gte('fecha_ticket', sumarDias(fecha, -10)).lte('fecha_ticket', sumarDias(fecha, 10))
       .gte('monto', monto * 0.985).lte('monto', monto * 1.015)
       .order('created_at', { ascending: true })
       .limit(20)
-    const hit = ((data ?? []) as { id: string; comercio: string | null }[]).find(r => mismoComercio(comercio, r.comercio))
+    const esFactura = tipoDocumento === 'factura'
+    const hit = ((data ?? []) as { id: string; comercio: string | null; tipo: string | null }[])
+      .find(r => esFactura !== (r.tipo === 'factura') && mismoComercio(comercio, r.comercio))
     if (hit) return hit.id
   }
   return null

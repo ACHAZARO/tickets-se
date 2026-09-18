@@ -157,6 +157,50 @@ function normaliza(s: string): string {
   return out.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
+// Palabras que no identifican un producto: conectores, envases, unidades.
+const GENERICAS = new Set([
+  'de', 'la', 'el', 'los', 'las', 'del', 'con', 'sin', 'para', 'en', 'al', 'y',
+  'bot', 'botella', 'lata', 'caja', 'cj', 'pz', 'pza', 'pzas', 'pzs', 'pieza', 'piezas', 'pk', 'pack',
+  'kg', 'kgs', 'kilo', 'kilos', 'gr', 'grs', 'gramos', 'ml', 'lt', 'lts', 'litro', 'litros',
+  'nr', 'std', 'pet', 'lean', 'gal', 'galon', 'mts',
+  'grande', 'grandes', 'chico', 'chica', 'chicos', 'mediano', 'mediana',
+])
+
+// Singular aproximado para comparar: limones -> limon, cebollines -> cebollin, jitomates -> jitomate.
+function singular(t: string): string {
+  if (t.length < 4 || !t.endsWith('s')) return t
+  if (t.endsWith('es') && /[nlrdz]$/.test(t.slice(0, -2))) return t.slice(0, -2)
+  return t.slice(0, -1)
+}
+
+// Palabras que identifican (sin numeros ni codigos, 2+ letras): "XX AMBAR STD 1x20" -> xx, ambar.
+function palabras(s: string): string[] {
+  return [...new Set(normaliza(s).split(' ').filter(t => t.length >= 2 && !/\d/.test(t) && !GENERICAS.has(t)).map(singular))]
+}
+
+// Una palabra del catalogo aparece en el renglon: igual, o una es inicio de la otra con 5+ letras
+// (Costco corta a 20 caracteres: "MEZQUI" -> "MEZQUITE", "AMERIC" -> "AMERICANO").
+function aparece(t: string, en: Set<string>): boolean {
+  if (en.has(t)) return true
+  for (const w of en) if ((w.length >= 5 && t.startsWith(w)) || (t.length >= 5 && w.startsWith(t))) return true
+  return false
+}
+
+// Presentaciones escritas en el texto: 325ml, 1.18l, 2kg, 1x20, 12/1, 12pk.
+function medidas(s: string): Set<string> {
+  const t = s.toLowerCase().replace(/,/g, '.')
+  const m = t.match(/\d*\.?\d+\s*(?:ml|lts?|l|kgs?|grs?|g|oz)(?![a-z])|\d+\s*x\s*\d+|\d+\s*\/\s*\d*\.?\d+|\d+\s*(?:pk|pack)(?![a-z])/g) ?? []
+  return new Set(m.map(x => x.replace(/\s+/g, '').replace(/lts?$/, 'l').replace(/kgs$/, 'kg').replace(/grs?$/, 'g').replace(/pack$/, 'pk')))
+}
+
+// Liga un renglon a un producto del catalogo. Antes bastaba UNA palabra en comun ("queso"
+// ligaba "Queso americano" con "Dedos de queso Farm Rich"); ahora:
+// 1) igual al nombre o a un sinonimo (sin acentos ni signos) -> ese producto;
+// 2) si no, el renglon debe traer todas las palabras del candidato (3/4 si tiene 4+), el
+//    candidato debe explicar mas de la mitad de las palabras del renglon (una presentacion
+//    igual cuenta como una palabra) y si ambos traen presentacion (325ml vs 1.18L) debe coincidir;
+// 3) gana el de mayor proporcion de palabras en comun, no el primero de la lista.
+// Candidatos solo con numeros o codigos ("730", "61") solo cuentan como exactos.
 export function matchProductInCatalog(
   producto: string | null,
   products: CatalogProduct[]
@@ -164,17 +208,29 @@ export function matchProductInCatalog(
   if (!producto) return null
   const d = normaliza(producto)
   if (!d) return null
-  const dTokens = d.split(' ').filter(t => t.length >= 4)
+  const dPal = new Set(palabras(producto))
+  const dMed = medidas(producto)
+  let mejor: CatalogProduct | null = null
+  let mejorPuntos = 0
   for (const p of products) {
-    const candidatos = [p.nombre, ...p.sinonimos].map(normaliza).filter(Boolean)
-    for (const c of candidatos) {
-      if (d === c) return p                 // coincidencia exacta: siempre
-      if (c.length < 4) continue            // candidatos cortos (gas, 1, ala): SOLO exacto, evita falsos positivos
-      if (d.includes(c) || c.includes(d)) return p
-      // coincidencia por palabra completa (token >=4), no por substring
-      const cTokens = c.split(' ').filter(t => t.length >= 4)
-      if (cTokens.some(ct => dTokens.includes(ct))) return p
+    const medNombre = medidas(p.nombre)
+    for (const cand of [p.nombre, ...p.sinonimos]) {
+      const c = normaliza(cand)
+      if (!c) continue
+      if (d === c) return p
+      const cPal = palabras(cand)
+      if (!cPal.length) continue
+      const comunes = cPal.filter(t => aparece(t, dPal)).length
+      const necesarias = cPal.length <= 3 ? cPal.length : Math.ceil(cPal.length * 0.75)
+      if (comunes < necesarias) continue
+      const pMed = new Set([...medNombre, ...medidas(cand)])
+      const medidaIgual = [...pMed].some(x => dMed.has(x))
+      if (dMed.size && pMed.size && !medidaIgual) continue
+      const explica = comunes + (medidaIgual ? 1 : 0)
+      if (explica * 2 <= dPal.size) continue
+      const puntos = comunes / cPal.length + (comunes / Math.max(dPal.size, 1)) * 0.5 + Math.min(p.veces_matched, 99) * 0.00001
+      if (puntos > mejorPuntos) { mejorPuntos = puntos; mejor = p }
     }
   }
-  return null
+  return mejor
 }
