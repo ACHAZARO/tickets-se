@@ -55,7 +55,9 @@ metalizadas -> Bodega. Con la regla, Adan Melchor 24-jul ($140) y 6-ago ($149) t
 Deploy: **procesar-ticket v44, reprocesar-ticket v16** (byte a byte = repo; OPTIONS 200 y POST sin token 401). Revision
 independiente del diff: sin bugs; se agrego el plural "envios". Nota: esEnvio tambien cubre Moto insumos / Moto servicio (WP)
 / Envio al dueno (a proposito: toda moto cara sale a revisar).
-**Siguiente:** (1) respuesta de la gerente sobre 65809be7 (y si Alejandro quiere, revisar el envio de $149 del 6-ago);
+Alejandro: 24-jul ($140) y 6-ago ($149) se quedan confirmados; de aqui en adelante esos envios SI salen a revisar
+(umbral validado: $149 con Adan Melchor = ticket para revisar).
+**Siguiente:** (1) respuesta de la gerente sobre 65809be7;
 (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio + envios + pan repartido): medir cuantos tickets nuevos salen
 sin alertas; (3) Google Sheets (secret) y rellenar; (4) avisar a Alejandro si vuelve a aparecer un precio fuera de rango
 como el aceite Ave ($745 vs $490).
