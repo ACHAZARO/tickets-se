@@ -22,7 +22,18 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   el monto del original solo se presta a duplicados NO confirmados; "todas" = solo sucursales activas). API en v2 (fecha imposible = 400).
 - **Datos (hallazgo):** PRUEBA tiene 1 ticket confirmado con total $2,150.54 y renglones $1,945.54 (no afecta: PRUEBA esta excluida).
   `tickets_sin_monto_leido`: 35 en WP (44 rechazados sin monto: 11 copias de foto ya cuentan con el monto de su original; el resto ilegibles).
-- **Pendiente:** verificar la pantalla en vivo tras el deploy; fecha de rotacion de la llave (decision de Alejandro); rutas de precios/stock de la API si las pide.
+- **API por cuenta (migracion 060, API v3):** cada llave pertenece a UNA cuenta (`api_keys.cuenta_id` NOT NULL, tablas `cuentas` y
+  `sucursales.cuenta_id`; hoy una sola cuenta "Alejandro (cuenta principal)" con SE, WP y PRUEBA). La API filtra sucursales y totales por la
+  cuenta de la llave (RPC `resumen_tickets` gano `p_cuenta`). Probado con una cuenta ajena temporal (ya borrada): veia solo lo suyo, y la
+  llave principal no veia lo de ella. `sucursales.cuenta_id` tiene DEFAULT temporal a la cuenta principal porque el admin crea sucursales
+  sin indicar cuenta: **al abrir el registro publico hay que cambiarlo por la cuenta de quien crea** (y RLS por cuenta; hoy RLS es
+  admin-only y `sucursales_activas_publicas` deja leer todas las activas, cuenta_id incluido). Texto para otra IA: `API_CUENTAS.md` al final.
+- **Decision de Alejandro (19-sep):** NO hace falta guardar el "monto del papel" aparte (propuesta 4 de `AUDITORIA_EVIDENCIA.md`). Un ticket
+  alterado (papel $420, real $210) se registra con el monto REAL ($210) y se manda a Fraude/"revisar con gerente"; cuando el gerente
+  responde, subidos y oficiales suman lo mismo (lo autorizado). "Por justificar" mide sobre todo tickets RECHAZADOS (notas dobles, viejas,
+  gastos ajenos a la operacion). Ejemplo: sube 10x$100 = subidos 1000, se rechazan 5 = oficiales 500.
+- **Pendiente:** verificar la pantalla en vivo antes del push (Alejandro debe iniciar sesion en el navegador del panel);
+  fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas, pero: la base aun deja
   al admin borrar filas y fotos (politicas FOR ALL + `admin_delete_fotos`; el candado de "Eliminar" es solo de UI); cron activo
   `limpiar-imagenes-tickets` borraria fotos de +1 ano; mover foto a `archivo` no verifica la copia antes de borrar el original;

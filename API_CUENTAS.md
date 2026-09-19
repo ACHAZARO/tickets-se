@@ -7,6 +7,7 @@ distribuyo lo autorizado por categoria. Codigo: `backend/supabase/functions/api-
 - **Llave:** archivo local `_secretos/llave-api-programa-cuentas.txt` (no esta en git). Se manda en cada llamada:
   `Authorization: Bearer <llave>` (o el encabezado `x-api-key: <llave>`). La llave empieza con `tk_`.
 - Solo `GET` (otro metodo: `405`). Sin llave o con llave mala: `401`. Fechas mal escritas o imposibles (ej. 31 de febrero), rango invertido o mayor a 400 dias: `400`. Sucursal o ruta inexistente: `404`. Falla interna: `500`.
+- **Cada llave pertenece a UNA cuenta** (`api_keys.cuenta_id`) y solo ve las sucursales de esa cuenta: no existe una vista global. Pedir una sucursal de otra cuenta da `404` igual que si no existiera, y el total solo suma las sucursales de la propia cuenta. (Probado con una cuenta ajena temporal: veia solo lo suyo, y la llave principal no veia lo de ella.)
 - No se puede llamar desde un navegador (a proposito, sin CORS): es para el servidor de tu programa.
 
 ## Conceptos (los mismos que muestra la pantalla de Tickets)
@@ -82,8 +83,9 @@ curl -H "Authorization: Bearer $LLAVE" \
 ## Administrar llaves
 
 Solo se guarda el **hash SHA-256** de la llave (tabla `api_keys`); la llave real no se puede recuperar.
-- **Llave nueva:** generar `tk_` + 48 caracteres hex al azar, guardar el SHA-256 de la llave COMPLETA (con el `tk_`) con
-  `insert into api_keys (nombre, key_hash) values ('nombre', '<sha256>')` (migracion aplicada: 056).
+- **Llave nueva:** generar `tk_` + 48 caracteres hex al azar y guardar el SHA-256 de la llave COMPLETA (con el `tk_`) **indicando de que cuenta es**:
+  `insert into api_keys (nombre, key_hash, cuenta_id) values ('nombre', '<sha256>', '<id de la cuenta>')` (`cuenta_id` es obligatorio; tablas `cuentas` y `sucursales.cuenta_id`, migracion 060).
+  Cuenta actual: `Alejandro (cuenta principal)`, con Santa Elena, Wings Palace y PRUEBA.
 - **Revocar:** `update api_keys set activa = false where nombre = '...'`. `last_used_at` dice cuando se uso por ultima vez.
 - Si la llave se filtra: revocarla y crear otra (2 minutos).
 - La funcion debe desplegarse siempre con `verify_jwt=false` (la llave `tk_` no es un JWT; con `true` el gateway la rechaza).
@@ -92,3 +94,47 @@ Solo se guarda el **hash SHA-256** de la llave (tabla `api_keys`); la llave real
 
 Cambios de precios (`precio_historial`), stock/inventario y detalle ticket por ticket: se agregan como rutas nuevas
 en la misma funcion, con la misma llave.
+
+## Texto para pegarle a otra IA
+
+Reemplaza `<TU_LLAVE>` por la llave (o usa la copia ya completa en `_secretos/instrucciones-para-otra-ia.txt`). Bloque listo para copiar:
+
+```text
+Necesito que consultes la API de "Revision de Tickets" para revisar el gasto de mi negocio. Es de SOLO LECTURA y esta limitada a MI cuenta: solo puedes ver mis sucursales.
+
+CONEXION
+- URL base: https://dlmqqmvrgkilptawllep.functions.supabase.co/api-cuentas
+- Autenticacion: encabezado  Authorization: Bearer <TU_LLAVE>   (la llave empieza con tk_; no la muestres ni la guardes en ningun otro lado)
+- Solo GET. Responde JSON. Montos en pesos mexicanos (MXN).
+
+ENDPOINTS
+1) GET /sucursales
+   Lista mis sucursales: [{ slug, nombre }].
+2) GET /resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=<slug>]
+   - Sin "sucursal": regresa "total" y "por_sucursal" (una entrada por sucursal).
+   - Con "sucursal": regresa solo esa sucursal.
+   - Sin fechas: del dia 1 del mes actual a hoy. Maximo 400 dias por consulta.
+
+QUE SIGNIFICA CADA CAMPO
+- subidos: TODO lo que el gerente capturo (tickets subidos) sin importar si despues se rechazo. Incluye duplicados.
+- oficiales: lo AUTORIZADO tras la revision (tickets confirmados, con el monto ya corregido). Es el dinero que realmente gestiono el gerente.
+- en_revision: subidos que todavia no se deciden.
+- no_validos: rechazados (notas dobles, viejas, gastos no relacionados con la operacion, fraude). "por_motivo" los separa en fraude / duplicado / otro.
+- por_justificar = subidos - oficiales.
+- oficiales_por_categoria: lo autorizado repartido por categoria (Insumos Alimentos, Otros gastos operativos, Desechables, Gas, Limpieza, Bodega, Extras, Descuentos...). "Descuentos" viene en negativo y ya resta. "cuenta_operativo" dice si esa categoria cuenta para el % de operacion.
+- oficiales_gasto_operativo / oficiales_fuera_de_operacion: suma de las categorias que cuentan / no cuentan para la operacion.
+- tickets_sin_monto_leido: tickets sin monto legible (cuentan como $0).
+
+COMO INTERPRETARLO
+- El gasto REAL del gerente es "oficiales", no "subidos".
+- Ejemplo: si sube 10 tickets de $100 (subidos = 1000) y se rechazan 5, oficiales = 500 y por_justificar = 500.
+- Si el gasto que reporta el gerente coincide con "subidos" y no con "oficiales", esta usando tickets no validos para cuadrar su gasto: es senal fuerte de fraude y la diferencia es lo que debe justificar.
+- Un ticket rechazado por si solo no siempre es fraude (puede ser nota doble, vieja o ajena a la operacion); el fraude se ve cuando el gasto reportado se apoya en ellos.
+- Reporta: subidos, oficiales, por_justificar, el reparto por categoria de lo oficial y, si hay diferencia, el desglose de no_validos por motivo. Por sucursal y en total.
+
+ERRORES
+- 401: llave incorrecta o revocada. 404: sucursal que no es de mi cuenta. 400: fechas mal escritas. Nunca intentes modificar nada (la API no lo permite).
+
+EJEMPLO
+curl -H "Authorization: Bearer <TU_LLAVE>" "https://dlmqqmvrgkilptawllep.functions.supabase.co/api-cuentas/resumen?desde=2026-09-01&hasta=2026-09-30"
+```

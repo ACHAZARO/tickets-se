@@ -2,6 +2,7 @@
 //   GET /api-cuentas/resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=slug]
 //   GET /api-cuentas/sucursales
 // Auth: llave en `Authorization: Bearer tk_...` o `x-api-key: tk_...` (solo se guarda su SHA-256 en api_keys).
+// Cada llave pertenece a UNA cuenta (api_keys.cuenta_id) y solo ve las sucursales de esa cuenta.
 // Sin CORS a proposito: es para servidores, no para navegadores.
 // DESPLEGAR SIEMPRE con verify_jwt=false (--no-verify-jwt): la llave tk_ no es un JWT y el gateway la rechazaria.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -42,17 +43,19 @@ serve(async (req: Request) => {
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   const { data: llave, error: keyErr } = await supabase
-    .from('api_keys').select('id').eq('key_hash', await sha256Hex(key)).eq('activa', true).maybeSingle()
+    .from('api_keys').select('id, cuenta_id').eq('key_hash', await sha256Hex(key)).eq('activa', true).maybeSingle()
   if (keyErr) return json({ error: 'Error interno' }, 500)
-  if (!llave) return json({ error: 'No autorizado' }, 401)
+  if (!llave || !llave.cuenta_id) return json({ error: 'No autorizado' }, 401)
   await supabase.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', llave.id)
+  // Cada llave es de UNA cuenta: TODO lo de abajo se filtra por esta cuenta. Nunca hay vista global.
+  const cuentaId: string = llave.cuenta_id
 
   // --- Ruteo ---
   const url = new URL(req.url)
   const ruta = (url.pathname.match(/api-cuentas(\/.*)?$/)?.[1] ?? '/').replace(/\/+$/, '') || '/'
 
   const { data: sucs, error: sucErr } = await supabase
-    .from('sucursales').select('id, slug, nombre, es_prueba').eq('activa', true).order('nombre')
+    .from('sucursales').select('id, slug, nombre, es_prueba').eq('activa', true).eq('cuenta_id', cuentaId).order('nombre')
   if (sucErr) return json({ error: 'Error interno' }, 500)
   const reales = (sucs ?? []).filter(s => !s.es_prueba)
 
@@ -72,7 +75,7 @@ serve(async (req: Request) => {
 
     const resumen = async (sucursalId: string | null) => {
       const { data, error } = await supabase.rpc('resumen_tickets', {
-        p_desde: desde, p_hasta: hasta, p_sucursal: sucursalId, p_comercio: null,
+        p_desde: desde, p_hasta: hasta, p_sucursal: sucursalId, p_comercio: null, p_cuenta: cuentaId,
       })
       if (error) throw new Error(error.message)
       const { periodo: _periodo, ...resto } = data as Record<string, unknown>
