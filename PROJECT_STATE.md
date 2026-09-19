@@ -44,8 +44,16 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   **procesar-ticket v45, reprocesar-ticket v17, confirmar-admin v11** (byte a byte = repo; 2 revisiones adversariales sin defectos).
   Foto de control al desplegar: 0 confirmados sin archivo, 0 originales sobrantes, 0 rutas a la nada. **Verificar con los primeros
   tickets nuevos** que queden en `archivo` y sin original en `por-revisar`. Siguen abiertos de la auditoria: releer IA/editar/rechazar
-  pisan sin historial; un rechazado puede volverse oficial al guardar un renglon; `confirmar-ticket` (legacy, nadie la llama) deja a un
-  gerente con sesion confirmar su propio ticket marcado -> propuesta: retirarla.
+  pisan sin historial; un rechazado puede volverse oficial al guardar un renglon.
+- **`confirmar-ticket` RETIRADA (v15, responde 410)** el 19-sep con OK de Alejandro: permitia que un gerente con sesion de PIN
+  confirmara su propio ticket (incluso marcado o en fraude) y borraba el original antes de guardar. Comprobado que nadie la usa:
+  la app dejo de llamarla el 2026-06-09 (531745f) y en los logs los gerentes solo llaman verificar-pin y procesar-ticket.
+  Codigo viejo en `backend/supabase/functions/_archive/confirmar-ticket-2026-09-19.ts`.
+- **Verificado en produccion (19-sep 21:36 UTC, 6 tickets del cafe con gemini-3.8-flash):** los 2 que se auto-confirmaron
+  quedaron con su foto en `archivo` y sin original en `por-revisar` (el archivado nuevo funciona). Los otros 4 quedaron para
+  revisar: Tipico $539.67 (precio anomalo), Adan Melchor factura 403201 $1,552 (monto anomalo: IVA $203 sin repartir),
+  una nota a mano de $1,552 sin vendedor por la MISMA compra (la IA la marco sospechosa sola -> Fraude; el detector de
+  duplicados no la liga porque la nota no trae comercio) y una nota de Jugotropick que la IA leyo con fecha 19-abr.
 - **Cinta de empaque = Bodega (059):** por PRODUCTO, no por comercio (El Fenix/El Iris venden cosas de la cafeteria). 5 compras
   jun-sep ($2,087.60, incl. despachador de Office Depot) movidas; regla en gemini.ts.
 
