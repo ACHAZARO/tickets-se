@@ -19,7 +19,7 @@ abierta: 65809be7 (SE 17-sep, Adan Melchor "y envio $1,920" sobre $1,490.09, +$4
   "Caja de Te" de Fer Villanueva, "pendiente pago"). IEPS de Camfoods asignado a dedos de queso (ambiguo por matematica), PIAYS
   proporcional (049). Adan Melchor SE: 19 comprobantes = 19 compras distintas (series S y V del proveedor; 4 sin timbre).
 - Historial de precios reconstruido: SE 1,397 precios / 192 productos (jun-sep), WP 1,644 / 356 (may-ago).
-- Tablas temporales vaciadas (_tmp_firmas, _tmp_carga). Deploy: procesar-ticket v40, reprocesar-ticket v12 (verificados byte a byte).
+- Tablas temporales vaciadas (_tmp_firmas, _tmp_carga). Deploy final: procesar-ticket v42, reprocesar-ticket v14 (verificados byte a byte contra el repo).
 **Decisiones de Alejandro (18-sep):** envio anotado a mano ("c/envio") SI se pago -> renglon "Moto envio" en Otros gastos
 operativos (~40 tickets SE); moto Lindsay/Fer = empleado que trae insumos -> operativo; factura+ticket = solo la factura
 (no es fraude: la gerente subia ambos); mayo-julio los decide Claude. Ver memoria envios_y_motos.
