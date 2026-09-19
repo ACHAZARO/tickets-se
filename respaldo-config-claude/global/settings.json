@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "allow": []
+  },
+  "enableWorkflows": true,
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": true,
+    "claude-mem@thedotmack": true,
+    "vercel@claude-plugins-official": true,
+    "codex@local": false,
+    "ruflo-core@ruflo": true,
+    "ruflo-swarm@ruflo": true,
+    "ruflo-autopilot@ruflo": true,
+    "ruflo-federation@ruflo": true,
+    "playground@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "double-shot-latte@superpowers-marketplace": true,
+    "superpowers-chrome@superpowers-marketplace": true,
+    "private-journal-mcp@superpowers-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "superpowers-marketplace": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/obra/superpowers-marketplace.git"
+      }
+    },
+    "thedotmack": {
+      "source": {
+        "source": "github",
+        "repo": "thedotmack/claude-mem"
+      }
+    },
+    "local": {
+      "source": {
+        "source": "directory",
+        "path": "C:\\Users\\koach\\.claude\\plugins\\local\\marketplace"
+      }
+    },
+    "ruflo": {
+      "source": {
+        "source": "github",
+        "repo": "ruvnet/ruflo"
+      }
+    }
+  },
+  "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "theme": "auto",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "switchModelsOnFlag": false
+}
