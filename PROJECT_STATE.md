@@ -1,6 +1,44 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-18.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-18 (noche).
+
+## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
+**Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
+**CERO pendientes en ambas sucursales; todos los confirmados cuadran al centavo (renglones = total con IVA).** Unica alerta
+abierta: 65809be7 (SE 17-sep, Adan Melchor "y envio $1,920" sobre $1,490.09, +$429.91: pregunta a Alejandro).
+| Sucursal | May | Jun | Jul | Ago | Sep (al 18) |
+|---|---|---|---|---|---|
+| Wings Palace | $62,836.30 (99) | $155,927.41 (239) | $155,808.62 (230) | $109,777.11 (192) | sin subir |
+| Santa Elena | - | $73,313.48 (131) | $81,378.50 (148) | $75,836.63 (136) | $47,154.19 (90) |
+- Santa Elena: 508 tickets (se_ago 158 + se_resto 350) + 1 del 18-sep; 4 fotos repetidas rechazadas. Envios a mano
+  registrados como "Moto envio": jun $1,417 / jul $1,637 / ago $1,964 / sep $905 (050, 051: segunda pasada solo de envios).
+  Catalogo SE: 159 productos nuevos, 19 basura fundidos (047), AVE ACTION FRY -> Insumos, CUPON -> Descuentos, playo separado en
+  Polpusa 1000 ft (El Bodegon ~$131) y Reyma 1300 ft (Adan Melchor ~$288-320) (052), "Moto (envio)" fundido en "Moto envio".
+- Wings: 376 tickets de mayo-julio (incluye los 181 de la carga 13/14-jul nunca leidos): 360 confirmados, 16 rechazados
+  (remisiones de facturas, gas duplicado, 3 tickets de gas Sonigas de talonarios 2024/2025 reutilizados -grupo Fraude ...0501-,
+  "Caja de Te" de Fer Villanueva, "pendiente pago"). IEPS de Camfoods asignado a dedos de queso (ambiguo por matematica), PIAYS
+  proporcional (049). Adan Melchor SE: 19 comprobantes = 19 compras distintas (series S y V del proveedor; 4 sin timbre).
+- Historial de precios reconstruido: SE 1,397 precios / 192 productos (jun-sep), WP 1,644 / 356 (may-ago).
+- Tablas temporales vaciadas (_tmp_firmas, _tmp_carga). Deploy: procesar-ticket v40, reprocesar-ticket v12 (verificados byte a byte).
+**Decisiones de Alejandro (18-sep):** envio anotado a mano ("c/envio") SI se pago -> renglon "Moto envio" en Otros gastos
+operativos (~40 tickets SE); moto Lindsay/Fer = empleado que trae insumos -> operativo; factura+ticket = solo la factura
+(no es fraude: la gerente subia ambos); mayo-julio los decide Claude. Ver memoria envios_y_motos.
+**Carga sin copiar SQL (NUEVO):** `_tmp_carga` + `aplicar_revision(lote, sucursal)` (migracion 046). El JSON se sube desde una
+pestana propia del admin con un input file + herramienta file_upload de Chrome. Un agente sonnet que copiaba SQL lo abrevio con
+"(...)" y fallo: NO volver a pedir copias de SQL grande a un agente.
+**Codigo:** montos.ts `repartirSinImporte` (notas de pan con solo el TOTAL: antes ese dinero no caia en ninguna categoria);
+gemini.ts: "Santa Elena"/"Wings Palace" nunca son el comercio + regla de envio anotado a mano; procesar-ticket: la copia de
+una foto repetida toma fecha/comercio del original y su alerta nace resuelta; page.tsx: rechazados/archivados fuera de
+"Requieren revision"; duplicados.ts: folio "0000000001" (Quesos La Noria reinicia folio) ya no cuenta como folio, y mismo
+comercio+dia+monto con folios distintos no es duplicado. Migraciones 043-049.
+**Hallazgos (Fraude / patrones):** en SE la gerente anota "c/envio" (+$40-160) -> ya se cuenta; totales a mano enormes = suma de
+tickets engrapados. Jugotropick 1-jul con cantidad/total alterados (se cuenta $210). WP mayo-jun: 2 tickets de gas Sonigas sin
+fecha de talonarios 2024/2025 (reutilizados, no se cuentan), nota "Caja de Te" $1,560 de Fer Villanueva alterada (no se cuenta),
+aceite Ave a $745 vs $490 en nota sin proveedor. Playo stretch en SE: 11 rollos en junio, 7 en julio, 16 en agosto, 10 al
+17-sep (vigilar consumo e inventario). Jugo de limon WP: $280/galon en mayo -> $170 en agosto.
+**Siguiente:** (1) respuesta de Alejandro sobre 65809be7; (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio +
+envios + pan repartido): medir cuantos tickets nuevos salen sin alertas; (3) Google Sheets (secret) y rellenar; (4) SE sigue
+mandando "MOTO" como Extras (regla vieja): confirmar con Alejandro si las motos del cafe tambien son envio de insumos.
 
 ## Sesion 2026-09-18 (Claude) -- IA de lectura: cuota, modelo, catalogo y agosto WP revisado
 **Diagnostico (con evidencia en BD + logs):**
