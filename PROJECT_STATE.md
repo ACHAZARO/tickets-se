@@ -4,12 +4,13 @@
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
-**CERO pendientes en ambas sucursales; todos los confirmados cuadran al centavo (renglones = total con IVA). Cero alertas
-abiertas** (65809be7 ya contestada: ver respuestas de la noche abajo; SE sep queda en $47,584.10 con ese envio).
+**Todos los confirmados cuadran al centavo (renglones = total con IVA). UNA sola alerta abierta:** 65809be7 (Adan Melchor
+17-sep, $1,920 con envio a mano de $429.91) regreso a "por revisar" (054): la gerente dice que ese envio suele ser $60-80 y
+va a revisar la nota. Mientras, SE sep confirmado = $45,664.10 (sin ese ticket).
 | Sucursal | May | Jun | Jul | Ago | Sep (al 18) |
 |---|---|---|---|---|---|
 | Wings Palace | $62,836.30 (99) | $155,927.41 (239) | $155,808.62 (230) | $109,777.11 (192) | sin subir |
-| Santa Elena | - | $73,313.48 (131) | $81,378.50 (148) | $75,836.63 (136) | $47,154.19 (90) |
+| Santa Elena | - | $73,313.48 (131) | $81,378.50 (148) | $75,836.63 (136) | $45,664.10 (89) + 1 por revisar |
 - Santa Elena: 508 tickets (se_ago 158 + se_resto 350) + 1 del 18-sep; 4 fotos repetidas rechazadas. Envios a mano
   registrados como "Moto envio": jun $1,417 / jul $1,637 / ago $1,964 / sep $905 (050, 051: segunda pasada solo de envios).
   Catalogo SE: 159 productos nuevos, 19 basura fundidos (047), AVE ACTION FRY -> Insumos, CUPON -> Descuentos, playo separado en
@@ -38,14 +39,26 @@ fecha de talonarios 2024/2025 (reutilizados, no se cuentan), nota "Caja de Te" $
 aceite Ave a $745 vs $490 en nota sin proveedor. Playo stretch en SE: 11 rollos en junio, 7 en julio, 16 en agosto, 10 al
 17-sep (vigilar consumo e inventario). Jugo de limon WP: $280/galon en mayo -> $170 en agosto.
 **Respuestas de Alejandro (18-sep noche) -> migracion 053 + codigo:** Adan Melchor 17-sep = bolsas metalizadas (gasto de
-Bodega), la diferencia $429.91 es envio (operativo). Adan Melchor = proveedor de confianza (`comercios.confiable`: solo el
-mismo folio cuenta como duplicado). Papel repetido = RECHAZADO + revision de Fraude en grupo con el original (25 pares
+Bodega), la diferencia $429.91 es envio (operativo). ~~Adan Melchor = proveedor de confianza~~ (revertido en 054). Papel repetido = RECHAZADO + revision de Fraude en grupo con el original (25 pares
 reabiertos; desde hoy procesar-ticket lo hace solo y "Descartar" en Fraude regresa el ticket a Por confirmar). La IA llena
 `sospecha` si ve alteraciones/comprobantes reutilizados -> Fraude. Motos: producto unico "Moto envio", categoria por renglon
 (Ale/Polo/mama Polo/Toto = Extras, el resto operativo); "MOTO" del cafe fundido. Corregidos 3 envios contados dos veces ($180).
-**Siguiente:** (1) ¿categoria "Bodega" aparte para lo del tostador (bolsas metalizadas, etc.)?; (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio +
-envios + pan repartido): medir cuantos tickets nuevos salen sin alertas; (3) Google Sheets (secret) y rellenar;
-(4) avisar a Alejandro si vuelve a aparecer un precio fuera de rango como el aceite Ave ($745 vs $490).
+**Correccion de Alejandro (18-sep, mas noche) -> migracion 054 + codigo:** NO hay proveedores de confianza: se quita
+`comercios.confiable` (columna y codigo en duplicados.ts); Adan Melchor pasa por las reglas normales. La gerente confirma que
+su envio suele ser $60-80: 65809be7 regresa a por revisar (alerta revisar_gerente reabierta, precio del ticket fuera del
+historial hasta que se confirme). Nueva categoria **Bodega** (solo SE, `cuenta_operativo=false`: no entra al % de operacion):
+bolsas metalizadas para cafe (3 productos, 10 renglones, $11,799.60 jun-sep). Nueva alerta **`envio_alto`** ("Envio muy
+alto", `precios.ts envioMuyAlto`): envio > max(1.5x, +$40) de la mediana de los ultimos 10 envios confirmados de ESE
+proveedor (con 3+); sin historial, > $150. `hayPrecioAnomalo` ya no compara envios. Gemini: si lo escrito dice envio/moto
+se agrega aunque sea caro; solo un total a mano sin la palabra envio y >$200 se toma como tickets engrapados; bolsas
+metalizadas -> Bodega. Con la regla, Adan Melchor 24-jul ($140) y 6-ago ($149) tambien habrian salido a revisar.
+Deploy: **procesar-ticket v44, reprocesar-ticket v16** (byte a byte = repo; OPTIONS 200 y POST sin token 401). Revision
+independiente del diff: sin bugs; se agrego el plural "envios". Nota: esEnvio tambien cubre Moto insumos / Moto servicio (WP)
+/ Envio al dueno (a proposito: toda moto cara sale a revisar).
+**Siguiente:** (1) respuesta de la gerente sobre 65809be7 (y si Alejandro quiere, revisar el envio de $149 del 6-ago);
+(2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio + envios + pan repartido): medir cuantos tickets nuevos salen
+sin alertas; (3) Google Sheets (secret) y rellenar; (4) avisar a Alejandro si vuelve a aparecer un precio fuera de rango
+como el aceite Ave ($745 vs $490).
 
 ## Sesion 2026-09-18 (Claude) -- IA de lectura: cuota, modelo, catalogo y agosto WP revisado
 **Diagnostico (con evidencia en BD + logs):**

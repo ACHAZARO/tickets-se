@@ -7,7 +7,7 @@ import type { Catalog } from '../_shared/catalog.ts'
 import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
-import { hayPrecioAnomalo } from '../_shared/precios.ts'
+import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
@@ -24,8 +24,12 @@ import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, si
 type SB = any
 type ImageCandidate = { bucket: 'archivo' | 'por-revisar'; path: string }
 
-async function createAlert(supabase: SB, registroId: string, tipo: string, dupId?: string): Promise<void> {
-  const { error } = await supabase.from('alertas_tickets').insert({ registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null })
+async function createAlert(
+  supabase: SB, registroId: string, tipo: string, dupId?: string, correccion?: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await supabase.from('alertas_tickets').insert({
+    registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null, correccion: correccion ?? null,
+  })
   if (error) console.error(`createAlert(${tipo}) fallo:`, error.message)
 }
 
@@ -243,6 +247,8 @@ serve(async (req: Request) => {
     if (await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)) {
       await createAlert(supabase, registro_id, 'precio_anomalo'); alertas.push('precio_anomalo')
     }
+    const envioAlto = await envioMuyAlto(supabase, items, catalog.products, reg.sucursal_id, datos.comercio ?? null, registro_id)
+    if (envioAlto) { await createAlert(supabase, registro_id, 'envio_alto', undefined, { motivo: envioAlto }); alertas.push('envio_alto') }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
     if (rechazado) alertas.push('rechazado')

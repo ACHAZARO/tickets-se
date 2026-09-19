@@ -1,7 +1,14 @@
 import type { CatalogProduct } from './catalog.ts'
+import { mismoComercio } from './duplicados.ts'
 
 // deno-lint-ignore no-explicit-any
 type SB = any
+
+// Renglon de envio o moto ("Moto envio", "c/envio", "Moto Ale"): su precio depende del proveedor, no del producto.
+export function esEnvio(texto: string | null | undefined): boolean {
+  const s = (texto ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  return /\benvios?\b/.test(s) || /^\s*moto\b/.test(s)
+}
 
 // Mediana: una compra mal capturada en el historial no mueve la referencia (el promedio si).
 export function mediana(nums: number[]): number {
@@ -54,6 +61,8 @@ export async function hayPrecioAnomalo(
     const cant = Number(it.cantidad)
     if (!pid || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
     const prod = productos.find(p => p.id === pid)
+    // Los envios se comparan por proveedor (envioMuyAlto), no contra todas las motos de la sucursal.
+    if (prod && esEnvio(prod.nombre)) continue
     const mismaUnidad = !prod?.unidad_default || !it.unidad || it.unidad === prod.unidad_default
     if (!mismaUnidad) continue
     try {
@@ -70,4 +79,40 @@ export async function hayPrecioAnomalo(
     } catch (e) { console.error('hayPrecioAnomalo:', e) }
   }
   return false
+}
+
+// Envio mucho mas caro de lo normal con ESE proveedor (Adan Melchor cobra $60-80: uno de $430 se revisa,
+// decision Alejandro 18-sep). Referencia: mediana de sus ultimos 10 envios confirmados en la sucursal
+// (con 3 o mas); sin ese historial, se revisa cualquier envio de mas de $150. Devuelve el motivo o null.
+export async function envioMuyAlto(
+  supabase: SB,
+  items: { descripcion: string | null; monto: number | null; producto_catalogo_id: string | null }[],
+  productos: CatalogProduct[], sucursalId: string, comercio: string | null, excluirRegistroId: string,
+): Promise<string | null> {
+  const idsEnvio = productos.filter(p => esEnvio(p.nombre)).map(p => p.id)
+  const montos = items
+    .filter(it => esEnvio(it.descripcion) || (!!it.producto_catalogo_id && idsEnvio.includes(it.producto_catalogo_id)))
+    .map(it => Number(it.monto)).filter(n => Number.isFinite(n) && n > 0)
+  if (!montos.length) return null
+  const envio = Math.max(...montos)
+  let previos: number[] = []
+  if (comercio && idsEnvio.length) {
+    try {
+      const { data } = await supabase.from('ticket_items')
+        .select('monto, registros_tickets!inner(comercio, sucursal_id, estado)')
+        .in('producto_catalogo_id', idsEnvio).neq('registro_ticket_id', excluirRegistroId)
+        .eq('registros_tickets.sucursal_id', sucursalId).eq('registros_tickets.estado', 'confirmado')
+        .order('created_at', { ascending: false }).limit(300)
+      previos = ((data ?? []) as { monto: number; registros_tickets: { comercio: string | null } | null }[])
+        .filter(r => mismoComercio(comercio, r.registros_tickets?.comercio))
+        .map(r => Number(r.monto)).filter(n => Number.isFinite(n) && n > 0).slice(0, 10)
+    } catch (e) { console.error('envioMuyAlto:', e) }
+  }
+  const pesos = (n: number) => `$${n.toFixed(2)}`
+  if (previos.length >= 3) {
+    const ref = mediana(previos)
+    return envio > Math.max(ref * 1.5, ref + 40)
+      ? `Envio de ${pesos(envio)}; con este proveedor suele ser ${pesos(ref)}. Confirmar con la gerente.` : null
+  }
+  return envio > 150 ? `Envio de ${pesos(envio)} (mas de $150). Confirmar con la gerente.` : null
 }

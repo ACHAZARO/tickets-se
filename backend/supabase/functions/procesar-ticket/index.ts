@@ -10,7 +10,7 @@ import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
-import { guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
+import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 
@@ -39,9 +39,11 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 // deno-lint-ignore no-explicit-any
 type SB = any
 
-async function createAlert(supabase: SB, registroId: string, tipo: string, dupId?: string): Promise<void> {
+async function createAlert(
+  supabase: SB, registroId: string, tipo: string, dupId?: string, correccion?: Record<string, unknown>,
+): Promise<void> {
   const { error } = await supabase.from('alertas_tickets').insert({
-    registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null,
+    registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null, correccion: correccion ?? null,
   })
   if (error) console.error(`createAlert(${tipo}) fallo:`, error.message)
 }
@@ -236,6 +238,7 @@ async function procesarEnSegundoPlano(opts: {
     // Precios: detecta saltos fuertes vs la mediana de compras confirmadas. El historial se
     // guarda solo al confirmar (aqui abajo si sale limpio, o en confirmar-admin tras revision).
     const precioAnomalo = await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
+    const envioAlto = await envioMuyAlto(supabase, itemsToInsert, catalog.products, sucursalId, datos.comercio ?? null, registroId)
 
     let hayAlerta = false
     // Senales de alteracion o de comprobante reutilizado (las ve la IA): van a Fraude.
@@ -253,6 +256,7 @@ async function procesarEnSegundoPlano(opts: {
       await createAlert(supabase, registroId, 'precio_anomalo')
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
     }
+    if (envioAlto) { await createAlert(supabase, registroId, 'envio_alto', undefined, { motivo: envioAlto }); hayAlerta = true }
 
     // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
     // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.

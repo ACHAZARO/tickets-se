@@ -76,13 +76,6 @@ export async function detectSmartDuplicate(
       .find(r => !comercio || !r.comercio || mismoComercio(comercio, r.comercio))
     if (hit) return hit.id
   }
-  // Proveedores de confianza (comercios.confiable, p. ej. Adan Melchor: la misma compra de 2 rollos se
-  // repite cada pocos dias y factura en dos series): solo el mismo folio cuenta como duplicado.
-  if (comercio) {
-    const { data: confiables } = await supabase.from('comercios').select('nombre')
-      .or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`).eq('confiable', true)
-    if (((confiables ?? []) as { nombre: string }[]).some(c => mismoComercio(comercio, c.nombre))) return null
-  }
   if (comercio && monto && fecha) {
     // Mismo comercio, dia y monto. Si los dos traen folio util y es distinto, son dos compras
     // (dos galones de jugo en notas seguidas, dos visitas al super el mismo dia).
