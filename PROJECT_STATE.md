@@ -1,16 +1,17 @@
 # PROJECT_STATE.md — Revision de Tickets
 
 > Estado vivo del proyecto. Ultima actualizacion: 2026-09-18 (noche).
+> **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
-**Todos los confirmados cuadran al centavo (renglones = total con IVA). UNA sola alerta abierta:** 65809be7 (Adan Melchor
-17-sep, $1,920 con envio a mano de $429.91) regreso a "por revisar" (054): la gerente dice que ese envio suele ser $60-80 y
-va a revisar la nota. Mientras, SE sep confirmado = $45,664.10 (sin ese ticket).
+**Todos los confirmados cuadran al centavo (renglones = total con IVA). Cero pendientes y cero alertas abiertas (19-sep).**
+65809be7 (Adan Melchor 17-sep) resuelto en 055: el $1,920 a mano juntaba Adan $1,490.09 + El Fenix cinta $339.60 (ticket
+87ede10d aparte, trae "Bodega" a mano) + moto $90. Queda en $1,580.09 confirmado; SE sep = $47,244.19 (90 tickets).
 | Sucursal | May | Jun | Jul | Ago | Sep (al 18) |
 |---|---|---|---|---|---|
 | Wings Palace | $62,836.30 (99) | $155,927.41 (239) | $155,808.62 (230) | $109,777.11 (192) | sin subir |
-| Santa Elena | - | $73,313.48 (131) | $81,378.50 (148) | $75,836.63 (136) | $45,664.10 (89) + 1 por revisar |
+| Santa Elena | - | $73,313.48 (131) | $81,378.50 (148) | $75,836.63 (136) | $47,244.19 (90) |
 - Santa Elena: 508 tickets (se_ago 158 + se_resto 350) + 1 del 18-sep; 4 fotos repetidas rechazadas. Envios a mano
   registrados como "Moto envio": jun $1,417 / jul $1,637 / ago $1,964 / sep $905 (050, 051: segunda pasada solo de envios).
   Catalogo SE: 159 productos nuevos, 19 basura fundidos (047), AVE ACTION FRY -> Insumos, CUPON -> Descuentos, playo separado en
@@ -57,7 +58,10 @@ independiente del diff: sin bugs; se agrego el plural "envios". Nota: esEnvio ta
 / Envio al dueno (a proposito: toda moto cara sale a revisar).
 Alejandro: 24-jul ($140) y 6-ago ($149) se quedan confirmados; de aqui en adelante esos envios SI salen a revisar
 (umbral validado: $149 con Adan Melchor = ticket para revisar).
-**Siguiente:** (1) respuesta de la gerente sobre 65809be7;
+**19-sep (055):** 65809be7 resuelto (ver arriba). Cinta de empaque de El Fenix 17-sep -> Bodega; las otras 3 compras de la
+misma cinta (El Fenix 11-ago $339.60, El Iris 21-ago y 7-sep $385.20) siguen en Desechables hasta que Alejandro diga si toda
+esa cinta es de Bodega. Cintas en "pz" pasadas a "rollo" y agregadas al historial de precios ($28.30 Fenix, $32.10 Iris).
+**Siguiente:** (1) ¿toda la cinta de empaque es Bodega?;
 (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio + envios + pan repartido): medir cuantos tickets nuevos salen
 sin alertas; (3) Google Sheets (secret) y rellenar; (4) avisar a Alejandro si vuelve a aparecer un precio fuera de rango
 como el aceite Ave ($745 vs $490).
