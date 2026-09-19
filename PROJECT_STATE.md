@@ -4,8 +4,8 @@
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
-**CERO pendientes en ambas sucursales; todos los confirmados cuadran al centavo (renglones = total con IVA).** Unica alerta
-abierta: 65809be7 (SE 17-sep, Adan Melchor "y envio $1,920" sobre $1,490.09, +$429.91: pregunta a Alejandro).
+**CERO pendientes en ambas sucursales; todos los confirmados cuadran al centavo (renglones = total con IVA). Cero alertas
+abiertas** (65809be7 ya contestada: ver respuestas de la noche abajo; SE sep queda en $47,584.10 con ese envio).
 | Sucursal | May | Jun | Jul | Ago | Sep (al 18) |
 |---|---|---|---|---|---|
 | Wings Palace | $62,836.30 (99) | $155,927.41 (239) | $155,808.62 (230) | $109,777.11 (192) | sin subir |
@@ -21,8 +21,9 @@ abierta: 65809be7 (SE 17-sep, Adan Melchor "y envio $1,920" sobre $1,490.09, +$4
 - Historial de precios reconstruido: SE 1,397 precios / 192 productos (jun-sep), WP 1,644 / 356 (may-ago).
 - Tablas temporales vaciadas (_tmp_firmas, _tmp_carga). Deploy final: procesar-ticket v42, reprocesar-ticket v14 (verificados byte a byte contra el repo).
 **Decisiones de Alejandro (18-sep):** envio anotado a mano ("c/envio") SI se pago -> renglon "Moto envio" en Otros gastos
-operativos (~40 tickets SE); moto Lindsay/Fer = empleado que trae insumos -> operativo; factura+ticket = solo la factura
-(no es fraude: la gerente subia ambos); mayo-julio los decide Claude. Ver memoria envios_y_motos.
+operativos (~110 tickets SE); moto Lindsay/Fer = empleado que trae insumos -> operativo; factura+ticket = solo cuenta la
+factura y la copia queda RECHAZADA y EN FRAUDE (corregido por Alejandro en la noche); mayo-julio los decide Claude.
+Ver memoria envios_y_motos.
 **Carga sin copiar SQL (NUEVO):** `_tmp_carga` + `aplicar_revision(lote, sucursal)` (migracion 046). El JSON se sube desde una
 pestana propia del admin con un input file + herramienta file_upload de Chrome. Un agente sonnet que copiaba SQL lo abrevio con
 "(...)" y fallo: NO volver a pedir copias de SQL grande a un agente.
@@ -43,8 +44,8 @@ reabiertos; desde hoy procesar-ticket lo hace solo y "Descartar" en Fraude regre
 `sospecha` si ve alteraciones/comprobantes reutilizados -> Fraude. Motos: producto unico "Moto envio", categoria por renglon
 (Ale/Polo/mama Polo/Toto = Extras, el resto operativo); "MOTO" del cafe fundido. Corregidos 3 envios contados dos veces ($180).
 **Siguiente:** (1) ¿categoria "Bodega" aparte para lo del tostador (bolsas metalizadas, etc.)?; (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio +
-envios + pan repartido): medir cuantos tickets nuevos salen sin alertas; (3) Google Sheets (secret) y rellenar; (4) SE sigue
-mandando "MOTO" como Extras (regla vieja): confirmar con Alejandro si las motos del cafe tambien son envio de insumos.
+envios + pan repartido): medir cuantos tickets nuevos salen sin alertas; (3) Google Sheets (secret) y rellenar;
+(4) avisar a Alejandro si vuelve a aparecer un precio fuera de rango como el aceite Ave ($745 vs $490).
 
 ## Sesion 2026-09-18 (Claude) -- IA de lectura: cuota, modelo, catalogo y agosto WP revisado
 **Diagnostico (con evidencia en BD + logs):**
