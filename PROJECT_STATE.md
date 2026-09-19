@@ -54,6 +54,14 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   revisar: Tipico $539.67 (precio anomalo), Adan Melchor factura 403201 $1,552 (monto anomalo: IVA $203 sin repartir),
   una nota a mano de $1,552 sin vendedor por la MISMA compra (la IA la marco sospechosa sola -> Fraude; el detector de
   duplicados no la liga porque la nota no trae comercio) y una nota de Jugotropick que la IA leyo con fecha 19-abr.
+- **Las dos hojas de $1,552 (migracion 061, Alejandro 19-sep):** la gerente subio la factura Y una hoja aparte con su
+  desglose (entendio mal; ya se le aclaro que el desglose va en el mismo ticket). No es fraude. La factura queda con el IVA
+  de $203 repartido (bolsas $895.75 = $203.58/kg como siempre, playo $576.01 = su precio de siempre, envio $80.24; suma
+  $1,552) y **lista para confirmar con un clic desde el panel** (se deja pendiente a proposito: asi confirmar-admin archiva
+  la foto por el camino nuevo, en vez de confirmarla por SQL). La hoja a mano queda rechazada como copia de esa factura, con
+  la sospecha cerrada como descartada. **Ojo:** la hoja junta el playo con las bolsas en "Bodega"; por ahora el playo sigue
+  como Desechables (cafe) -> preguntado a Alejandro. Los otros 2 pendientes (Jugotropick fecha 19-abr y Tipico precio
+  anomalo) los revisa Alejandro a mano esta semana para ver como funciona la app.
 - **Cinta de empaque = Bodega (059):** por PRODUCTO, no por comercio (El Fenix/El Iris venden cosas de la cafeteria). 5 compras
   jun-sep ($2,087.60, incl. despachador de Office Depot) movidas; regla en gemini.ts.
 
