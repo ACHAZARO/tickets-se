@@ -12,6 +12,13 @@ confirmar-admin v10, confirmar-ticket v14). Lineas = HEAD a15eb6c.
 **Buena noticia:** hoy los 1,347 tickets tienen su foto (0 perdidas). En el pasado se borraron 15 filas; al parecer pruebas del
 4-jun (quedaron 8 fotos sueltas de ese dia, 4.7 MB, varias de PRUEBA): no borrarlas.
 
+**Decisiones de Alejandro (19-sep):** el candado de "Eliminar" en pantalla (solo admin) esta bien; la tarea mensual que
+borra fotos de mas de 1 ano esta bien (antes se descarga respaldo; ojo, hoy falla cada mes porque Supabase bloquea borrar
+fotos por SQL). Permisos por usuario (gerente sin eliminar, solo ver) quedan para cuando se escale a app para vender.
+**Hecho (19-sep):** punto 3, pasar la foto a `archivo` es seguro (copia verificada; el original se quita solo despues de
+que el ticket apunta a la copia; candado para que la IA y el admin no confirmen el mismo ticket a la vez; la copia de una
+foto identica ya no deja un registro sin foto). Codigo en `_shared/archivo.ts`.
+
 ## A. Hoy se puede BORRAR evidencia (prioridad alta)
 
 1. **Borrar ticket + foto.** `page.tsx` `eliminarTicket` borra primero la foto (sin revisar error) y luego la fila; la cascada
@@ -31,12 +38,9 @@ confirmar-admin v10, confirmar-ticket v14). Lineas = HEAD a15eb6c.
 
 ## B. Se SOBRESCRIBE lo capturado sin historial (alta para el reporte)
 
-4. **"Subidos" usa el monto ya corregido.** `resumen_tickets` (057:13) suma el `monto` vivo. Cada correccion baja "Subidos" y
-   el faltante desaparece de "Por justificar". Ejemplo real: **Jugotropick 1-jul**: alguien encimo un 2 y escribio $420; el
-   vendedor escribio $210. Se cuenta $210 en Oficiales **y en Subidos**, asi que los $210 alterados no aparecen para cobrar.
-   El $420 solo sobrevive en tablas `respaldo.*`. Arreglo: columna `monto_papel` (lo que el papel dice tal como lo presento
-   el gerente; se llena al subir, solo se corrige si la IA LEYO mal, con motivo) separada de `monto` (oficial). Subidos =
-   suma de `monto_papel`. Rellenar la historica desde el respaldo mas antiguo (r030 / r_se_* / r_wp_*).
+4. ~~"Subidos" usa el monto ya corregido -> columna `monto_papel`.~~ **Descartado por Alejandro (19-sep):** un ticket alterado
+   (ej. Jugotropick 1-jul: papel $420, real $210) se registra con el monto REAL y se manda a Fraude / revisar con gerente;
+   "Por justificar" mide sobre todo tickets rechazados. No se guarda el monto del papel aparte.
 5. **Releer IA y editar pisan todo.** reprocesar-ticket (:215-231) reemplaza monto, fecha, comercio, folio y todo `gemini_raw`,
    borra renglones y precios; aplica tambien a confirmados y rechazados y se pierden `_rechazo_motivo`/`_rechazo_auto`.
    En page.tsx: "Borrar" renglon sin confirmacion (:461-470), `syncTicketTotal` pisa el monto (:479-494), "Rechazar" reescribe

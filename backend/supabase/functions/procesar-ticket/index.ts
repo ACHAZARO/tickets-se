@@ -12,6 +12,7 @@ import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } fr
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
 import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
+import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
@@ -287,8 +288,9 @@ async function procesarEnSegundoPlano(opts: {
 
     // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.
     if (!hayAlerta) {
-      await autoConfirmar(supabase, registroId, sucursalId, empleadoId, storagePath, itemsToInsert)
-      await guardarPrecios(supabase, itemsToInsert, catalog.products, sucursalId, registroId, fechaTicket)
+      if (await autoConfirmar(supabase, registroId, sucursalId, empleadoId, storagePath, itemsToInsert)) {
+        await guardarPrecios(supabase, itemsToInsert, catalog.products, sucursalId, registroId, fechaTicket)
+      }
     }
   } catch (err) {
     console.error('Error en procesamiento de fondo:', err)
@@ -333,20 +335,20 @@ async function rechazarDuplicadoAFraude(supabase: SB, registroId: string, dupId:
 async function autoConfirmar(
   supabase: SB, registroId: string, sucursalId: string, empleadoId: string,
   storagePath: string, items: { descripcion: string; cantidad: number | null; unidad: string | null; monto: number | null; categoria_nombre: string | null }[]
-): Promise<void> {
+): Promise<boolean> {
+  let confirmado = false
   try {
     const now = new Date()
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const filename = storagePath.split('/').pop() ?? `${registroId}.jpg`
-    const archivoPath = `${yearMonth}/${filename}`
-
-    const { data: fileData } = await supabase.storage.from('por-revisar').download(storagePath)
-    if (fileData) {
-      await supabase.storage.from('archivo').upload(archivoPath, await fileData.arrayBuffer(), {
-        contentType: fileData.type, upsert: true,
-      })
-      await supabase.storage.from('por-revisar').remove([storagePath])
-    }
+    // Candado: solo un confirmador gana. El admin pudo confirmar (o rechazar) mientras la IA terminaba; entonces
+    // aqui no se toca nada (ni foto, ni Sheets, ni precios).
+    const { data: claim, error: claimErr } = await supabase.from('registros_tickets')
+      .update({ estado: 'confirmado', confirmado_en: now.toISOString() })
+      .eq('id', registroId).eq('estado', 'pendiente').select('id')
+    if (claimErr) console.error('auto-confirmacion: no se pudo confirmar:', claimErr.message)
+    if (claimErr || !claim?.length) return false
+    confirmado = true
+    // Copia verificada a 'archivo'; el original se quita solo al final, con el ticket ya apuntando a la copia.
+    const archivoPath = await copiarAArchivo(supabase, storagePath, now)
 
     const [{ data: suc }, { data: emp }, { data: reg }] = await Promise.all([
       supabase.from('sucursales').select('nombre').eq('id', sucursalId).maybeSingle(),
@@ -362,7 +364,7 @@ async function autoConfirmar(
         comercio: reg?.comercio ?? null,
         sucursal_nombre: suc?.nombre ?? 'Sucursal',
         empleado_nombre: emp?.nombre ?? 'Desconocido',
-        storage_path: archivoPath,
+        storage_path: archivoPath ?? storagePath,
         confirmado_en: now.toISOString(),
         items: items.map(it => ({
           descripcion: it.descripcion, cantidad: it.cantidad, unidad: it.unidad,
@@ -371,13 +373,20 @@ async function autoConfirmar(
       })
     } catch (e) { console.error('Sheets (no bloqueante):', e) }
 
-    await supabase.from('registros_tickets').update({
-      estado: 'confirmado', storage_path_archivo: archivoPath,
-      confirmado_en: now.toISOString(), sheets_row_id: sheetsRowId,
-    }).eq('id', registroId)
+    // Solo se escribe lo nuevo: nunca se pone en null algo que otro confirmador ya guardo.
+    const cambios = {
+      ...(archivoPath ? { storage_path_archivo: archivoPath } : {}),
+      ...(sheetsRowId ? { sheets_row_id: sheetsRowId } : {}),
+    }
+    if (Object.keys(cambios).length) {
+      const { error: updErr } = await supabase.from('registros_tickets').update(cambios).eq('id', registroId)
+      if (updErr) console.error('auto-confirmacion: no se guardo la ruta de archivo, la foto se queda en por-revisar:', updErr.message)
+      else if (archivoPath) await quitarDePorRevisar(supabase, storagePath)
+    }
   } catch (err) {
     console.error('Error en auto-confirmacion:', err)
   }
+  return confirmado
 }
 
 serve(async (req: Request) => {
@@ -420,15 +429,25 @@ serve(async (req: Request) => {
       .order('created_at', { ascending: true }).limit(1).maybeSingle()
     if (existing) {
       const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_dup.${extension}`
-      await supabase.storage.from('por-revisar').upload(dupPath, imageBytes, { contentType: mime, upsert: false })
+      // Si la copia no se guarda, el gerente ve el error y vuelve a subir: no queda un registro sin foto.
+      const { error: dupUpErr } = await supabase.storage.from('por-revisar')
+        .upload(dupPath, imageBytes, { contentType: mime, upsert: false })
+      if (dupUpErr) {
+        console.error('Storage upload error (duplicado):', dupUpErr)
+        return json({ error: 'Error al subir la imagen' }, 500)
+      }
       // La copia toma fecha/comercio del original: se archiva en el mes del gasto (no "colada" en el
       // mes en que se subio). Ya queda rechazada, asi que su alerta nace resuelta (solo auditoria).
-      const { data: dupReg } = await supabase.from('registros_tickets').insert({
+      const { data: dupReg, error: dupInsErr } = await supabase.from('registros_tickets').insert({
         sucursal_id: sucursalId, empleado_id: empleadoId,
         hash_imagen: hashImagen, storage_path_original: dupPath,
         estado: 'rechazado', es_duplicado: true, duplicado_de: existing.id,
         fecha_ticket: existing.fecha_ticket ?? null, comercio: existing.comercio ?? null,
       }).select('id').single()
+      if (dupInsErr || !dupReg) {
+        console.error('Insert error (duplicado):', dupInsErr)
+        return json({ error: 'Error al guardar el registro' }, 500)
+      }
       if (dupReg?.id) {
         const { error: alertaError } = await supabase.from('alertas_tickets').insert({
           registro_ticket_id: dupReg.id, tipo: 'duplicado', duplicado_de_id: existing.id, resuelta: true,

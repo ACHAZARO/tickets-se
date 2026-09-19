@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { guardarPrecios } from '../_shared/precios.ts'
+import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { CatalogProduct } from '../_shared/catalog.ts'
 
 // Confirma un ticket revisado por el ADMIN: archiva la imagen, manda 1 fila por
@@ -57,18 +58,12 @@ serve(async (req: Request) => {
 
     let archivoPath = reg.storage_path_archivo as string | null
 
-    // Mover imagen por-revisar -> archivo (si aun no se archivo)
+    // Copia verificada por-revisar -> archivo (si aun no se archivo). El original se quita hasta el final,
+    // cuando el ticket ya quedo apuntando a la copia.
+    let archivadoAhora = false
     if (!archivoPath && reg.storage_path_original) {
-      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-      const filename = (reg.storage_path_original as string).split('/').pop() ?? `${registro_id}.jpg`
-      archivoPath = `${yearMonth}/${filename}`
-      const { data: fileData } = await supabase.storage.from('por-revisar').download(reg.storage_path_original)
-      if (fileData) {
-        await supabase.storage.from('archivo').upload(archivoPath, await fileData.arrayBuffer(), {
-          contentType: fileData.type, upsert: true,
-        })
-        await supabase.storage.from('por-revisar').remove([reg.storage_path_original])
-      }
+      archivoPath = await copiarAArchivo(supabase, reg.storage_path_original as string, now)
+      archivadoAhora = !!archivoPath
     }
 
     // Items + nombres para Sheets
@@ -102,16 +97,22 @@ serve(async (req: Request) => {
         comercio: reg.comercio ?? null,
         sucursal_nombre: suc?.nombre ?? 'Sucursal',
         empleado_nombre: emp?.nombre ?? 'Desconocido',
-        storage_path: archivoPath ?? '',
+        storage_path: archivoPath ?? (reg.storage_path_original as string | null) ?? '',
         confirmado_en: now.toISOString(),
         items,
       })
     } catch (e) { console.error('Sheets (no bloqueante):', e) }
 
-    await supabase.from('registros_tickets').update({
-      storage_path_archivo: archivoPath,
+    // Solo se escribe lo nuevo: nunca se pone en null una ruta que otro confirmador ya guardo.
+    const cambios = {
+      ...(archivadoAhora ? { storage_path_archivo: archivoPath } : {}),
       ...(sheetsRowId ? { sheets_row_id: sheetsRowId } : {}),
-    }).eq('id', registro_id)
+    }
+    if (Object.keys(cambios).length) {
+      const { error: updErr } = await supabase.from('registros_tickets').update(cambios).eq('id', registro_id)
+      if (updErr) console.error('confirmar-admin: no se guardo la ruta de archivo, la foto se queda en por-revisar:', updErr.message)
+      else if (archivadoAhora && reg.storage_path_original) await quitarDePorRevisar(supabase, reg.storage_path_original as string)
+    }
 
     // Registra precios de los renglones ligados a un producto (reemplaza los de este ticket si
     // se confirmo antes). Se salta renglones en otra unidad que la del producto.

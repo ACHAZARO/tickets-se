@@ -34,11 +34,20 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   gastos ajenos a la operacion). Ejemplo: sube 10x$100 = subidos 1000, se rechazan 5 = oficiales 500.
 - **Pendiente:** verificar la pantalla en vivo antes del push (Alejandro debe iniciar sesion en el navegador del panel);
   fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
-- **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas, pero: la base aun deja
-  al admin borrar filas y fotos (politicas FOR ALL + `admin_delete_fotos`; el candado de "Eliminar" es solo de UI); cron activo
-  `limpiar-imagenes-tickets` borraria fotos de +1 ano; mover foto a `archivo` no verifica la copia antes de borrar el original;
-  "Subidos" usa el monto ya corregido (Jugotropick 1-jul: papel alterado $420, cuenta $210 en ambos lados -> falta `monto_papel`);
-  releer IA/editar/rechazar pisan sin historial; un rechazado puede volverse oficial al guardar un renglon. Arreglos propuestos alli.
+- **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
+  Alejandro: candado de "Eliminar" en pantalla (solo admin) OK; cron `limpiar-imagenes-tickets` (fotos de +1 ano) OK, antes se
+  descarga respaldo (ojo: hoy falla cada mes porque Supabase bloquea borrar fotos por SQL; rehacerlo con la API de Storage antes
+  de jun-2027 si se quiere que funcione); `monto_papel` descartado; permisos por usuario para cuando se venda la app.
+  **Hecho:** pasar la foto a `archivo` ya es seguro (`_shared/archivo.ts`: copia verificada por tamano; el original se quita solo
+  cuando el ticket ya apunta a la copia; `autoConfirmar` con candado `estado='pendiente'` para no chocar con el admin ni confirmar
+  un ticket que el admin rechazo mientras la IA leia; la copia de foto identica ya no deja registro sin foto). Deploy:
+  **procesar-ticket v45, reprocesar-ticket v17, confirmar-admin v11** (byte a byte = repo; 2 revisiones adversariales sin defectos).
+  Foto de control al desplegar: 0 confirmados sin archivo, 0 originales sobrantes, 0 rutas a la nada. **Verificar con los primeros
+  tickets nuevos** que queden en `archivo` y sin original en `por-revisar`. Siguen abiertos de la auditoria: releer IA/editar/rechazar
+  pisan sin historial; un rechazado puede volverse oficial al guardar un renglon; `confirmar-ticket` (legacy, nadie la llama) deja a un
+  gerente con sesion confirmar su propio ticket marcado -> propuesta: retirarla.
+- **Cinta de empaque = Bodega (059):** por PRODUCTO, no por comercio (El Fenix/El Iris venden cosas de la cafeteria). 5 compras
+  jun-sep ($2,087.60, incl. despachador de Office Depot) movidas; regla en gemini.ts.
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
