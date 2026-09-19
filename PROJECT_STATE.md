@@ -23,6 +23,11 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
 - **Datos (hallazgo):** PRUEBA tiene 1 ticket confirmado con total $2,150.54 y renglones $1,945.54 (no afecta: PRUEBA esta excluida).
   `tickets_sin_monto_leido`: 35 en WP (44 rechazados sin monto: 11 copias de foto ya cuentan con el monto de su original; el resto ilegibles).
 - **Pendiente:** verificar la pantalla en vivo tras el deploy; fecha de rotacion de la llave (decision de Alejandro); rutas de precios/stock de la API si las pide.
+- **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas, pero: la base aun deja
+  al admin borrar filas y fotos (politicas FOR ALL + `admin_delete_fotos`; el candado de "Eliminar" es solo de UI); cron activo
+  `limpiar-imagenes-tickets` borraria fotos de +1 ano; mover foto a `archivo` no verifica la copia antes de borrar el original;
+  "Subidos" usa el monto ya corregido (Jugotropick 1-jul: papel alterado $420, cuenta $210 en ambos lados -> falta `monto_papel`);
+  releer IA/editar/rechazar pisan sin historial; un rechazado puede volverse oficial al guardar un renglon. Arreglos propuestos alli.
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
