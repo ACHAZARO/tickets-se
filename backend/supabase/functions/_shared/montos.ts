@@ -86,6 +86,33 @@ export function impuestosPorRenglon(items: ConMonto[], total: number | null, dat
   return porTasas(montos, gap, iva !== null ? iva : null)
 }
 
+type ConCantidad = ConMonto & { cantidad?: number | null; categoria_id?: string | null }
+
+// Notas con varios renglones SIN importe y solo el TOTAL (pedidos de pan del cafe: "6 choco, 7 roles...
+// TOTAL 960"). Los reportes suman renglones, asi que sin importe ese dinero no caia en ninguna categoria.
+// Si todos los renglones sin importe tienen cantidad y son de la MISMA categoria, el resto (total menos
+// los importes que si vienen) se reparte entre ellos por cantidad: la categoria queda exacta y el precio
+// por producto es el precio parejo de la nota. Facturas no (sus importes van antes de IVA).
+// Devuelve true si repartio.
+export function repartirSinImporte(items: ConCantidad[], total: number | null, tipo?: string | null): boolean {
+  const T = num(total)
+  if (T === null || !(T > 0) || items.length < 2 || tipo === 'factura') return false
+  const sin = items.filter(it => num(it.monto) === null)
+  if (!sin.length || sin.some(it => !((num(it.cantidad) ?? 0) > 0))) return false
+  const cats = new Set(sin.map(it => it.categoria_id ?? null))
+  if (cats.size !== 1 || cats.has(null)) return false
+  const resto = redondea(T - items.reduce((s, it) => s + (num(it.monto) ?? 0), 0))
+  if (!(resto > 0)) return false
+  const piezas = sin.reduce((s, it) => s + Number(it.cantidad), 0)
+  for (const it of sin) it.monto = redondea(resto * Number(it.cantidad) / piezas)
+  const dif = redondea(resto - sin.reduce((s, it) => s + Number(it.monto), 0))
+  if (dif !== 0) {
+    const mayor = sin.reduce((a, b) => Number(b.monto) > Number(a.monto) ? b : a)
+    mayor.monto = redondea(Number(mayor.monto) + dif)
+  }
+  return true
+}
+
 // Suma a cada renglon su impuesto y deja el centavo de redondeo en el renglon mas grande, para que
 // la suma sea exactamente el total.
 export function aplicarImpuestos(items: ConMonto[], impuestos: number[], total: number): void {

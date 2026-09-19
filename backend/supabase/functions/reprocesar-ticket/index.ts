@@ -8,7 +8,7 @@ import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, res
 import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
 import { hayPrecioAnomalo } from '../_shared/precios.ts'
-import { aplicarImpuestos, impuestosPorRenglon, noCuadra, sinTotal } from '../_shared/montos.ts'
+import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
 // lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
@@ -187,6 +187,10 @@ serve(async (req: Request) => {
     })
     // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total a ese renglon.
     if (montoTotal != null && items.length === 1 && !(Number(items[0].monto) > 0)) items[0].monto = montoTotal
+    // Nota con varios renglones sin importe y solo el total (pan): se reparte por cantidad.
+    if (repartirSinImporte(items, montoTotal, datos.tipo_documento)) {
+      ;(datos as Record<string, unknown>)._montos_repartidos = true
+    }
     // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo
     // pagan para que sumen el total pagado (gastos CON IVA).
     const impuestos = impuestosPorRenglon(items, montoTotal, datos)

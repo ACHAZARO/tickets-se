@@ -11,7 +11,7 @@ import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import { detectSmartDuplicate } from '../_shared/duplicados.ts'
 import { guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
-import { aplicarImpuestos, impuestosPorRenglon, noCuadra, sinTotal } from '../_shared/montos.ts'
+import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
@@ -181,6 +181,10 @@ async function procesarEnSegundoPlano(opts: {
     const conMonto = itemsToInsert.filter(it => it.monto != null && Number(it.monto) > 0)
     if (montoTotal != null && conMonto.length === 0 && itemsToInsert.length === 1) {
       itemsToInsert[0].monto = montoTotal
+    }
+    // Nota con varios renglones sin importe y solo el total (pan): se reparte por cantidad.
+    if (repartirSinImporte(itemsToInsert, montoTotal, datos.tipo_documento)) {
+      ;(datos as Record<string, unknown>)._montos_repartidos = true
     }
     // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo
     // pagan para que sumen el total pagado (gastos CON IVA).
@@ -354,17 +358,26 @@ serve(async (req: Request) => {
     // Duplicado exacto por hash: queda registrado como rechazado para auditoria
     // en Tickets, no desaparece del flujo del admin.
     const { data: existing } = await supabase.from('registros_tickets')
-      .select('id').eq('hash_imagen', hashImagen).neq('estado', 'rechazado')
+      .select('id, fecha_ticket, comercio').eq('hash_imagen', hashImagen).neq('estado', 'rechazado')
       .order('created_at', { ascending: true }).limit(1).maybeSingle()
     if (existing) {
       const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_dup.${extension}`
       await supabase.storage.from('por-revisar').upload(dupPath, imageBytes, { contentType: mime, upsert: false })
+      // La copia toma fecha/comercio del original: se archiva en el mes del gasto (no "colada" en el
+      // mes en que se subio). Ya queda rechazada, asi que su alerta nace resuelta (solo auditoria).
       const { data: dupReg } = await supabase.from('registros_tickets').insert({
         sucursal_id: sucursalId, empleado_id: empleadoId,
         hash_imagen: hashImagen, storage_path_original: dupPath,
         estado: 'rechazado', es_duplicado: true, duplicado_de: existing.id,
+        fecha_ticket: existing.fecha_ticket ?? null, comercio: existing.comercio ?? null,
       }).select('id').single()
-      if (dupReg?.id) await createAlert(supabase, dupReg.id as string, 'duplicado', existing.id as string)
+      if (dupReg?.id) {
+        const { error: alertaError } = await supabase.from('alertas_tickets').insert({
+          registro_ticket_id: dupReg.id, tipo: 'duplicado', duplicado_de_id: existing.id, resuelta: true,
+          correccion: { nota: 'foto identica a otra ya subida: se rechazo sola' },
+        })
+        if (alertaError) console.error('alerta duplicado fallo:', alertaError.message)
+      }
       return json({ duplicado: true, registro_id: dupReg?.id ?? null, ticket_original_id: existing.id })
     }
 

@@ -792,8 +792,10 @@ export default function TicketsPage() {
   const esSospechosoAbierto = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta'
   const estaEnFraude = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
   // Un pendiente SIN fecha tambien requiere revision (no entraria al Dashboard al confirmarlo).
-  const tieneAlerta = (t: Ticket) => hasReviewAlert(alertas[t.id] ?? [], estaEnFraude(t)) ||
-    (t.estado === 'pendiente' && !t.fecha_ticket && !estaEnFraude(t))
+  // Un rechazado (p. ej. foto repetida, que se rechaza sola) o archivado ya no tiene nada que revisar.
+  const tieneAlerta = (t: Ticket) => t.estado !== 'rechazado' && t.estado !== 'archivado' && (
+    hasReviewAlert(alertas[t.id] ?? [], estaEnFraude(t)) ||
+    (t.estado === 'pendiente' && !t.fecha_ticket && !estaEnFraude(t)))
   // Sin leer = alerta ia_sin_leer, o pendiente que quedo "en proceso" mas de 10 min (el
   // proceso en segundo plano se corto a media lectura).
   // Los que estan en revision de fraude no entran al lote (el lote confirma solo los limpios).

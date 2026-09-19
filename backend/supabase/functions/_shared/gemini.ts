@@ -77,7 +77,7 @@ ${catalogContext}
 Reglas importantes:
 - Crea un objeto dentro de "items" por CADA producto o renglon del ticket. No agrupes varios productos en uno.
 - NO son renglones: subtotal, IVA, total, cambio, pago con tarjeta/efectivo, "cambio en monedero", litros, precio unitario, GPS, observaciones, leyendas legales ni datos del cliente. Un ticket de gas LP o gasolina tiene UN solo renglon: el combustible, con cantidad en litros y el monto total.
-- "comercio" es quien VENDE (el emisor). Si el restaurante que compra aparece impreso como cliente o receptor (ej. "RESTAURANT WINGS PALACE"), ese NO es el comercio: busca el nombre del proveedor en el encabezado.
+- "comercio" es quien VENDE (el emisor). Los negocios que COMPRAN son "Wings Palace" (restaurante) y "Santa Elena" / "Cafe Santa Elena" (cafe): si aparecen impresos o escritos como cliente o receptor (ej. "RESTAURANT WINGS PALACE", "Cliente: Santa Elena"), ese NO es el comercio: busca el nombre del proveedor en el encabezado; si el papel no dice quien vende, deja "comercio" en null.
 - La "descripcion" debe ser LITERAL: conserva codigos, abreviaturas y texto raro tal como lo lees. NO reemplaces la descripcion por el nombre del catalogo.
 - FECHA: en Mexico se escribe dia/mes/año (DD/MM/AAAA o DD/MM/AA). Hoy es ${hoyISO}; el ticket es de las ultimas semanas o meses, nunca del futuro. Si lees un año imposible (ej. 2020, 2024 o 2028) en un ticket que claramente es reciente, corrigelo al año que corresponde y baja la confianza a "media".
 - "tipo_documento": "factura" si es un CFDI / factura electronica (tiene RFC, folio fiscal o UUID, uso de CFDI); "remision" si es nota de entrega del proveedor; "nota_a_mano" si esta escrita a mano; "ticket" para tickets impresos de tienda.
@@ -89,6 +89,7 @@ Reglas importantes:
 - Si una nota tiene UN SOLO producto y un total (ej. "alitas 50 pzas $850"), pon ese total como el "monto" de ese producto Y en "monto_total".
 - Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
 - Si el ticket tiene un DESCUENTO, promocion o rebaja (dinero que se resta del total), capturalo como un renglon APARTE: "descripcion": "Descuento", "categoria": "Descuentos" y "monto" NEGATIVO (el ahorro, ej. -50). No lo restes de los otros renglones.
+- ENVIO ANOTADO A MANO: si sobre un ticket o nota alguien escribio a mano un cargo de envio que NO esta en lo impreso ("c/envio $1,460", "con envio", "envio $60", "moto $60"), agrega un renglon aparte: "descripcion": "Moto envio", "cantidad": 1, "unidad": "servicio", "categoria": "Otros gastos operativos", "monto" = el envio (si solo escribieron el total con envio, es la diferencia entre ese total y el total impreso). En ese caso "monto_total" es el total pagado CON envio. Si esa diferencia pasa de $200, casi seguro es la suma de varios tickets engrapados: NO agregues envio y deja el total impreso. Cualquier otro numero escrito a mano que no diga envio o moto NO cambia el total impreso. Una marca a mano como "MOTO" o "Moto 1" SIN importe no es un renglon.
 - Incluye tambien el texto escrito a mano en tu analisis.
 Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
 }
