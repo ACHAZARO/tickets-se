@@ -36,7 +36,13 @@ tickets engrapados. Jugotropick 1-jul con cantidad/total alterados (se cuenta $2
 fecha de talonarios 2024/2025 (reutilizados, no se cuentan), nota "Caja de Te" $1,560 de Fer Villanueva alterada (no se cuenta),
 aceite Ave a $745 vs $490 en nota sin proveedor. Playo stretch en SE: 11 rollos en junio, 7 en julio, 16 en agosto, 10 al
 17-sep (vigilar consumo e inventario). Jugo de limon WP: $280/galon en mayo -> $170 en agosto.
-**Siguiente:** (1) respuesta de Alejandro sobre 65809be7; (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio +
+**Respuestas de Alejandro (18-sep noche) -> migracion 053 + codigo:** Adan Melchor 17-sep = bolsas metalizadas (gasto de
+Bodega), la diferencia $429.91 es envio (operativo). Adan Melchor = proveedor de confianza (`comercios.confiable`: solo el
+mismo folio cuenta como duplicado). Papel repetido = RECHAZADO + revision de Fraude en grupo con el original (25 pares
+reabiertos; desde hoy procesar-ticket lo hace solo y "Descartar" en Fraude regresa el ticket a Por confirmar). La IA llena
+`sospecha` si ve alteraciones/comprobantes reutilizados -> Fraude. Motos: producto unico "Moto envio", categoria por renglon
+(Ale/Polo/mama Polo/Toto = Extras, el resto operativo); "MOTO" del cafe fundido. Corregidos 3 envios contados dos veces ($180).
+**Siguiente:** (1) ¿categoria "Bodega" aparte para lo del tostador (bolsas metalizadas, etc.)?; (2) septiembre ya entra con la IA nueva (3.8 + catalogo limpio +
 envios + pan repartido): medir cuantos tickets nuevos salen sin alertas; (3) Google Sheets (secret) y rellenar; (4) SE sigue
 mandando "MOTO" como Extras (regla vieja): confirmar con Alejandro si las motos del cafe tambien son envio de insumos.
 

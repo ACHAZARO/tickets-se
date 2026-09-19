@@ -22,6 +22,7 @@ export interface GeminiResult {
   ieps?: number | null
   monto_total?: number | null
   confianza?: string
+  sospecha?: string | null
   items?: GeminiItem[]
 }
 
@@ -61,6 +62,7 @@ export function buildGeminiPrompt(catalogContext: string, hoyISO: string): strin
   "ieps": numero de IEPS si aparece desglosado aparte, o null,
   "monto_total": numero decimal del total a pagar, o null,
   "confianza": "alta si los datos son claros, media si algunos son ambiguos, baja si es ilegible o muy borroso",
+  "sospecha": "texto breve SOLO si ves senales de alteracion o de comprobante reutilizado (ver reglas); null si todo se ve normal",
   "items": [
     {
       "descripcion": "texto literal del producto tal como aparece en el ticket",
@@ -90,6 +92,8 @@ Reglas importantes:
 - Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
 - Si el ticket tiene un DESCUENTO, promocion o rebaja (dinero que se resta del total), capturalo como un renglon APARTE: "descripcion": "Descuento", "categoria": "Descuentos" y "monto" NEGATIVO (el ahorro, ej. -50). No lo restes de los otros renglones.
 - ENVIO ANOTADO A MANO: si sobre un ticket o nota alguien escribio a mano un cargo de envio que NO esta en lo impreso ("c/envio $1,460", "con envio", "envio $60", "moto $60"), agrega un renglon aparte: "descripcion": "Moto envio", "cantidad": 1, "unidad": "servicio", "categoria": "Otros gastos operativos", "monto" = el envio (si solo escribieron el total con envio, es la diferencia entre ese total y el total impreso). En ese caso "monto_total" es el total pagado CON envio. Si esa diferencia pasa de $200, casi seguro es la suma de varios tickets engrapados: NO agregues envio y deja el total impreso. Cualquier otro numero escrito a mano que no diga envio o moto NO cambia el total impreso. Una marca a mano como "MOTO" o "Moto 1" SIN importe no es un renglon.
+- MOTOS Y ENVIOS: un servicio de moto o envio para el dueno o su familia (dice "Ale", "Polo", "mama Polo" o "Toto") va con "categoria": "Extras"; cualquier otra moto o envio va en "Otros gastos operativos".
+- "sospecha": llenalo SOLO con evidencia visible: numeros encimados, reescritos o tachados en cantidades, importes o total; corrector; otra tinta que cambia un importe; un total escrito a mano distinto del impreso que NO es envio ni suma de tickets engrapados; un comprobante de otro ano o de un talonario viejo; una nota a mano sin vendedor por un monto alto. No lo llenes por letra fea, foto borrosa o papel arrugado.
 - Incluye tambien el texto escrito a mano en tu analisis.
 Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
 }

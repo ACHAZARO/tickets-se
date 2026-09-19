@@ -356,11 +356,18 @@ export default function TicketsPage() {
   }
 
   async function resolverSospecha(t: Ticket, estado: 'descartada' | 'confirmada') {
+    // Un papel repetido que el sistema rechazo solo: si la sospecha se descarta (era otra compra),
+    // vuelve a "Por confirmar" para contarse. Si es fraude, se queda rechazado.
+    const restaurar = estado === 'descartada' && t.estado === 'rechazado' && !!t.es_duplicado
+      && t.gemini_raw?._rechazo_auto === 'posible_duplicado'
     const { error } = await supabase.from('registros_tickets').update({
       sospecha_estado: estado, sospechoso: estado === 'confirmada',
+      ...(restaurar ? { estado: 'pendiente', es_duplicado: false, duplicado_de: null } : {}),
     }).eq('id', t.id)
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
-    toast(estado === 'descartada' ? 'Sospecha descartada' : 'Marcado como fraude')
+    toast(estado === 'descartada'
+      ? (restaurar ? 'Sospecha descartada: el ticket vuelve a Por confirmar' : 'Sospecha descartada')
+      : 'Marcado como fraude')
     fetchTickets()
   }
 

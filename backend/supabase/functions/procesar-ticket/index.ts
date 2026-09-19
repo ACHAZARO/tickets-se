@@ -238,16 +238,8 @@ async function procesarEnSegundoPlano(opts: {
     const precioAnomalo = await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
 
     let hayAlerta = false
-    // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
-    // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.
-    const dupId = await detectSmartDuplicate(
-      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registroId,
-      datos.tipo_documento ?? null,
-    )
-    if (dupId) {
-      await createAlert(supabase, registroId, 'posible_duplicado', dupId)
-      notifyAlertEmail(registroId, 'posible_duplicado'); hayAlerta = true
-    }
+    // Senales de alteracion o de comprobante reutilizado (las ve la IA): van a Fraude.
+    const sospecha = typeof datos.sospecha === 'string' ? datos.sospecha.trim().slice(0, 400) : ''
     if (datos.confianza === 'baja') {
       await createAlert(supabase, registroId, 'ilegible')
       notifyAlertEmail(registroId, 'ilegible'); hayAlerta = true
@@ -262,6 +254,33 @@ async function procesarEnSegundoPlano(opts: {
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
     }
 
+    // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
+    // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.
+    // Va despues de las alertas: si en Fraude se "Descarta" (era otra compra), el ticket regresa con ellas.
+    const dupId = await detectSmartDuplicate(
+      supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registroId,
+      datos.tipo_documento ?? null,
+    )
+    if (dupId) {
+      // Papel repetido (factura + ticket de la misma compra, reimpresion, mismo folio). Decision Alejandro
+      // 18-sep: no se cuenta ni se deja para revisar; se RECHAZA solo y va a la revision de fraude junto
+      // con el original (si el gerente reporta el gasto dos veces, se le cobra).
+      if (await rechazarDuplicadoAFraude(supabase, registroId, dupId, sospecha)) {
+        notifyAlertEmail(registroId, 'posible_duplicado')
+        return
+      }
+      // Si no se pudo rechazar, queda para revision normal como antes.
+      await createAlert(supabase, registroId, 'posible_duplicado', dupId)
+      notifyAlertEmail(registroId, 'posible_duplicado'); hayAlerta = true
+    }
+    if (sospecha) {
+      const { error: sospErr } = await supabase.from('registros_tickets').update({
+        sospechoso: true, sospecha_origen: 'auto', sospecha_estado: 'abierta', sospecha_motivo: `IA: ${sospecha}`,
+      }).eq('id', registroId)
+      if (sospErr) console.error('marcar sospecha fallo:', sospErr.message)
+      hayAlerta = true
+    }
+
     // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.
     if (!hayAlerta) {
       await autoConfirmar(supabase, registroId, sucursalId, empleadoId, storagePath, itemsToInsert)
@@ -270,6 +289,41 @@ async function procesarEnSegundoPlano(opts: {
   } catch (err) {
     console.error('Error en procesamiento de fondo:', err)
   }
+}
+
+// Rechaza el ticket nuevo como papel repetido y pone a ambos (nuevo y original) en el mismo grupo de
+// la revision de fraude. El original sigue contando; el nuevo no.
+// Devuelve false si no se pudo rechazar (el llamador lo deja para revision normal).
+async function rechazarDuplicadoAFraude(supabase: SB, registroId: string, dupId: string, sospechaIA: string): Promise<boolean> {
+  const { data: orig } = await supabase.from('registros_tickets')
+    .select('fecha_ticket, comercio, monto, folio_ticket, sospecha_grupo, sospechoso').eq('id', dupId).maybeSingle()
+  const grupo = (orig?.sospecha_grupo as string | null) ?? crypto.randomUUID()
+  const quien = `${orig?.comercio ?? 'otro ticket'} ${orig?.fecha_ticket ?? ''} $${orig?.monto ?? '?'} (folio ${orig?.folio_ticket ?? 's/f'})`
+  const { data: nuevo } = await supabase.from('registros_tickets').select('gemini_raw').eq('id', registroId).maybeSingle()
+  const { error: rechErr } = await supabase.from('registros_tickets').update({
+    estado: 'rechazado', es_duplicado: true, duplicado_de: dupId,
+    sospechoso: true, sospecha_origen: 'auto', sospecha_estado: 'abierta', sospecha_grupo: grupo,
+    sospecha_motivo: `Papel repetido de ${quien}: se rechazo solo y no cuenta. Si fue otra compra, "Descartar" lo regresa a Por confirmar.`
+      + (sospechaIA ? ` Ademas la IA vio: ${sospechaIA}` : ''),
+    gemini_raw: { ...((nuevo?.gemini_raw as Record<string, unknown> | null) ?? {}), _rechazo_auto: 'posible_duplicado' },
+  }).eq('id', registroId)
+  if (rechErr) { console.error('rechazar duplicado fallo:', rechErr.message); return false }
+  // El original entra al mismo grupo. Si ya estaba en Fraude (p. ej. marcado o decidido por el admin),
+  // no se tocan su estado ni su motivo: solo se le asigna el grupo si no tenia.
+  const marcaOrig = orig?.sospechoso
+    ? (orig.sospecha_grupo ? null : { sospecha_grupo: grupo })
+    : { sospechoso: true, sospecha_origen: 'auto', sospecha_estado: 'abierta', sospecha_grupo: grupo,
+        sospecha_motivo: 'Tiene una copia (factura/ticket/reimpresion) subida despues, que se rechazo sola. Este si cuenta.' }
+  if (marcaOrig) {
+    const { error: origErr } = await supabase.from('registros_tickets').update(marcaOrig).eq('id', dupId)
+    if (origErr) console.error('marcar original del duplicado fallo:', origErr.message)
+  }
+  const { error } = await supabase.from('alertas_tickets').insert({
+    registro_ticket_id: registroId, tipo: 'posible_duplicado', duplicado_de_id: dupId, resuelta: true,
+    correccion: { nota: 'rechazado solo como papel repetido; ver revision de fraude' },
+  })
+  if (error) console.error('alerta posible_duplicado fallo:', error.message)
+  return true
 }
 
 async function autoConfirmar(
