@@ -45,13 +45,24 @@ interface Ticket {
   gemini_raw: Record<string, unknown> | null
   es_duplicado: boolean | null
   duplicado_de: string | null
-  sucursales: { nombre: string } | null
+  sucursales: { nombre: string; es_prueba?: boolean } | null
   empleados: { nombre: string } | null
   sospechoso?: boolean
   sospecha_motivo?: string | null
   sospecha_origen?: string | null
   sospecha_grupo?: string | null
   sospecha_estado?: string | null
+}
+interface Bloque { tickets: number; monto: number }
+// Respuesta de la RPC resumen_tickets (migracion 056/057): la misma que usa la API del programa de cuentas.
+interface Resumen {
+  subidos: Bloque
+  oficiales: Bloque
+  en_revision: Bloque
+  no_validos: Bloque & { por_motivo: { duplicado: Bloque; fraude: Bloque; otro: Bloque } }
+  otros_estados: Bloque
+  por_justificar: number
+  tickets_sin_monto_leido: number
 }
 interface AlertRow {
   registro_ticket_id: string
@@ -195,6 +206,30 @@ export default function TicketsPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [itemOrderSupported, setItemOrderSupported] = useState(true)
+  const [resumen, setResumen] = useState<Resumen | null>(null)
+  const [resumenError, setResumenError] = useState<string | null>(null)
+  const [resumenAbierto, setResumenAbierto] = useState(false)
+  const resumenSeq = useRef(0)
+  const resumenClave = useRef('')
+
+  // Totales del periodo: subidos (todo, duplicados incluidos) vs oficiales (confirmados). Se calculan en la
+  // base (no con la lista cargada) para que coincidan con la API y no dependan del limite de la lista.
+  // Se recalculan al confirmar/rechazar (cambia `tickets`) y al cerrar el detalle (pudo cambiar un monto).
+  const detalleAbierto = detalle !== null
+  useEffect(() => {
+    const seq = ++resumenSeq.current
+    // Si cambio el filtro, no dejar a la vista los totales del filtro anterior mientras carga.
+    const clave = [desde, hasta, sucursalId, comercioFiltro].join('|')
+    if (resumenClave.current !== clave) { resumenClave.current = clave; setResumen(null) }
+    supabase.rpc('resumen_tickets', {
+      p_desde: desde, p_hasta: hasta, p_sucursal: sucursalId || null, p_comercio: comercioFiltro || null,
+    }).then(({ data, error }) => {
+      if (seq !== resumenSeq.current) return
+      if (error || !data) { setResumen(null); setResumenError(error?.message ?? 'sin datos'); return }
+      setResumenError(null)
+      setResumen(data as Resumen)
+    })
+  }, [desde, hasta, sucursalId, comercioFiltro, tickets, detalleAbierto])
 
   useEffect(() => {
     let q = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
@@ -214,7 +249,7 @@ export default function TicketsPage() {
   const fetchTickets = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
       // Periodo por FECHA DEL TICKET (igual que el Dashboard). Antes filtraba por fecha
       // de subida y se colaban tickets de julio subidos en agosto. Los que aun no
       // tienen fecha (IA sin leer, duplicados) entran por su fecha de subida.
@@ -720,7 +755,7 @@ export default function TicketsPage() {
       // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
       // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
       const { data: fresh } = await supabase.from('registros_tickets')
-        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre), empleados:empleado_id(nombre)')
+        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
         .eq('id', t.id).maybeSingle()
       await abrirDetalle((fresh as unknown as Ticket) ?? t)
       toast('Ticket releido con IA')
@@ -785,7 +820,13 @@ export default function TicketsPage() {
     toast(motivoCorte ? `${motivoCorte} ${resumen}` : resumen, motivoCorte ? 'error' : undefined)
   }
 
+  // Un ticket subido en una sucursal real nunca se borra: si no vale se RECHAZA, asi sigue contando en
+  // "Subidos" y se puede reclamar la diferencia. Solo se borran los de la sucursal de prueba.
+  // (Candado de pantalla: en la base un admin todavia puede borrar por SQL.)
+  const sePuedeEliminar = (t: Ticket) => !!t.sucursales?.es_prueba
+
   async function eliminarTicket(t: Ticket) {
+    if (!sePuedeEliminar(t)) { toast('Los tickets de sucursales reales no se eliminan: usa Rechazar.', 'error'); return }
     if (!(await confirm('Eliminar este ticket? Se borran registro, renglones y foto. No se puede deshacer.', { danger: true }))) return
     const pb = pathBucket(t)
     if (pb) await supabase.storage.from(pb.bucket).remove([pb.path])
@@ -872,6 +913,62 @@ export default function TicketsPage() {
             {comerciosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
+      </div>
+
+      <div className="rounded-2xl bg-zinc-900 border border-zinc-800">
+        <button type="button" onClick={() => setResumenAbierto(a => !a)} aria-expanded={resumenAbierto}
+          className="w-full text-left p-4 flex flex-wrap items-end gap-x-8 gap-y-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Subidos (todo)</p>
+            <p className="text-xl font-semibold text-zinc-100">{resumen ? fmt(resumen.subidos.monto) : '…'}</p>
+            <p className="text-[11px] text-zinc-500">{resumen ? resumen.subidos.tickets : '-'} tickets, con duplicados y rechazados</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Oficiales (confirmados)</p>
+            <p className="text-xl font-semibold text-emerald-300">{resumen ? fmt(resumen.oficiales.monto) : '…'}</p>
+            <p className="text-[11px] text-zinc-500">{resumen ? resumen.oficiales.tickets : '-'} tickets</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Por justificar</p>
+            <p className={`text-xl font-semibold ${resumen && resumen.por_justificar > 0 ? 'text-amber-300' : 'text-zinc-100'}`}>{resumen ? fmt(resumen.por_justificar) : '…'}</p>
+            <p className="text-[11px] text-zinc-500">subidos − oficiales</p>
+          </div>
+          <span className="ml-auto text-xs text-zinc-500">{resumenAbierto ? 'Ocultar detalle' : 'Ver detalle'}</span>
+        </button>
+        {resumenError && <p className="px-4 pb-3 text-xs text-red-300">No se pudieron calcular los totales: {resumenError}</p>}
+        {resumenAbierto && resumen && (
+          <div className="border-t border-zinc-800 p-4 space-y-3 text-sm">
+            {([
+              { label: 'Oficiales (confirmados)', b: resumen.oficiales, cls: 'text-emerald-300', sub: false },
+              { label: 'Por revisar (aun sin decidir)', b: resumen.en_revision, cls: 'text-zinc-200', sub: false },
+              { label: 'Rechazados (no valen)', b: resumen.no_validos, cls: 'text-red-300', sub: false },
+              { label: 'En revision de Fraude (papel repetido, alterado)', b: resumen.no_validos.por_motivo.fraude, cls: 'text-zinc-400', sub: true },
+              { label: 'Misma foto subida dos veces', b: resumen.no_validos.por_motivo.duplicado, cls: 'text-zinc-400', sub: true },
+              { label: 'Otros (ilegible, manual)', b: resumen.no_validos.por_motivo.otro, cls: 'text-zinc-400', sub: true },
+              ...(resumen.otros_estados.tickets > 0 ? [{ label: 'Otros estados (archivados)', b: resumen.otros_estados, cls: 'text-zinc-200', sub: false }] : []),
+            ]).map(r => (
+              <div key={r.label} className={`flex items-baseline gap-3 ${r.sub ? 'pl-5 text-xs' : ''}`}>
+                <span className={`flex-1 ${r.sub ? 'text-zinc-500' : 'text-zinc-300'}`}>{r.label}</span>
+                <span className="text-zinc-500 text-xs">{r.b.tickets} tickets</span>
+                <span className={`w-28 text-right ${r.cls}`}>{fmt(r.b.monto)}</span>
+              </div>
+            ))}
+            <div className="flex items-baseline gap-3 border-t border-zinc-800 pt-3">
+              <span className="flex-1 text-zinc-200 font-medium">Subidos (todo)</span>
+              <span className="text-zinc-500 text-xs">{resumen.subidos.tickets} tickets</span>
+              <span className="w-28 text-right text-zinc-100 font-medium">{fmt(resumen.subidos.monto)}</span>
+            </div>
+            <p className="text-xs text-zinc-500">
+              Si el gasto que reporta el gerente cuadra contra TODO lo subido, la diferencia con lo oficial ({fmt(resumen.por_justificar)}) es lo que no puede comprobar.
+              Un duplicado sin monto propio cuenta con el monto de su original. Los rechazados y por revisar no entran a ningun arqueo.
+              {resumen.tickets_sin_monto_leido > 0 && ` ${resumen.tickets_sin_monto_leido} tickets no tienen monto legible y cuentan como $0.`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setFiltroEstado('todos')} className="rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium px-3 py-1.5">Ver todos los subidos</button>
+              <button type="button" onClick={() => setFiltroEstado('confirmados')} className="rounded-lg bg-emerald-700/80 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5">Ver solo los oficiales</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -1091,7 +1188,9 @@ export default function TicketsPage() {
                 {detalle.ticket.estado !== 'confirmado' && (
                   <button onClick={() => confirmarTicket(detalle.ticket)} disabled={busy === 'confirmar'} className="w-full rounded-xl bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 disabled:opacity-60">{busy === 'confirmar' ? 'Confirmando...' : 'Confirmar ticket'}</button>
                 )}
-                <button onClick={() => eliminarTicket(detalle.ticket)} className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400">Eliminar ticket</button>
+                {sePuedeEliminar(detalle.ticket)
+                  ? <button onClick={() => eliminarTicket(detalle.ticket)} className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400">Eliminar ticket</button>
+                  : <p className="text-[11px] text-zinc-500 text-center">Los tickets de sucursales reales no se eliminan: si no vale, usa Rechazar (sigue contando en &quot;Subidos&quot;).</p>}
               </div>
             </div>
           </div>

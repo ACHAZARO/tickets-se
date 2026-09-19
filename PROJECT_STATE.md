@@ -1,7 +1,28 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-18 (noche).
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-19.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-09-19 (Claude) -- "Subidos vs oficiales" en Tickets + API de solo lectura para el programa de cuentas
+**Idea (Alejandro):** si un gerente mete tickets de mas (duplicados, facturas dobles, alterados) para que su gasto real cuadre, hay que
+poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa de revision de cuentas debe poder consultarlo.
+- **Definiciones (una sola fuente: RPC `resumen_tickets`, migraciones 056-058):** `subidos` = TODO el periodo, cualquier estado, duplicado
+  sin monto propio cuenta con el monto de su original; `oficiales` = confirmados (monto ya corregido en la revision); `en_revision` =
+  pendientes; `no_validos` = rechazados (`por_motivo`: fraude = sospechoso no descartado, duplicado = misma foto, otro);
+  `por_justificar` = subidos - oficiales. Periodo por fecha del ticket (como la pantalla). Sucursal PRUEBA (`sucursales.es_prueba`) no entra.
+- **Pantalla Tickets:** tarjeta arriba (Subidos / Oficiales / Por justificar) que al hacer clic muestra el desglose y botones "Ver todos
+  los subidos" / "Ver solo los oficiales". La lista "Todos" ya incluia rechazados. **"Eliminar ticket" solo existe para la sucursal de
+  prueba** (candado de pantalla; por SQL un admin aun puede borrar); en sucursales reales se RECHAZA (si se borra, desaparece de "Subidos" y se pierde la evidencia).
+- **API `api-cuentas` (edge function v2, verify_jwt=false, auth propia):** `GET /resumen?desde&hasta[&sucursal]` y `GET /sucursales`.
+  Solo lectura, sin CORS. Llave `tk_...` en `_secretos/llave-api-programa-cuentas.txt` (fuera de git); en BD solo el hash (`api_keys`).
+  Guia completa para el programa: `API_CUENTAS.md`. Probada: 401 sin/mala llave, 405 POST, 400 fechas malas, 404 ruta/sucursal, 200 con datos
+  iguales a la RPC (jun-sep: subidos $730,141.88 / oficiales $699,105.94 / por justificar $31,035.94; WP julio oficial $155,808.62 = tabla 18-sep).
+- **Migraciones:** 056 (`es_prueba`, `api_keys`, `resumen_tickets`; en el historial de Supabase se llama `055_resumen_tickets_y_api` porque
+  la 055 de Adan Melchor se aplico el mismo dia), 057 (motivo fraude antes que duplicado) y 058 (ajustes de la revision independiente:
+  el monto del original solo se presta a duplicados NO confirmados; "todas" = solo sucursales activas). API en v2 (fecha imposible = 400).
+- **Datos (hallazgo):** PRUEBA tiene 1 ticket confirmado con total $2,150.54 y renglones $1,945.54 (no afecta: PRUEBA esta excluida).
+  `tickets_sin_monto_leido`: 35 en WP (44 rechazados sin monto: 11 copias de foto ya cuentan con el monto de su original; el resto ilegibles).
+- **Pendiente:** verificar la pantalla en vivo tras el deploy; fecha de rotacion de la llave (decision de Alejandro); rutas de precios/stock de la API si las pide.
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.

@@ -5,13 +5,12 @@ Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tic
 
 > **Estado vivo y "como funciona al momento": ver `PROJECT_STATE.md`.** Este archivo es la guia estable; PROJECT_STATE tiene el detalle actualizado del flujo, tablas y secciones del admin.
 
-## Colaboracion Claude + Codex
-- Claude y Codex trabajan sobre el mismo repo local. Antes de cambiar codigo, ambos deben leer `CLAUDE.md`/`AGENTS.md`, `PROJECT_STATE.md` y el archivo especifico a tocar.
-- `CLAUDE.md` y `AGENTS.md` deben mantenerse sincronizados en instrucciones estables. `PROJECT_STATE.md` manda para el estado vivo, hallazgos recientes, pendientes y decisiones.
-- Codex puede encargarse de auditorias locales, builds, ediciones y verificacion en el workspace. Claude puede continuar desde estos documentos sin asumir memoria externa.
-- Si un agente encuentra deuda o bugs sin corregir en la sesion, debe dejarlos en `PROJECT_STATE.md` con fecha, evidencia y siguiente accion sugerida.
+## Agentes en este repo (Codex retirado 2026-07-28)
+- **Claude es el unico agente activo**: edita codigo, despliega edge functions y aplica migraciones (Supabase MCP). El frontend lo despliega Vercel solo al hacer push a `main`. La antigua colaboracion Claude+Codex y su bitacora en `AGENTS.md` quedan SOLO como historial.
+- Antes de cambiar codigo: leer `CLAUDE.md`/`AGENTS.md`, `PROJECT_STATE.md` y el archivo especifico a tocar.
+- `CLAUDE.md` y `AGENTS.md` se mantienen sincronizados en instrucciones estables. `PROJECT_STATE.md` manda para el estado vivo, hallazgos recientes, pendientes y decisiones.
+- Deuda o bugs sin corregir en la sesion: dejarlos en `PROJECT_STATE.md` con fecha, evidencia y siguiente accion sugerida.
 - No pisar cambios no propios. Revisar `git status` antes de editar, usar paths especificos al stagear y nunca commitear secretos.
-- **Reparto de despliegues**: Codex NO puede desplegar edge functions ni aplicar migraciones (sin token Supabase). Claude SI (Supabase MCP). Cuando Codex toque `backend/supabase/functions/**` o `supabase/migrations/**`, deja `PENDIENTE DEPLOY (Claude)` en la bitacora de `AGENTS.md`; Claude despliega y marca hecho. La bitacora viva de sincronizacion esta en `AGENTS.md`.
 
 ## Stack
 - **Frontend**: Next.js 14 (Vercel), optimizado para movil + panel `/admin`
@@ -67,6 +66,8 @@ revision de tickets/
 |           |   +-- index.ts           # Admin relanza IA y reemplaza renglones
 |           +-- enviar-alerta-email/
 |               +-- index.ts           # Resend para alertas criticas
+|           +-- api-cuentas/
+|               +-- index.ts           # API SOLO LECTURA para el programa de cuentas (llave tk_..., ver API_CUENTAS.md)
 |
 +-- supabase/
 |   +-- migrations/
@@ -215,8 +216,8 @@ Configurados como Supabase Secrets (`npx supabase secrets set`):
 | `superpowers:brainstorming` | Antes de disenar features nuevas |
 | `superpowers:writing-plans` | Tareas multi-paso |
 | `superpowers:executing-plans` | Seguir un plan aprobado |
-| `code-review` | Despues de cambios significativos |
-| `session-budget` | Tareas largas o autonomas (/loop) |
+| `code-reviewer` | Despues de cambios significativos; 2do pase sobre el diff en commits >200 LOC |
+| `mem-search` | Historial de sesiones viejas (claude-mem REACTIVADO 2026-07-28) |
 | `frontend-design` | Redisenos grandes de UI |
 | `anthropic-skills:pdf` / `xlsx` | Si necesitan reportes |
 | `vercel:deploy` / `vercel:status` | Problemas de deployment |
@@ -224,7 +225,7 @@ Configurados como Supabase Secrets (`npx supabase secrets set`):
 ### NO usar en este proyecto
 - `gws-*` -- No usamos Google Workspace directamente
 - `ruflo-*` -- Over-engineering
-- `checkpro-codex` -- Solo para CheckPro
+- `checkpro-codex` / `session-budget` -- ELIMINADOS 2026-07-28 (ya no existen; no recrear)
 - `wings-palace` -- Solo para Wings Palace
 
 ---
@@ -251,26 +252,13 @@ Configurados como Supabase Secrets (`npx supabase secrets set`):
    - Errores encontrados y como se resolvieron
 2. **Commit y push** de los cambios a GitHub
 3. **Guarda memoria** si hubo decisiones no-obvias
+4. **Sesion sustancial:** actualiza `RECUPERACION.md` (secciones 2, 3 y 4) y refresca las copias de `respaldo-config-claude/` (comandos en su README). `DIRECTORIO_CUENTAS.md` se toca solo si cambio una cuenta, correo o llave (nunca con valores)
 
 ---
 
-## Compatibilidad con Codex CLI
+## Comandos CLI de referencia
 
-Este proyecto puede trabajarse desde Codex CLI. Consideraciones:
-
-### Codex puede
-- Leer/editar archivos del frontend y backend
-- Correr `npm` commands en `/frontend`
-- Correr `git` commands
-- Leer este CLAUDE.md y PROJECT_STATE.md
-
-### Codex NO puede
-- Ejecutar Supabase MCP tools (usar CLI en su lugar)
-- Ejecutar Vercel MCP tools (usar CLI: `npx vercel`)
-- Abrir navegador para OAuth flows
-- Acceder a secrets de Supabase directamente
-
-### Comandos CLI equivalentes para Codex
+> Seccion heredada del flujo con Codex (retirado 2026-07-28). Los comandos siguen siendo utiles como referencia manual; Claude normalmente despliega con Supabase MCP y Vercel auto-deploya desde GitHub.
 
 ```bash
 # Supabase
@@ -289,14 +277,7 @@ cd frontend && npx vercel --prod
 # Google Sheets (no hay CLI, usar scripts/setup-sheet.js como referencia)
 ```
 
-### Archivos que Codex debe leer primero
-1. `CLAUDE.md` (este archivo)
-2. `PROJECT_STATE.md`
-3. El archivo especifico que va a editar
-
----
-
-## Migraciones aplicadas (001–026)
+## Migraciones aplicadas (001–029)
 - `001` schema base (sucursales, empleados, registros_tickets, verificar_pin)
 - `002` fix search_path pgcrypto · `003` tablas backoffice · `004` columnas registros · `005` seed categorias
 - `006` auth/RLS admin · `007` RLS read empleados · `008` ventas + objetivos_costo
@@ -310,6 +291,15 @@ cd frontend && npx vercel --prod
 - `023` RLS admin-only (`admin_users`/`is_admin()`) · `024` grants de RPC (hardening)
 - `025` equivalencia 2 niveles (`contiene_sub_cantidad`/`contiene_sub_unidad`): caja → pz → ml
 - `026` revision de fraude (`sospechoso`, `sospecha_motivo`/`origen`/`grupo`/`estado`)
+- `027` hardening RPC grants v2 · `028` `ticket_items.orden` · `029` storage admin-only
+- `030`–`055`: ver `PROJECT_STATE.md` (IA de lectura, revision contra foto, envios, Bodega, etc.)
+- `056` `resumen_tickets` (subidos vs oficiales) + `api_keys` + `sucursales.es_prueba` · `057` motivo fraude primero · `058` ajustes de revision (duplicado confirmado cuenta $0; solo sucursales activas)
+
+## API para el programa de cuentas (2026-09-19)
+Edge function `api-cuentas` (solo lectura, `verify_jwt=false` con llave propia `tk_...`, solo hash en `api_keys`). Guia y ejemplos: `API_CUENTAS.md`.
+La llave vive en `_secretos/llave-api-programa-cuentas.txt` (gitignored). Los totales salen de la RPC `resumen_tickets`, la MISMA que usa la tarjeta
+"Subidos / Oficiales / Por justificar" de `/admin/tickets`: subidos = todo (duplicados incluidos), oficiales = confirmados, por justificar = la diferencia.
+Tickets de sucursales reales NO se eliminan (se rechazan) para no perder evidencia.
 
 ---
 
@@ -324,4 +314,10 @@ cd frontend && npx vercel --prod
 
 ---
 
-**Ultima actualizacion:** 2026-06-08 — Tickets concentra revision, renglones y relectura IA. Detalle vivo en `PROJECT_STATE.md`.
+## claude-mem REACTIVADO (2026-07-28)
+
+El plugin **claude-mem** (busqueda en transcripts de sesiones pasadas via `mem-search`) esta **ACTIVO** de nuevo desde 2026-07-28 (`"claude-mem@thedotmack": true` en `~\.claude\settings.json`; estuvo apagado 2026-06-16 → 2026-07-28, los datos nunca se borraron). Orden de memoria: este CLAUDE.md → PROJECT_STATE.md → MEMORY.md curado → `mem-search` para arqueologia.
+
+---
+
+**Ultima actualizacion:** 2026-07-28 — Codex retirado del flujo (Claude unico agente); skills estandar actualizadas; claude-mem reactivado. (Anterior 2026-06-08: Tickets concentra revision, renglones y relectura IA. Detalle vivo en `PROJECT_STATE.md`.)
