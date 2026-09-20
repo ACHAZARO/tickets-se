@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { computeBaseUnits, formatBaseUnits, pretty } from '@/lib/units.mjs'
@@ -32,8 +32,12 @@ export default function EntradasPage() {
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState('')
 
+  // Solo pinta la ULTIMA carga: al abrir, la sucursal guardada se restaura despues del primer render y salen
+  // dos cargas seguidas; si la vieja terminaba despues, la lista mostraba otra sucursal que el selector.
+  const fetchSeq = useRef(0)
   const fetchData = useCallback(async () => {
     setLoading(true)
+    const seq = ++fetchSeq.current
     let q = supabase.from('ticket_items')
       .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(nombre, unidad_base)), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado')
@@ -74,6 +78,7 @@ export default function EntradasPage() {
       }
       map.set(key, f)
     }
+    if (seq !== fetchSeq.current) return
     setFilas([...map.values()].sort((a, b) => b.gasto - a.gasto))
     setLoading(false)
   }, [desde, hasta, sucursalId])
