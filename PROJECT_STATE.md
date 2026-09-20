@@ -14,6 +14,11 @@ Alejandro va a vender la app a otros locales. **Regla de oro: nada propio de un 
   cuenta). La foto repetida solo se compara dentro de la misma cuenta. CERO productos globales (eran 21: 12 asignados, 6
   divididos con copia, 3 inactivos; respaldo `respaldo.r074_*`) y candado `catalogo_productos.sucursal_id NOT NULL`.
   `ligar_huerfano` trabaja sucursal por sucursal. Catalogo no deja crear en "Todas".
+- **Deploy:** procesar-ticket **v49**, reprocesar-ticket **v21**, confirmar-admin **v12** (byte a byte = repo; OPTIONS 200 y
+  POST sin token 401). **Falta la prueba en vivo:** en el proximo ticket real, `gemini_raw._reglas_negocio` debe ser 2 en
+  Santa Elena y 1 en Wings, el comercio no debe ser "Santa Elena"/"Wings Palace", y playo/bolsas/cinta deben caer en Bodega.
+  Consulta: `select s.nombre, r.created_at, r.comercio, r.gemini_raw->>'_reglas_negocio' from registros_tickets r join
+  sucursales s on s.id = r.sucursal_id order by r.created_at desc limit 5;`
 - **Verificado:** regla de Bodega identica a la anterior (mismo md5); prompt de un negocio ajeno sin nada nuestro; 0 renglones
   y 0 precios cruzados entre sucursales; los confirmados siguen cuadrando al centavo. Mapa previo + revision adversarial
   (2 workflows) antes de aplicar.
