@@ -103,6 +103,13 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   Entradas/Stock pintaban la carga vieja (mostraban Santa Elena con el selector en PRUEBA; misma guarda de "ultima carga" que
   Tickets) y el modal de consumo abria en la unidad granular (g) en vez de la del insumo (kg).
   **Par de FRESA reabierto** (estaba en "no son iguales"): es el caso tipico de dos tamanos.
+- **Catalogo de SANTA ELENA revisado por Alejandro (20-sep):** 5 unificaciones (Mantequilla -> Mantequilla Gloria 1 kg;
+  Aguacates -> AGUACATE, 44 renglones; Hojas de aguacate -> Hoja de aguacate; CUPON DE DESCUENTO -> DESCUENTO, 9; Fajillas
+  vaso craft), 2 insumos creados (**Fresa** en kg = 454 g + 907 g · **Cinchos Plasticos Bolsa** en pz = 25 + 50) y 10 pares
+  marcados "no son iguales". **Quedan 10 casos EN ESPERA de consultarlo con la gerente** (no son errores, falta el dato del
+  negocio): "Sal fina" vs "Sal 1 kg" y vs "Sal La Fina 1.1 kg" (¿que sal compran?), "Harina de trigo" vs "Harina de trigo 1 kg",
+  y 7 menos seguros (Naranja Galon/Gacela, Hoja de aguacate/AGUACATE, CEBOLLA/Cebolla morada, Guantes, Frijol, los dos Vinagres).
+  **Wings Palace sin revisar** (12 fuertes + 44 menos seguros): lo vera Alejandro despues.
   **Ya unificado (a peticion): Santa Elena "Mantequilla" -> "Mantequilla Gloria 1 kg"** (11 renglones, $12,762.72; se le declaro 1 pz = 1 kg).
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
