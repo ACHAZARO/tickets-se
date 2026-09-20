@@ -32,8 +32,11 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   alterado (papel $420, real $210) se registra con el monto REAL ($210) y se manda a Fraude/"revisar con gerente"; cuando el gerente
   responde, subidos y oficiales suman lo mismo (lo autorizado). "Por justificar" mide sobre todo tickets RECHAZADOS (notas dobles, viejas,
   gastos ajenos a la operacion). Ejemplo: sube 10x$100 = subidos 1000, se rechazan 5 = oficiales 500.
-- **Pendiente:** verificar la pantalla en vivo antes del push (Alejandro debe iniciar sesion en el navegador del panel);
-  fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
+- **Pantalla VERIFICADA en produccion (20-sep, Chrome de Alejandro):** WP julio = Subidos $175,710.21 (252) / Oficiales $155,808.62 (230) /
+  Por justificar $19,901.59, igual que la API; el desglose (fraude $15,961.72 en 12, misma foto $3,939.87 en 10) tambien cuadra. Se vio un
+  desfase intermitente: la lista mostraba SANTA ELENA con el selector en WINGS PALACE (dos cargas seguidas al abrir, la vieja terminaba
+  despues). Arreglado con guarda de ultima carga en `fetchTickets` (`fetchSeq`).
+- **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
   Alejandro: candado de "Eliminar" en pantalla (solo admin) OK; cron `limpiar-imagenes-tickets` (fotos de +1 ano) OK, antes se
   descarga respaldo (ojo: hoy falla cada mes porque Supabase bloquea borrar fotos por SQL; rehacerlo con la API de Storage antes

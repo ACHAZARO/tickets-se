@@ -246,7 +246,13 @@ export default function TicketsPage() {
     setCatalogo((data as CatalogProduct[] | null) ?? [])
   }, [])
 
+  // Solo la ULTIMA carga pinta la pantalla: al abrir, la sucursal guardada se restaura despues del primer
+  // render y salen dos cargas seguidas; si la vieja (todas las sucursales) terminaba despues, la lista
+  // mostraba otra sucursal que la tarjeta de totales (visto en produccion el 20-sep).
+  const fetchSeq = useRef(0)
   const fetchTickets = useCallback(async () => {
+    const seq = ++fetchSeq.current
+    const vigente = () => seq === fetchSeq.current
     setLoading(true)
     let q = supabase.from('registros_tickets')
       .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
@@ -258,6 +264,7 @@ export default function TicketsPage() {
       .order('created_at', { ascending: false }).limit(LIMITE_TICKETS)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)
     const { data, error } = await q
+    if (!vigente()) return
     if (error) { setLoadError(error.message); setTickets([]); setLoading(false); return }
     const rows = (data as unknown as Ticket[]) ?? []
     setLoadError(null)
@@ -274,6 +281,7 @@ export default function TicketsPage() {
       const { data: alerts, error: alertErr } = await supabase.from('alertas_tickets')
         .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
         .in('registro_ticket_id', ids.slice(i, i + 300)).eq('resuelta', false)
+      if (!vigente()) return
       if (alertErr) { setAviso('No se pudieron cargar las alertas (las etiquetas pueden faltar): ' + alertErr.message); break }
       for (const a of (alerts as AlertRow[] | null) ?? []) {
         map[a.registro_ticket_id] = [...(map[a.registro_ticket_id] ?? []), a]
@@ -289,6 +297,7 @@ export default function TicketsPage() {
       const { data: signed } = await supabase.storage.from(bucket).createSignedUrls(byBucket[bucket], 3600)
       for (const s of signed ?? []) if (s.signedUrl && s.path) urlMap[`${bucket}/${s.path}`] = s.signedUrl
     }
+    if (!vigente()) return
     setUrls(urlMap)
     setLoading(false)
   }, [desde, hasta, sucursalId])
