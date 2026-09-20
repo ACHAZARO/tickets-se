@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
 import { AdminUIProvider } from './ui'
+import { CerebroBadge } from './unificar'
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Gasto' },
@@ -92,6 +93,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 }`}
               >
                 {item.label}
+                {item.href === '/admin/cerebro' && <CerebroBadge pathname={pathname} />}
               </Link>
             ))}
           </nav>

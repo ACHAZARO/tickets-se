@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useToast, useConfirm } from '../ui'
+import { PanelDuplicados } from '../unificar'
 
 interface Categoria { id: string; nombre: string }
 interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null }
@@ -188,6 +189,8 @@ export default function CerebroPage() {
           {sel && <button onClick={() => setSel(null)} className="ml-2 text-blue-400 hover:text-blue-300">limpiar selección</button>}
         </p>
       </div>
+
+      <PanelDuplicados categorias={categorias} onCambio={fetchData} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* COMERCIOS */}

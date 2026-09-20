@@ -67,6 +67,17 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   del catalogo, no de la API: productos duplicados ("Mantequilla" y "Mantequilla Gloria 1 kg") salen separados; solo 0.3% de Insumos
   no esta ligado al catalogo.
   Texto para otra IA actualizado en `API_CUENTAS.md`.
+- **Unificar productos del catalogo (20-sep, regla de Alejandro; migraciones 070-072 + `admin/unificar.tsx`):** cuando el catalogo tiene el mismo
+  insumo con dos nombres ("Mantequilla" / "Mantequilla Gloria 1 kg") el sistema lo DETECTA, lo avisa con un circulito ambar junto a "Cerebro" y
+  lo PREGUNTA en un panel arriba de Cerebro ("Posibles duplicados"): Unificar en A / Unificar en B / No son iguales (se recuerda, no se vuelve a
+  preguntar). NUNCA une solo. Tambien hay "unificar" por producto en Catalogo (elige el que se queda entre los de su categoria).
+  Motor `_unificar_productos`: misma categoria y misma sucursal (o el destino global); mueve renglones, precio_historial y consumo_inventario al que
+  se queda, que aprende el nombre del absorbido como sinonimo (la IA sigue ligando ambos); cada renglon conserva lo capturado; respaldo en
+  `respaldo.unificaciones_productos` (fila del absorbido + ids movidos). Detector: `sinonimo` (uno ya era sinonimo del otro) / `igual` (mismo
+  nombre sin tamanos ni plurales) = "muy probables" (cuentan en el circulito); `parecido` (el nombre corto es UNA palabra dentro del otro) = "menos
+  seguros" (colapsados). Si los dos nombres traen medidas distintas NO se sugiere (Tapa 14 oz / 16 oz, Bolsa #10 / #14 son presentaciones
+  distintas); los codigos de proveedor de 5+ digitos no cuentan como medidas. Hoy: 22 muy probables + 48 menos seguros (todo el catalogo).
+  **Ya unificado (a peticion): Santa Elena "Mantequilla" -> "Mantequilla Gloria 1 kg"** (11 renglones, $12,762.72; se le declaro 1 pz = 1 kg).
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
   Alejandro: candado de "Eliminar" en pantalla (solo admin) OK; cron `limpiar-imagenes-tickets` (fotos de +1 ano) OK, antes se

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { buildEquivalenceUpdate } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm } from '../ui'
+import { unificarProductos } from '../unificar'
 
 interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
 interface Producto {
@@ -52,6 +53,9 @@ export default function CatalogoPage() {
   // borrado de categoria (con reasignacion si tiene contenido)
   const [delCat, setDelCat] = useState<null | { cat: Categoria; nProd: number; nItems: number; destino: string }>(null)
   const [borrando, setBorrando] = useState(false)
+  // unificar un producto con otro (mismo insumo, dos nombres)
+  const [unifProd, setUnifProd] = useState<null | { id: string; destinoId: string }>(null)
+  const [unificando, setUnificando] = useState(false)
 
   const fetchData = useCallback(async () => {
     let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
@@ -68,6 +72,8 @@ export default function CatalogoPage() {
 
   async function agregarCat() {
     if (!nuevaCat.trim()) return
+    // Lo que se crea es de UN negocio: nunca global (la app la usan varios negocios).
+    if (!sucursalId) { toast('Elige una sucursal arriba para crear la categoría: cada negocio tiene las suyas.', 'error'); return }
     setSavingCat(true)
     const maxOrden = categorias.reduce((m, c) => Math.max(m, c.orden), 0)
     await supabase.from('categorias_gasto').insert({ nombre: nuevaCat.trim(), orden: maxOrden + 1, sucursal_id: sucursalId || null })
@@ -116,6 +122,8 @@ export default function CatalogoPage() {
 
   async function guardarProducto() {
     if (!addProd || !addProd.nombre.trim()) return
+    // Un producto siempre es de UNA sucursal: lo que aprende un negocio no debe aparecerle a otro.
+    if (!sucursalId) { toast('Elige una sucursal arriba para crear el producto: cada negocio tiene su catálogo.', 'error'); return }
     setSavingProd(true)
     await supabase.from('catalogo_productos').insert({
       nombre: addProd.nombre.trim(),
@@ -138,6 +146,19 @@ export default function CatalogoPage() {
     const { error } = await supabase.from('catalogo_productos').delete().eq('id', p.id)
     if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return }
     setProductos(prev => prev.filter(x => x.id !== p.id))
+  }
+  async function ejecutarUnificacion(p: Producto) {
+    if (!unifProd || unifProd.id !== p.id || !unifProd.destinoId) return
+    const destino = productos.find(x => x.id === unifProd.destinoId)
+    if (!destino) return
+    if (!(await confirm(`¿Unificar "${p.nombre}" dentro de "${destino.nombre}"? Sus compras pasan a "${destino.nombre}", que también reconocerá el nombre "${p.nombre}". Queda respaldo.`))) return
+    setUnificando(true)
+    const r = await unificarProductos(p.id, destino.id)
+    setUnificando(false)
+    if (!r.ok) { toast('No se pudo unificar: ' + r.error, 'error'); return }
+    toast(`Unificado: ${r.renglones} renglones ahora en "${destino.nombre}"`)
+    setUnifProd(null)
+    fetchData()
   }
   async function guardarEdicion() {
     if (!editProd || !editProd.categoria_id) return
@@ -260,9 +281,33 @@ export default function CatalogoPage() {
                         </div>
                         <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, nombre: p.nombre, nombreOriginal: p.nombre, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), ...splitEquivalenceFields(p) })}
                           className="text-xs text-blue-400 hover:text-blue-300">{editProd?.id === p.id ? 'cerrar' : 'editar'}</button>
+                        <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
+                          title="Es el mismo insumo que otro producto: unificarlos"
+                          className="text-xs text-amber-400 hover:text-amber-300">{unifProd?.id === p.id ? 'cancelar' : 'unificar'}</button>
                         <button onClick={() => toggleProd(p)} className={`text-xs px-2 py-1 rounded-lg ${p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
                         <button onClick={() => eliminarProd(p)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
                       </div>
+
+                      {unifProd?.id === p.id && (() => {
+                        // Solo productos de la misma categoria y del mismo alcance (misma sucursal o global).
+                        const candidatos = prods.filter(q => q.id !== p.id && (q.sucursal_id === p.sucursal_id || q.sucursal_id === null))
+                        return (
+                          <div className="mt-2 space-y-2 bg-zinc-800/40 rounded-lg p-3">
+                            <label className="block text-[11px] text-zinc-500">Unificar &quot;{p.nombre}&quot; dentro de otro producto de esta categoría (mismo insumo con otro nombre)</label>
+                            <select value={unifProd.destinoId} onChange={e => setUnifProd({ ...unifProd, destinoId: e.target.value })}
+                              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                              <option value="">Elige el producto que se queda…</option>
+                              {candidatos.map(q => <option key={q.id} value={q.id}>{q.nombre}{q.unidad_default ? ` (${q.unidad_default})` : ''}</option>)}
+                            </select>
+                            <p className="text-[11px] text-zinc-500">&quot;{p.nombre}&quot; desaparece del catálogo: sus compras pasan al producto elegido, que también reconocerá este nombre. Queda respaldo.</p>
+                            <div className="flex gap-2">
+                              <button onClick={() => ejecutarUnificacion(p)} disabled={!unifProd.destinoId || unificando}
+                                className="rounded-lg bg-zinc-100 px-3 py-1.5 text-sm font-semibold text-zinc-900 disabled:opacity-50">{unificando ? 'Unificando…' : 'Unificar'}</button>
+                              <button onClick={() => setUnifProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {editProd?.id === p.id && (
                         <div className="mt-2 space-y-2 bg-zinc-800/40 rounded-lg p-3">
