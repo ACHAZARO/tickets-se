@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { computeBaseUnits, formatBaseUnits, pretty } from '@/lib/units.mjs'
+import { SelectorPeriodo, rangoMesActual } from '../periodo'
 
 interface Fila {
   nombre: string
@@ -17,19 +18,14 @@ interface Fila {
   gasto: number
 }
 
-function primerDiaMesISO(): string {
-  const n = new Date()
-  return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}-01`
-}
-const hoyISO = () => new Date().toISOString().slice(0, 10)
 const num = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: 2 })
 const money = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigits: 2 })
 
 export default function EntradasPage() {
   const { sucursalId, sucursales } = useSucursal()
   const nombreSucursal = sucursalId ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? 'sucursal') : 'Todas'
-  const [desde, setDesde] = useState(primerDiaMesISO())
-  const [hasta, setHasta] = useState(hoyISO())
+  const [desde, setDesde] = useState(() => rangoMesActual().inicio)
+  const [hasta, setHasta] = useState(() => rangoMesActual().fin)
   const [filas, setFilas] = useState<Fila[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState('')
@@ -105,10 +101,8 @@ export default function EntradasPage() {
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div><label className="text-xs text-zinc-500 block mb-1">Desde</label>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100" /></div>
-        <div><label className="text-xs text-zinc-500 block mb-1">Hasta</label>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100" /></div>
+        <div><label className="text-xs text-zinc-500 block mb-1">Periodo</label>
+          <SelectorPeriodo desde={desde} hasta={hasta} onChange={(d, h) => { setDesde(d); setHasta(h) }} /></div>
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"
           className="flex-1 min-w-[160px] rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
       </div>
