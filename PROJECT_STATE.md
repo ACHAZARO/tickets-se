@@ -87,6 +87,16 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   075: el detector tardaba 2-8 s y en produccion fallaba por limite de tiempo (500): faltaban indices `producto_catalogo_id` en ticket_items /
   precio_historial / consumo_inventario y comparaba todos los pares; ahora 65 ms (158 ms todas las sucursales). Circulito y panel llevan
   guarda de "ultima carga" (mismo desfase que Tickets: la carga de "todas" terminaba despues de la de la sucursal).
+- **INSUMOS: un insumo, varias presentaciones (20-sep, migraciones 076-079):** pedido de Alejandro: "Sal 1 kg" y "Sal La Fina 1.1 kg" son
+  dos articulos (cada uno con su precio) pero UN insumo; el inventario debe decir "Sal: 2.1 kg". Tabla `insumos` (nombre + unidad_base,
+  por sucursal) + `catalogo_productos.insumo_id`; el "cuanto trae" sigue en `contiene_cantidad/unidad` (018). `admin_agrupar_insumo`
+  (agrupa y guarda contenidos), `admin_quitar_de_insumo`, `leer_contenido()` (lee el tamano del nombre: "FRESA 454 G" -> 454 g; los
+  multipack "12x90 g" quedan en blanco a proposito) y `nombre_insumo_sugerido()`. El detector gano el motivo **`presentacion`** (mismo
+  nombre, medidas distintas), que MANDA sobre sinonimo/igual (078: "FRESA 907 G" tenia de sinonimo a "FRESA 454 G" y se ofrecia unificar).
+  Panel de Cerebro en dos bloques: "Parecen el mismo articulo" (unificar) y "Mismo nombre, distinto tamaño" (agrupar), con formulario
+  editable (nombre del insumo, unidad base y cuanto trae cada presentacion). Entradas y Stock suman por insumo con la etiqueta "N tamaños"
+  (en Stock el consumo se registra en la presentacion mas comprada y se lee de todas). Hoy: SE 1 sinonimo + 2 iguales + 11 presentaciones;
+  WP 10 + 2 + 23. Alejandro revisa y confirma el a uno.
   **Ya unificado (a peticion): Santa Elena "Mantequilla" -> "Mantequilla Gloria 1 kg"** (11 renglones, $12,762.72; se le declaro 1 pz = 1 kg).
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de

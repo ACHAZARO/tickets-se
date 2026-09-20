@@ -12,8 +12,12 @@ interface Cadena {
   c2: number | null; u2: string | null   // nivel 2: cada u1 = c2 u2
 }
 interface Fila {
-  id: string            // producto_catalogo_id
+  id: string            // producto_catalogo_id donde se registra el consumo (el mas comprado del insumo)
   nombre: string
+  esInsumo: boolean     // agrupa varias presentaciones (migracion 076): "Sal" = Sal 1 kg + Sal 1.1 kg
+  presentaciones: string[]
+  productoIds: string[]
+  entradasPorProducto: Record<string, number>
   entradas: number      // unidades base (granular) compradas (confirmadas)
   consumo: number       // unidades base (granular) consumidas
   disponible: number
@@ -52,7 +56,7 @@ export default function StockPage() {
     setLoading(true)
     // Entradas: renglones CONFIRMADOS ligados a un producto del catalogo, en unidades base.
     let q = supabase.from('ticket_items')
-      .select('cantidad, unidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(estado, sucursal_id)')
+      .select('cantidad, unidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id)')
       .eq('registros_tickets.estado', 'confirmado').not('producto_catalogo_id', 'is', null).limit(8000)
     if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
 
@@ -68,7 +72,7 @@ export default function StockPage() {
     }
 
     const map = new Map<string, Fila>()
-    for (const row of (data as unknown as Array<{ cantidad: number | null; unidad: string | null; producto_catalogo_id: string; catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ cantidad: number | null; unidad: string | null; producto_catalogo_id: string; catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; insumos: { id: string; nombre: string; unidad_base: string } | null } | null }>) ?? []) {
       const prod = row.catalogo_productos
       if (!prod) continue
       const base = computeBaseUnits({
@@ -91,16 +95,30 @@ export default function StockPage() {
         c1: prod.contiene_cantidad, u1: prod.contiene_unidad,
         c2: prod.contiene_sub_cantidad, u2: prod.contiene_sub_unidad,
       }
-      const f = map.get(prod.id) ?? { id: prod.id, nombre: prod.nombre, entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad, cadena }
+      // Si el producto pertenece a un insumo, la fila es el INSUMO y suma todas sus presentaciones.
+      const insumo = prod.insumos ?? null
+      const key = insumo ? 'i:' + insumo.id : 'p:' + prod.id
+      const f = map.get(key) ?? {
+        id: prod.id, nombre: insumo?.nombre?.trim() || prod.nombre, esInsumo: !!insumo,
+        presentaciones: [] as string[], productoIds: [] as string[], entradasPorProducto: {} as Record<string, number>,
+        entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad, cadena,
+      }
       f.entradas += base.quantity
+      f.entradasPorProducto[prod.id] = (f.entradasPorProducto[prod.id] ?? 0) + base.quantity
+      if (!f.productoIds.includes(prod.id)) f.productoIds.push(prod.id)
+      if (insumo && !f.presentaciones.includes(prod.nombre)) f.presentaciones.push(prod.nombre)
       if (unidad && f.baseUnidad && f.baseUnidad !== unidad) f.baseUnidad = 'mixta'
       else if (!f.baseUnidad) f.baseUnidad = unidad
-      map.set(prod.id, f)
+      map.set(key, f)
     }
     const list: Fila[] = []
     for (const f of map.values()) {
-      f.consumo = consumoMap.get(f.id) ?? 0
+      // El consumo del insumo es el de TODAS sus presentaciones; se registra en la mas comprada.
+      f.consumo = f.productoIds.reduce((s, id) => s + (consumoMap.get(id) ?? 0), 0)
       f.disponible = f.entradas - f.consumo
+      f.id = f.productoIds.reduce((mejor, id) =>
+        (f.entradasPorProducto[id] ?? 0) > (f.entradasPorProducto[mejor] ?? 0) ? id : mejor, f.productoIds[0] ?? f.id)
+      if (f.esInsumo && f.presentaciones.length > 1) f.cadena = { purchaseUnit: f.baseUnidad, c1: null, u1: null, c2: null, u2: null }
       list.push(f)
     }
     list.sort((a, b) => b.entradas - a.entradas)
@@ -182,7 +200,16 @@ export default function StockPage() {
                 return (
                 <tr key={f.id} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
                   <td className="px-4 py-2.5 text-zinc-200">
-                    <div>{f.nombre}{dUnit ? <span className="text-zinc-600"> /{dUnit}</span> : ''}</div>
+                    <div>
+                      {f.nombre}{dUnit ? <span className="text-zinc-600"> /{dUnit}</span> : ''}
+                      {f.esInsumo && f.presentaciones.length > 1 && (
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300"
+                          title={f.presentaciones.join(' · ')}>{f.presentaciones.length} tamaños</span>
+                      )}
+                    </div>
+                    {f.esInsumo && f.presentaciones.length > 1 && (
+                      <div className="text-[11px] text-zinc-600 truncate max-w-[320px]">{f.presentaciones.join(' · ')}</div>
+                    )}
                     {f.cadena.c1 && f.cadena.u1 && (
                       <div className="text-[11px] text-zinc-500">Disponible: {vistasCadena(f.disponible, f.cadena).map(v => `${num(v.q)} ${v.u}`).join(' · ')}</div>
                     )}
