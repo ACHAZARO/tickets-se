@@ -293,7 +293,7 @@ cd frontend && npx vercel --prod
 - `026` revision de fraude (`sospechoso`, `sospecha_motivo`/`origen`/`grupo`/`estado`)
 - `027` hardening RPC grants v2 · `028` `ticket_items.orden` · `029` storage admin-only
 - `030`–`055`: ver `PROJECT_STATE.md` (IA de lectura, revision contra foto, envios, Bodega, etc.)
-- `056` `resumen_tickets` (subidos vs oficiales) + `api_keys` + `sucursales.es_prueba` · `057` motivo fraude primero · `058` ajustes de revision (duplicado confirmado cuenta $0; solo sucursales activas) · `059` cinta de empaque a Bodega · `060` `cuentas` + llaves de API atadas a una cuenta (la API nunca es global) · `068` `desglose_categoria` (API `/desglose`: una categoria por producto, ej. Bodega)
+- `056` `resumen_tickets` (subidos vs oficiales) + `api_keys` + `sucursales.es_prueba` · `057` motivo fraude primero · `058` ajustes de revision (duplicado confirmado cuenta $0; solo sucursales activas) · `059` cinta de empaque a Bodega · `060` `cuentas` + llaves de API atadas a una cuenta (la API nunca es global) · `068` `desglose_categoria` (API `/desglose`: una categoria por producto, ej. Bodega) · `069` unidades en minusculas en el desglose
 
 ## API para el programa de cuentas (2026-09-19)
 Edge function `api-cuentas` (solo lectura, `verify_jwt=false` con llave propia `tk_...`, solo hash en `api_keys`). Guia y ejemplos: `API_CUENTAS.md`.

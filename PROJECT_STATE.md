@@ -45,6 +45,11 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   agrega cada renglon, maximo 1000). El total coincide con `oficiales_por_categoria` del resumen (Bodega SE jun-sep $29,262.59: playo Reyma
   $11,004.35, bolsas 1 kg $8,926.15, Moto envio $2,078.51, flete $1,407.53...; incluye los envios que la 067 movio a Bodega). Categoria
   desconocida o de otra cuenta = 404 con `disponibles`. Aislamiento por cuenta re-probado con una cuenta ajena temporal (ya borrada).
+  Probado con TODAS las categorias (jun-sep): Insumos $530,490.73 / Otros op. $57,977.96 / Desechables $30,970.08 / Gas $41,705.25 /
+  Limpieza $18,654.48 / Bodega $29,262.59 / Extras $1,687.10 / Descuentos -$11,246.25, cada total = su renglon del resumen; responde en
+  0.6-1.2 s (Insumos: 309 productos, 84 KB). 069: unidades sin distinguir mayusculas ("kg" y "KG" se sumaban aparte). Limites que vienen
+  del catalogo, no de la API: productos duplicados ("Mantequilla" y "Mantequilla Gloria 1 kg") salen separados; solo 0.3% de Insumos
+  no esta ligado al catalogo.
   Texto para otra IA actualizado en `API_CUENTAS.md`.
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
