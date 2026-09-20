@@ -64,6 +64,16 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   anomalo) los revisa Alejandro a mano esta semana para ver como funciona la app.
 - **Cinta de empaque = Bodega (059):** por PRODUCTO, no por comercio (El Fenix/El Iris venden cosas de la cafeteria). 5 compras
   jun-sep ($2,087.60, incl. despachador de Office Depot) movidas; regla en gemini.ts.
+- **Playo de Adan Melchor = Bodega (062, Alejandro 19-sep):** el rollo grande "Playo stretch Reyma 18 cal 80 1300 ft" (solo se
+  le compra a Adan Melchor, solo SE): 40 rollos, $11,580.36 jun-sep. NO se movieron el "Polpusa 1000 ft" (El Bodegon) ni el
+  "clingfilm" (pelicula para alimentos). Regla en gemini.ts. **Bodega por mes (confirmado, SE):** jun $6,223.76 (playo
+  $1,153.74) / jul $4,791.44 ($2,236.50) / ago $8,148.15 ($4,734.06) / sep $5,728.20 ($2,880.05). Eso sale del % de operacion
+  del cafe (`cuenta_operativo=false`). **Ojo:** la categoria de la IA gana sobre la del catalogo, por eso la regla del prompt
+  es la que sostiene esto; si aparece un playo/cinta/bolsa en Desechables, revisar el prompt antes que el catalogo.
+- **Limpieza de catalogo (063):** habia DOS productos activos para el mismo rollo grande de playo con el mismo sinonimo
+  ("Playo stretch 18 cal 80 1300 pies", 0 compras, fundido en el de Reyma) y al playo Polpusa se le habia colado el sinonimo
+  "10000007 MINERAL 24/.355L RT" (agua mineral): quitado. Vale la pena un barrido de sinonimos colados como ese.
+- **Correccion de totales:** la tabla de arriba tenia jun/jul de SE sin los $60 que quito la migracion 053 a cada mes.
 
 ## Sesion 2026-09-18 (noche, Claude) -- TODO revisado contra foto: Santa Elena jun-sep + Wings mayo-julio
 **Resultado:** 884 tickets revisados uno por uno contra su foto (workflow de revisores) y cargados sin copiar SQL.
@@ -73,7 +83,7 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
 | Sucursal | May | Jun | Jul | Ago | Sep (al 18) |
 |---|---|---|---|---|---|
 | Wings Palace | $62,836.30 (99) | $155,927.41 (239) | $155,808.62 (230) | $109,777.11 (192) | sin subir |
-| Santa Elena | - | $73,313.48 (131) | $81,378.50 (148) | $75,836.63 (136) | $47,244.19 (90) |
+| Santa Elena | - | $73,193.48 (131) | $81,318.50 (148) | $75,836.63 (136) | $47,640.19 (92 al 19-sep) |
 - Santa Elena: 508 tickets (se_ago 158 + se_resto 350) + 1 del 18-sep; 4 fotos repetidas rechazadas. Envios a mano
   registrados como "Moto envio": jun $1,417 / jul $1,637 / ago $1,964 / sep $905 (050, 051: segunda pasada solo de envios).
   Catalogo SE: 159 productos nuevos, 19 basura fundidos (047), AVE ACTION FRY -> Insumos, CUPON -> Descuentos, playo separado en
