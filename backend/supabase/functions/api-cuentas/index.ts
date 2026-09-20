@@ -1,5 +1,6 @@
 // API de SOLO LECTURA para el programa que revisa cuentas.
 //   GET /api-cuentas/resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=slug]
+//   GET /api-cuentas/desglose?categoria=Bodega&desde=..&hasta=..[&sucursal=slug][&detalle=1]
 //   GET /api-cuentas/sucursales
 // Auth: llave en `Authorization: Bearer tk_...` o `x-api-key: tk_...` (solo se guarda su SHA-256 en api_keys).
 // Cada llave pertenece a UNA cuenta (api_keys.cuenta_id) y solo ve las sucursales de esa cuenta.
@@ -33,6 +34,19 @@ function hoyMx(): string {
   return new Date(Date.now() - 6 * 3600_000).toISOString().slice(0, 10)
 }
 
+// Periodo pedido (?desde&hasta) ya validado; si algo esta mal regresa la respuesta de error.
+function leerPeriodo(url: URL): { desde: string; hasta: string } | Response {
+  const hoy = hoyMx()
+  const desde = url.searchParams.get('desde') ?? hoy.slice(0, 8) + '01'
+  const hasta = url.searchParams.get('hasta') ?? hoy
+  if (!fechaValida(desde) || !fechaValida(hasta)) return json({ error: 'desde/hasta deben ser AAAA-MM-DD' }, 400)
+  if (hasta < desde) return json({ error: 'hasta debe ser igual o posterior a desde' }, 400)
+  if ((Date.parse(hasta) - Date.parse(desde)) / 86_400_000 > MAX_DIAS) {
+    return json({ error: `El rango maximo es de ${MAX_DIAS} dias` }, 400)
+  }
+  return { desde, hasta }
+}
+
 serve(async (req: Request) => {
   if (req.method !== 'GET') return json({ error: 'Solo GET (esta API es de solo lectura)' }, 405)
 
@@ -64,14 +78,9 @@ serve(async (req: Request) => {
   }
 
   if (ruta === '/resumen') {
-    const hoy = hoyMx()
-    const desde = url.searchParams.get('desde') ?? hoy.slice(0, 8) + '01'
-    const hasta = url.searchParams.get('hasta') ?? hoy
-    if (!fechaValida(desde) || !fechaValida(hasta)) return json({ error: 'desde/hasta deben ser AAAA-MM-DD' }, 400)
-    if (hasta < desde) return json({ error: 'hasta debe ser igual o posterior a desde' }, 400)
-    if ((Date.parse(hasta) - Date.parse(desde)) / 86_400_000 > MAX_DIAS) {
-      return json({ error: `El rango maximo es de ${MAX_DIAS} dias` }, 400)
-    }
+    const periodo = leerPeriodo(url)
+    if (periodo instanceof Response) return periodo
+    const { desde, hasta } = periodo
 
     const resumen = async (sucursalId: string | null) => {
       const { data, error } = await supabase.rpc('resumen_tickets', {
@@ -98,5 +107,52 @@ serve(async (req: Request) => {
     }
   }
 
-  return json({ error: 'Ruta no encontrada. Disponibles: /resumen, /sucursales' }, 404)
+  // Desglose de UNA categoria por producto (solo lo autorizado). Ej. Bodega -> playo, bolsas, envios...
+  if (ruta === '/desglose') {
+    const periodo = leerPeriodo(url)
+    if (periodo instanceof Response) return periodo
+    const { desde, hasta } = periodo
+
+    const pedida = (url.searchParams.get('categoria') ?? '').trim()
+    if (!pedida) return json({ error: 'Falta ?categoria=<nombre>, por ejemplo Bodega. Los nombres salen en /resumen (oficiales_por_categoria).' }, 400)
+    const detalle = ['1', 'true', 'si'].includes((url.searchParams.get('detalle') ?? '').toLowerCase())
+
+    // Solo categorias que esta cuenta puede ver: las globales y las de sus sucursales (+ "Sin categoria").
+    const idsCuenta = new Set(reales.map(s => s.id))
+    const { data: cats, error: catErr } = await supabase.from('categorias_gasto').select('nombre, sucursal_id')
+    if (catErr) return json({ error: 'Error interno' }, 500)
+    const visibles = [...new Set((cats ?? [])
+      .filter(c => c.sucursal_id === null || idsCuenta.has(c.sucursal_id as string))
+      .map(c => c.nombre as string))].concat('Sin categoria')
+    const canonica = visibles.find(n => n.toLowerCase() === pedida.toLowerCase())
+    if (!canonica) return json({ error: `Categoria desconocida: ${pedida}`, disponibles: visibles }, 404)
+
+    const desglose = async (sucursalId: string | null) => {
+      const { data, error } = await supabase.rpc('desglose_categoria', {
+        p_desde: desde, p_hasta: hasta, p_categoria: canonica, p_sucursal: sucursalId, p_cuenta: cuentaId, p_detalle: detalle,
+      })
+      if (error) throw new Error(error.message)
+      return data as Record<string, unknown>
+    }
+
+    try {
+      const slug = url.searchParams.get('sucursal')
+      if (slug) {
+        const s = reales.find(x => x.slug === slug)
+        if (!s) return json({ error: `Sucursal desconocida: ${slug}` }, 404)
+        return json({ periodo: { desde, hasta }, sucursal: { slug: s.slug, nombre: s.nombre }, ...(await desglose(s.id)) })
+      }
+      const porSucursal = []
+      for (const s of reales) {
+        const { categoria: _c, cuenta_operativo: _o, ...resto } = await desglose(s.id)
+        porSucursal.push({ slug: s.slug, nombre: s.nombre, ...resto })
+      }
+      return json({ periodo: { desde, hasta }, ...(await desglose(null)), por_sucursal: porSucursal })
+    } catch (e) {
+      console.error('api-cuentas desglose:', (e as Error).message)
+      return json({ error: 'Error interno' }, 500)
+    }
+  }
+
+  return json({ error: 'Ruta no encontrada. Disponibles: /resumen, /desglose, /sucursales' }, 404)
 })

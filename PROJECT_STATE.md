@@ -40,6 +40,12 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   (select de 12 meses + flechas para saltar de mes, mes actual completo por defecto) o "Rango" (dos fechas), como Gasto. Pantallas
   Tickets (`tickets/page.tsx`) y Entradas (`inventario/page.tsx`). Gasto (dashboard) conserva su propio selector (no se toco).
   Probado el componente aislado (flechas, select, salto >12 meses, rango, volver a mes); integracion a verificar en produccion.
+- **API `/desglose` (20-sep, API v4, migracion 068 `desglose_categoria`):** `GET /desglose?categoria=Bodega&desde&hasta[&sucursal][&detalle=1]`
+  = una categoria por producto (solo confirmados; producto del catalogo o lo escrito; cantidades por unidad; % de la categoria; `detalle=1`
+  agrega cada renglon, maximo 1000). El total coincide con `oficiales_por_categoria` del resumen (Bodega SE jun-sep $29,262.59: playo Reyma
+  $11,004.35, bolsas 1 kg $8,926.15, Moto envio $2,078.51, flete $1,407.53...; incluye los envios que la 067 movio a Bodega). Categoria
+  desconocida o de otra cuenta = 404 con `disponibles`. Aislamiento por cuenta re-probado con una cuenta ajena temporal (ya borrada).
+  Texto para otra IA actualizado en `API_CUENTAS.md`.
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
   Alejandro: candado de "Eliminar" en pantalla (solo admin) OK; cron `limpiar-imagenes-tickets` (fotos de +1 ano) OK, antes se
@@ -93,10 +99,14 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   ago $8,148.15 / sep $5,827.20 (mas $1,471.76 del ticket del 19-sep cuando se confirme).
   Deploy con esa regla: **procesar-ticket v47, reprocesar-ticket v19** (byte a byte = repo, OPTIONS 200 y POST sin token 401).
   Texto nuevo de la tarjeta verificado en vivo en tickets-se.vercel.app.
-- **Pendiente de decision (de la revision del catalogo):** (1) los envios de entregas que traian SOLO material de Bodega
-  (26 tickets, $2,158.75 jun-sep) hoy los paga el cafe como gasto operativo: ¿se van a Bodega?; (2) flete de Transportes
-  Castores 13-jul $1,407.53 (guia TOL-734668 desde FN Fornitalia, Toluca): saber que venia; (3) en SE no hay NI UN renglon
-  de etiquetas, valvulas, cajas de carton, fleje ni burbuja: si el tostador los compra, hoy no pasan por la app.
+- **Envios de Bodega (067, Alejandro 19-sep):** el flete de una entrega que solo traia material de Bodega tambien es Bodega.
+  Movidos los 26 renglones "Moto envio" de esas entregas ($2,158.75 jun-sep: Adan Melchor, El Bodegon, El Iris) y el flete de
+  Transportes Castores del 13-jul ($1,407.53). Regla en el prompt: el envio va a Bodega SOLO si todo lo demas del ticket es
+  material de Bodega; si el ticket mezcla, se queda en Otros gastos operativos (y el Descuento sigue a su compra).
+  **Bodega por mes (SE) queda:** jun $7,249.76 / jul $6,658.53 / ago $9,047.61 / sep $6,306.69 confirmado (+$1,552 pendiente).
+- **Contexto que dio Alejandro:** la cafeteria esta junto al roaster y **el gasto del tostador se gestiona aparte** (por eso
+  no aparecen etiquetas, valvulas ni cajas). "Bodega" en esta app es solo lo de bodega que llega a la cafeteria: por eso son
+  montos chicos. No hay que ir a buscar el resto del gasto del tostador aqui.
 - **Limpieza de catalogo (063):** habia DOS productos activos para el mismo rollo grande de playo con el mismo sinonimo
   ("Playo stretch 18 cal 80 1300 pies", 0 compras, fundido en el de Reyma) y al playo Polpusa se le habia colado el sinonimo
   "10000007 MINERAL 24/.355L RT" (agua mineral): quitado. Vale la pena un barrido de sinonimos colados como ese.

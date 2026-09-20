@@ -1,7 +1,7 @@
 # API de Tickets para el programa de revision de cuentas
 
 API de **solo lectura**. Responde cuanto capturo cada sucursal en tickets, cuanto se autorizo y como se
-distribuyo lo autorizado por categoria. Codigo: `backend/supabase/functions/api-cuentas/index.ts`.
+distribuyo lo autorizado por categoria (y, de cada categoria, por producto). Codigo: `backend/supabase/functions/api-cuentas/index.ts`.
 
 - **URL base:** `https://dlmqqmvrgkilptawllep.functions.supabase.co/api-cuentas`
 - **Llave:** archivo local `_secretos/llave-api-programa-cuentas.txt` (no esta en git). Se manda en cada llamada:
@@ -69,6 +69,37 @@ Ejemplo real (`?sucursal=wings-palace&desde=2026-07-01&hasta=2026-07-31`):
 
 (la lista de categorias del ejemplo esta recortada; la real trae todas.)
 
+### `GET /desglose?categoria=<nombre>&desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=slug][&detalle=1]`
+
+Desglose **por producto** de UNA categoria, solo con lo autorizado (tickets confirmados). Sirve para preguntar, por ejemplo,
+"de Bodega, cuanto fue playo, cuanto bolsas, cuanto envios". El total de la categoria coincide con su renglon de
+`oficiales_por_categoria` del `/resumen`. El nombre de la categoria no distingue mayusculas; si no existe (o no es de tu cuenta) da `404`
+con la lista `disponibles`. Sin `sucursal`: regresa el total y `por_sucursal`.
+
+- `total`: `monto`, `renglones` (lineas de ticket) y `tickets`.
+- `por_producto` (de mayor a menor monto): `producto` (nombre del catalogo; si el renglon no esta ligado, lo escrito en el ticket), `monto`,
+  `renglones`, `cantidades` (lista `[{unidad, cantidad}]`, una por unidad distinta) y `pct_de_la_categoria`.
+- `detalle=1` agrega `renglones`: cada compra (`fecha`, `comercio`, `ticket_id`, `producto`, `descripcion`, `cantidad`, `unidad`, `monto`),
+  maximo 1000 (`renglones_truncados` avisa si hubo mas).
+
+Ejemplo real (`?categoria=Bodega&sucursal=santa-elena&desde=2026-06-01&hasta=2026-09-30`, recortado):
+
+```json
+{
+  "periodo": { "desde": "2026-06-01", "hasta": "2026-09-30" },
+  "sucursal": { "slug": "santa-elena", "nombre": "SANTA ELENA" },
+  "categoria": "Bodega",
+  "cuenta_operativo": false,
+  "total": { "monto": 29262.59, "renglones": 63, "tickets": 32 },
+  "por_producto": [
+    { "producto": "Playo stretch Reyma 18 cal 80 1300 ft", "monto": 11004.35, "renglones": 18, "cantidades": [{ "unidad": "pz", "cantidad": 38 }], "pct_de_la_categoria": 37.6 },
+    { "producto": "Bolsa metalizada cafe 1 kg", "monto": 8926.15, "renglones": 7, "cantidades": [{ "unidad": "kg", "cantidad": 45.42 }], "pct_de_la_categoria": 30.5 },
+    { "producto": "Moto envío", "monto": 2078.51, "renglones": 25, "cantidades": [{ "unidad": "servicio", "cantidad": 25 }], "pct_de_la_categoria": 7.1 },
+    { "producto": "Flete paqueteria", "monto": 1407.53, "renglones": 1, "cantidades": [{ "unidad": "servicio", "cantidad": 1 }], "pct_de_la_categoria": 4.8 }
+  ]
+}
+```
+
 ### `GET /sucursales`
 
 Lista de sucursales reales: `{ "sucursales": [ { "slug": "santa-elena", "nombre": "SANTA ELENA" }, ... ] }`.
@@ -114,8 +145,11 @@ ENDPOINTS
    - Sin "sucursal": regresa "total" y "por_sucursal" (una entrada por sucursal).
    - Con "sucursal": regresa solo esa sucursal.
    - Sin fechas: del dia 1 del mes actual a hoy. Maximo 400 dias por consulta.
+3) GET /desglose?categoria=<nombre>&desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=<slug>][&detalle=1]
+   Desglose POR PRODUCTO de una categoria, solo con lo autorizado. Ej.: categoria=Bodega dice cuanto fue en playo, bolsas metalizadas, cinta, envios, etc.
+   Los nombres de categoria salen en "oficiales_por_categoria" del /resumen (no importan las mayusculas). Con detalle=1 agrega cada compra (fecha, comercio, producto, cantidad, monto).
 
-QUE SIGNIFICA CADA CAMPO
+QUE SIGNIFICA CADA CAMPO (/resumen)
 - subidos: TODO lo que el gerente capturo (tickets subidos) sin importar si despues se rechazo. Incluye duplicados.
 - oficiales: lo AUTORIZADO tras la revision (tickets confirmados, con el monto ya corregido). Es el dinero que realmente gestiono el gerente.
 - en_revision: subidos que todavia no se deciden.
@@ -123,18 +157,24 @@ QUE SIGNIFICA CADA CAMPO
 - por_justificar = subidos - oficiales.
 - oficiales_por_categoria: lo autorizado repartido por categoria (Insumos Alimentos, Otros gastos operativos, Desechables, Gas, Limpieza, Bodega, Extras, Descuentos...). "Descuentos" viene en negativo y ya resta. "cuenta_operativo" dice si esa categoria cuenta para el % de operacion.
 - oficiales_gasto_operativo / oficiales_fuera_de_operacion: suma de las categorias que cuentan / no cuentan para la operacion.
-- tickets_sin_monto_leido: tickets sin monto legible (cuentan como $0; no cuenta duplicados ni copias de foto).
+- tickets_sin_monto_leido: tickets sin monto legible (cuentan como $0).
+
+QUE SIGNIFICA CADA CAMPO (/desglose)
+- total: monto, renglones (lineas de ticket) y tickets de esa categoria. Coincide con la categoria en /resumen.
+- por_producto: de mayor a menor monto: producto, monto, renglones, cantidades [{unidad, cantidad}] y pct_de_la_categoria.
 
 COMO INTERPRETARLO
 - El gasto REAL del gerente es "oficiales", no "subidos".
 - Ejemplo: si sube 10 tickets de $100 (subidos = 1000) y se rechazan 5, oficiales = 500 y por_justificar = 500.
 - Si el gasto que reporta el gerente coincide con "subidos" y no con "oficiales", esta usando tickets no validos para cuadrar su gasto: es senal fuerte de fraude y la diferencia es lo que debe justificar.
 - Un ticket rechazado por si solo no siempre es fraude (puede ser nota doble, vieja o ajena a la operacion); el fraude se ve cuando el gasto reportado se apoya en ellos.
+- Usa /desglose cuando una categoria llame la atencion (por ejemplo Bodega o Otros gastos operativos): mira que productos concentran el gasto y si los envios o fletes pesan demasiado.
 - Reporta: subidos, oficiales, por_justificar, el reparto por categoria de lo oficial y, si hay diferencia, el desglose de no_validos por motivo. Por sucursal y en total.
 
 ERRORES
-- 401: llave incorrecta o revocada. 404: sucursal que no es de mi cuenta. 400: fechas mal escritas. Nunca intentes modificar nada (la API no lo permite).
+- 401: llave incorrecta o revocada. 404: sucursal o categoria que no es de mi cuenta. 400: fechas mal escritas o falta la categoria. Nunca intentes modificar nada (la API no lo permite).
 
-EJEMPLO
+EJEMPLOS
 curl -H "Authorization: Bearer <TU_LLAVE>" "https://dlmqqmvrgkilptawllep.functions.supabase.co/api-cuentas/resumen?desde=2026-09-01&hasta=2026-09-30"
+curl -H "Authorization: Bearer <TU_LLAVE>" "https://dlmqqmvrgkilptawllep.functions.supabase.co/api-cuentas/desglose?categoria=Bodega&desde=2026-06-01&hasta=2026-09-30"
 ```
