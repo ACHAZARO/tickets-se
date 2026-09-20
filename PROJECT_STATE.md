@@ -77,6 +77,9 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   nombre sin tamanos ni plurales) = "muy probables" (cuentan en el circulito); `parecido` (el nombre corto es UNA palabra dentro del otro) = "menos
   seguros" (colapsados). Si los dos nombres traen medidas distintas NO se sugiere (Tapa 14 oz / 16 oz, Bolsa #10 / #14 son presentaciones
   distintas); los codigos de proveedor de 5+ digitos no cuentan como medidas. Hoy: 22 muy probables + 48 menos seguros (todo el catalogo).
+  075: el detector tardaba 2-8 s y en produccion fallaba por limite de tiempo (500): faltaban indices `producto_catalogo_id` en ticket_items /
+  precio_historial / consumo_inventario y comparaba todos los pares; ahora 65 ms (158 ms todas las sucursales). Circulito y panel llevan
+  guarda de "ultima carga" (mismo desfase que Tickets: la carga de "todas" terminaba despues de la de la sucursal).
   **Ya unificado (a peticion): Santa Elena "Mantequilla" -> "Mantequilla Gloria 1 kg"** (11 renglones, $12,762.72; se le declaro 1 pz = 1 kg).
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de

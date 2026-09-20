@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useToast, useConfirm } from './ui'
@@ -62,8 +62,13 @@ const fmt = (n: number) => '$' + Number(n).toLocaleString('es-MX', { maximumFrac
 export function CerebroBadge({ pathname }: { pathname: string }) {
   const { sucursalId } = useSucursal()
   const [n, setN] = useState(0)
+  // Solo cuenta la ULTIMA carga: al abrir, la sucursal guardada se restaura despues del primer render y salen dos
+  // cargas seguidas; si la de "todas" terminaba despues, el circulito mostraba el numero de otra sucursal.
+  const seq = useRef(0)
   const cargar = useCallback(async () => {
+    const mio = ++seq.current
     const sug = await pedirSugerencias(sucursalId)
+    if (mio !== seq.current) return
     setN(sug.filter(s => s.motivo !== 'parecido').length)
   }, [sucursalId])
   useEffect(() => { cargar() }, [cargar, pathname])
@@ -87,7 +92,12 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const [verQuiza, setVerQuiza] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const cargar = useCallback(async () => { setSug(await pedirSugerencias(sucursalId)) }, [sucursalId])
+  const seq = useRef(0)
+  const cargar = useCallback(async () => {
+    const mio = ++seq.current
+    const r = await pedirSugerencias(sucursalId)
+    if (mio === seq.current) setSug(r)
+  }, [sucursalId])
   useEffect(() => { cargar() }, [cargar])
 
   if (!sug || sug.length === 0) return null
