@@ -91,6 +91,8 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   "Descuento" ni "Moto envio", el clingfilm de 30 cm sigue siendo cafeteria aunque su nombre diga "playo", y en Wings (sin
   categoria Bodega) la anotacion se ignora. **Bodega por mes (SE, confirmado):** jun $7,009.76 / jul $4,791.44 /
   ago $8,148.15 / sep $5,827.20 (mas $1,471.76 del ticket del 19-sep cuando se confirme).
+  Deploy con esa regla: **procesar-ticket v47, reprocesar-ticket v19** (byte a byte = repo, OPTIONS 200 y POST sin token 401).
+  Texto nuevo de la tarjeta verificado en vivo en tickets-se.vercel.app.
 - **Pendiente de decision (de la revision del catalogo):** (1) los envios de entregas que traian SOLO material de Bodega
   (26 tickets, $2,158.75 jun-sep) hoy los paga el cafe como gasto operativo: ¿se van a Bodega?; (2) flete de Transportes
   Castores 13-jul $1,407.53 (guia TOL-734668 desde FN Fornitalia, Toluca): saber que venia; (3) en SE no hay NI UN renglon
