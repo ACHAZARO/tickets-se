@@ -14,7 +14,7 @@ distribuyo lo autorizado por categoria. Codigo: `backend/supabase/functions/api-
 
 | Campo | Que es |
 |---|---|
-| `subidos` | **Todo** lo que se subio en el periodo, sea cual sea su estado. Duplicados y rechazados cuentan. Un duplicado sin monto propio cuenta con el monto de su original (el papel se subio dos veces), salvo que ese duplicado se confirme: entonces cuenta $0 como oficial. Es lo que el gerente "captura". |
+| `subidos` | **Todo** lo que se subio en el periodo, sea cual sea su estado. Duplicados y rechazados cuentan. Cada ticket suma SOLO el monto de su propio papel: si no se leyo monto (p. ej. una nota de remision sin importe junto a la factura de la misma compra), cuenta $0, porque con un papel sin monto no sale dinero de la caja. Es lo que el gerente "captura". |
 | `oficiales` | Solo tickets **confirmados**, con el monto ya corregido en la revision (si dudaba entre 49 y 96 y se confirmo 49, cuenta 49). Es lo que **si vale**. |
 | `en_revision` | Tickets que aun no se deciden (por confirmar). No estan en oficiales todavia. |
 | `no_validos` | Rechazados. `por_motivo`: `fraude` (papel repetido, alterado o reutilizado, en la revision de Fraude), `duplicado` (la misma foto subida dos veces) y `otro` (ilegible, remision, manual). |
@@ -23,7 +23,7 @@ distribuyo lo autorizado por categoria. Codigo: `backend/supabase/functions/api-
 | `oficiales_por_categoria` | Solo lo oficial, repartido por categoria (renglon por renglon, con IVA). `Descuentos` viene en negativo y ya resta. |
 | `oficiales_gasto_operativo` / `oficiales_fuera_de_operacion` | Suma de las categorias que cuentan / no cuentan para el % de operacion (`cuenta_operativo`). Fuera de operacion hoy: Bodega, Extras, gasolina y motor. |
 | `oficiales_sin_desglosar` | `oficiales.monto` menos la suma de categorias. Deberia ser 0; si no, un ticket tiene el total distinto a sus renglones. |
-| `tickets_sin_monto_leido` | Tickets (de cualquier estado) sin monto legible; cuentan como $0. |
+| `tickets_sin_monto_leido` | Tickets (de cualquier estado) sin monto legible; cuentan como $0. No incluye las copias de foto ni los duplicados, que cuentan $0 por definicion. |
 
 El periodo se filtra por **fecha del ticket** (los que no tienen fecha entran por su fecha de subida, hora de Mexico).
 La sucursal de prueba no entra nunca.
@@ -123,7 +123,7 @@ QUE SIGNIFICA CADA CAMPO
 - por_justificar = subidos - oficiales.
 - oficiales_por_categoria: lo autorizado repartido por categoria (Insumos Alimentos, Otros gastos operativos, Desechables, Gas, Limpieza, Bodega, Extras, Descuentos...). "Descuentos" viene en negativo y ya resta. "cuenta_operativo" dice si esa categoria cuenta para el % de operacion.
 - oficiales_gasto_operativo / oficiales_fuera_de_operacion: suma de las categorias que cuentan / no cuentan para la operacion.
-- tickets_sin_monto_leido: tickets sin monto legible (cuentan como $0).
+- tickets_sin_monto_leido: tickets sin monto legible (cuentan como $0; no cuenta duplicados ni copias de foto).
 
 COMO INTERPRETARLO
 - El gasto REAL del gerente es "oficiales", no "subidos".

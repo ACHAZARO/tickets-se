@@ -7,7 +7,7 @@
 **Idea (Alejandro):** si un gerente mete tickets de mas (duplicados, facturas dobles, alterados) para que su gasto real cuadre, hay que
 poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa de revision de cuentas debe poder consultarlo.
 - **Definiciones (una sola fuente: RPC `resumen_tickets`, migraciones 056-058):** `subidos` = TODO el periodo, cualquier estado, duplicado
-  sin monto propio cuenta con el monto de su original; `oficiales` = confirmados (monto ya corregido en la revision); `en_revision` =
+  sin monto propio cuenta $0 (cambiado en 066; ver abajo); `oficiales` = confirmados (monto ya corregido en la revision); `en_revision` =
   pendientes; `no_validos` = rechazados (`por_motivo`: fraude = sospechoso no descartado, duplicado = misma foto, otro);
   `por_justificar` = subidos - oficiales. Periodo por fecha del ticket (como la pantalla). Sucursal PRUEBA (`sucursales.es_prueba`) no entra.
 - **Pantalla Tickets:** tarjeta arriba (Subidos / Oficiales / Por justificar) que al hacer clic muestra el desglose y botones "Ver todos
@@ -36,6 +36,10 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   Por justificar $19,901.59, igual que la API; el desglose (fraude $15,961.72 en 12, misma foto $3,939.87 en 10) tambien cuadra. Se vio un
   desfase intermitente: la lista mostraba SANTA ELENA con el selector en WINGS PALACE (dos cargas seguidas al abrir, la vieja terminaba
   despues). Arreglado con guarda de ultima carga en `fetchTickets` (`fetchSeq`).
+- **Periodo rapido en Tickets y Entradas (20-sep):** componente compartido `frontend/app/admin/periodo.tsx` (`SelectorPeriodo`): "Por mes"
+  (select de 12 meses + flechas para saltar de mes, mes actual completo por defecto) o "Rango" (dos fechas), como Gasto. Pantallas
+  Tickets (`tickets/page.tsx`) y Entradas (`inventario/page.tsx`). Gasto (dashboard) conserva su propio selector (no se toco).
+  Probado el componente aislado (flechas, select, salto >12 meses, rango, volver a mes); integracion a verificar en produccion.
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
   Alejandro: candado de "Eliminar" en pantalla (solo admin) OK; cron `limpiar-imagenes-tickets` (fotos de +1 ano) OK, antes se
@@ -73,6 +77,24 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   $1,153.74) / jul $4,791.44 ($2,236.50) / ago $8,148.15 ($4,734.06) / sep $5,728.20 ($2,880.05). Eso sale del % de operacion
   del cafe (`cuenta_operativo=false`). **Ojo:** la categoria de la IA gana sobre la del catalogo, por eso la regla del prompt
   es la que sostiene esto; si aparece un playo/cinta/bolsa en Desechables, revisar el prompt antes que el catalogo.
+- **Un ticket sin monto cuenta $0 (066, Alejandro 19-sep):** antes "subidos" le prestaba al duplicado sin monto el monto de
+  su original. Razon del cambio: la app sirve para ver si el gerente infla el gasto y saca dinero de la caja; **con un papel
+  sin monto no sale dinero**, asi que no debe aumentar lo que tiene que justificar. Cada ticket suma solo lo que dice su
+  propio papel. Efecto (jun-sep): subidos $734,181.55 -> **$730,136.68**, por justificar $34,679.61 -> **$30,634.74**
+  (las 11 copias de foto dejaron de aportar $4,044.87). `tickets_sin_monto_leido` ya no cuenta duplicados: sigue en 35 (WP,
+  ilegibles). Texto de la tarjeta de Tickets reescrito con las palabras de Alejandro; `API_CUENTAS.md` actualizado.
+- **"Si el ticket dice Bodega, es de Bodega" (regla de Alejandro, 19-sep):** el playo Polpusa 1000 ft tambien paso a Bodega
+  (064: 2 compras de junio, $786) y el papel de Office Depot del 7-sep, que trae "Bodega hojas" a mano, tambien (065: $99
+  netos; se movio solo ese renglon, no el producto; el renglon de la promocion -$10 se fue con el). La regla quedo en el
+  prompt de la IA con candados que puso la revision: solo cuenta "Bodega" ESCRITA A MANO (no "EL BODEGON DE SEMILLAS",
+  "BODEGA AURRERA" ni campos impresos tipo "bodega de salida"), manda solo sobre los renglones que senala, nunca se lleva
+  "Descuento" ni "Moto envio", el clingfilm de 30 cm sigue siendo cafeteria aunque su nombre diga "playo", y en Wings (sin
+  categoria Bodega) la anotacion se ignora. **Bodega por mes (SE, confirmado):** jun $7,009.76 / jul $4,791.44 /
+  ago $8,148.15 / sep $5,827.20 (mas $1,471.76 del ticket del 19-sep cuando se confirme).
+- **Pendiente de decision (de la revision del catalogo):** (1) los envios de entregas que traian SOLO material de Bodega
+  (26 tickets, $2,158.75 jun-sep) hoy los paga el cafe como gasto operativo: ¿se van a Bodega?; (2) flete de Transportes
+  Castores 13-jul $1,407.53 (guia TOL-734668 desde FN Fornitalia, Toluca): saber que venia; (3) en SE no hay NI UN renglon
+  de etiquetas, valvulas, cajas de carton, fleje ni burbuja: si el tostador los compra, hoy no pasan por la app.
 - **Limpieza de catalogo (063):** habia DOS productos activos para el mismo rollo grande de playo con el mismo sinonimo
   ("Playo stretch 18 cal 80 1300 pies", 0 compras, fundido en el de Reyma) y al playo Polpusa se le habia colado el sinonimo
   "10000007 MINERAL 24/.355L RT" (agua mineral): quitado. Vale la pena un barrido de sinonimos colados como ese.

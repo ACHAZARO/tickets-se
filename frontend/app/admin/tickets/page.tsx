@@ -963,8 +963,9 @@ export default function TicketsPage() {
               <span className="w-28 text-right text-zinc-100 font-medium">{fmt(resumen.subidos.monto)}</span>
             </div>
             <p className="text-xs text-zinc-500">
-              Si el gasto que reporta el gerente cuadra contra TODO lo subido, la diferencia con lo oficial ({fmt(resumen.por_justificar)}) es lo que no puede comprobar.
-              Un duplicado sin monto propio cuenta con el monto de su original. Los rechazados y por revisar no entran a ningun arqueo.
+              Si se encuentra un ticket duplicado sin monto propio (ejemplo: nota de remisión sin monto y factura de la misma compra),
+              el duplicado sin monto propio cuenta con monto $0 o el monto que diga explícitamente el ticket.
+              Los rechazados y por revisar no entran a ningún arqueo hasta que se definan.
               {resumen.tickets_sin_monto_leido > 0 && ` ${resumen.tickets_sin_monto_leido} tickets no tienen monto legible y cuentan como $0.`}
             </p>
             <div className="flex flex-wrap gap-2">
