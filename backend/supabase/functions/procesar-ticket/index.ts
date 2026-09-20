@@ -9,7 +9,7 @@ import {
 import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
-import { detectSmartDuplicate } from '../_shared/duplicados.ts'
+import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
@@ -122,8 +122,19 @@ async function procesarEnSegundoPlano(opts: {
     }).eq('id', registroId)
 
     const catalog: Catalog = await loadCatalog(sucursalId)
+    if (catalog.negocio.fallo) {
+      // Sin las reglas del negocio no se lee (saldria mal clasificado y podria auto-confirmarse): queda para releer.
+      console.error('procesar-ticket:', catalog.negocio.fallo)
+      await supabase.from('registros_tickets').update({
+        gemini_raw: { items: [], _ia_fallo: 'otro', _error: catalog.negocio.fallo },
+      }).eq('id', registroId)
+      await createAlert(supabase, registroId, 'ia_sin_leer')
+      return
+    }
     const hoy = fechaMexico()
-    const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog), hoy)
+    // Lo propio del negocio (como se llama, sus reglas) viene de la BD por cuenta/sucursal, no del codigo compartido.
+    const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog), hoy, catalog.negocio)
+    const propias = palabrasDelNegocio(catalog.negocio.sucursales)
 
     const lectura = await leerTicketConGemini({ imagenBase64: encodeBase64(imageBytes), mimeType: mime, prompt })
     if (!lectura.datos) {
@@ -137,6 +148,7 @@ async function procesarEnSegundoPlano(opts: {
     }
     const datos = lectura.datos
     ;(datos as Record<string, unknown>)._modelo = lectura.modelo
+    ;(datos as Record<string, unknown>)._reglas_negocio = catalog.negocio.reglas.length
 
     let rawItems: GeminiItem[] = Array.isArray(datos.items) ? datos.items : []
     rawItems = rawItems.filter(it => it && (it.descripcion || it.monto != null))
@@ -239,7 +251,7 @@ async function procesarEnSegundoPlano(opts: {
     // Precios: detecta saltos fuertes vs la mediana de compras confirmadas. El historial se
     // guarda solo al confirmar (aqui abajo si sale limpio, o en confirmar-admin tras revision).
     const precioAnomalo = await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
-    const envioAlto = await envioMuyAlto(supabase, itemsToInsert, catalog.products, sucursalId, datos.comercio ?? null, registroId)
+    const envioAlto = await envioMuyAlto(supabase, itemsToInsert, catalog.products, sucursalId, datos.comercio ?? null, registroId, propias)
 
     let hayAlerta = false
     // Senales de alteracion o de comprobante reutilizado (las ve la IA): van a Fraude.
@@ -264,7 +276,7 @@ async function procesarEnSegundoPlano(opts: {
     // Va despues de las alertas: si en Fraude se "Descarta" (era otra compra), el ticket regresa con ellas.
     const dupId = await detectSmartDuplicate(
       supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registroId,
-      datos.tipo_documento ?? null,
+      datos.tipo_documento ?? null, propias,
     )
     if (dupId) {
       // Papel repetido (factura + ticket de la misma compra, reimpresion, mismo folio). Decision Alejandro
@@ -412,9 +424,12 @@ serve(async (req: Request) => {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
     const { data: suc } = await supabase.from('sucursales')
-      .select('id').eq('slug', slug).eq('activa', true).maybeSingle()
+      .select('id, cuenta_id').eq('slug', slug).eq('activa', true).maybeSingle()
     if (!suc) return json({ error: 'Sucursal no encontrada o inactiva' }, 404)
     const sucursalId = suc.id as string
+    // Sucursales del MISMO negocio (cuenta): una foto repetida solo se compara contra ellas, nunca contra otro negocio.
+    const { data: hermanas } = await supabase.from('sucursales').select('id').eq('cuenta_id', suc.cuenta_id)
+    const sucursalesDelNegocio = [...new Set([sucursalId, ...((hermanas ?? []) as { id: string }[]).map(s => s.id)])]
 
     const imageBytes = await imagenFile.arrayBuffer()
     const mime = imagenFile.type || 'image/jpeg'
@@ -426,6 +441,7 @@ serve(async (req: Request) => {
     // en Tickets, no desaparece del flujo del admin.
     const { data: existing } = await supabase.from('registros_tickets')
       .select('id, fecha_ticket, comercio').eq('hash_imagen', hashImagen).neq('estado', 'rechazado')
+      .in('sucursal_id', sucursalesDelNegocio)
       .order('created_at', { ascending: true }).limit(1).maybeSingle()
     if (existing) {
       const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_dup.${extension}`

@@ -1,23 +1,25 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-19.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-20.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
-## EN EL RADAR (Alejandro, 2026-09-20): la app se va a vender a otros locales -> lo aprendido NO debe salir de cada negocio
-Diagnostico (solo lectura, sin cambios todavia):
-- **Bien aislado, por sucursal:** catalogo y sinonimos (596 productos), comercios (106), historial de precios, duplicados,
-  referencia de envios por proveedor, categoria Bodega; la API ya es por cuenta (060).
-- **Fugas a corregir ANTES del primer cliente externo (hoy inofensivas: solo existen nuestros negocios):**
-  1. Prompt compartido `_shared/gemini.ts`: nombres "Wings Palace"/"Santa Elena" como compradores (linea del comercio), regla
-     de motos con "Ale, Polo, mama Polo, Toto", y regla BODEGA con nuestros productos/proveedores (protegida solo por "si
-     existe la categoria Bodega": un cliente que cree su propia "Bodega" la heredaria).
-  2. `_shared/duplicados.ts`: RELLENO trae 'wings','palace','santa','elena'.
-  3. 21 productos GLOBALES (`sucursal_id` NULL) aprendidos de nuestros tickets (DESCUENTO, Limones, BOLSA TIPICO, Cebollin,
-     Matizza, "Joutube"...): un negocio nuevo los heredaria con todo y sinonimos.
-- **Arreglo propuesto (pendiente del OK de Alejandro):** tabla de "reglas del negocio" por sucursal/cuenta que se inyecta al
-  prompt (el codigo compartido se queda solo con reglas universales: tickets mexicanos, IVA, envio a mano, sospecha); nombres
-  del comprador tomados de las sucursales de la cuenta; pasar los 21 productos globales a nuestras sucursales (dejar global
-  solo lo generico, p. ej. DESCUENTO). **Regla desde hoy: ninguna regla nueva de negocio como texto fijo en codigo compartido.**
+## MULTI-NEGOCIO (2026-09-20): lo que aprende la IA se queda en cada negocio -> ver `MULTI_NEGOCIO.md`
+Alejandro va a vender la app a otros locales. **Regla de oro: nada propio de un negocio se escribe en codigo compartido**
+(ni nombres, ni personas, ni proveedores, ni productos, ni categorias especiales): va como DATO por cuenta/sucursal.
+- **Hecho (migraciones 073 y 074):** el prompt compartido (`_shared/gemini.ts`) ya no trae los nombres de los negocios, ni la
+  regla de motos de la familia, ni la regla de Bodega: salen de `sucursales.nombres_cliente` y de la tabla nueva `reglas_ia`
+  (por cuenta, o por sucursal). Agregar una regla de un negocio = una fila en `reglas_ia`, sin desplegar nada. Cada lectura
+  guarda cuantas uso en `gemini_raw._reglas_negocio` (SE 2, WP 1); si no se pueden cargar, el ticket NO se lee (queda para
+  releer). `duplicados.ts` ya no trae 'wings','palace','santa','elena' (vienen de los nombres de las sucursales de la
+  cuenta). La foto repetida solo se compara dentro de la misma cuenta. CERO productos globales (eran 21: 12 asignados, 6
+  divididos con copia, 3 inactivos; respaldo `respaldo.r074_*`) y candado `catalogo_productos.sucursal_id NOT NULL`.
+  `ligar_huerfano` trabaja sucursal por sucursal. Catalogo no deja crear en "Todas".
+- **Verificado:** regla de Bodega identica a la anterior (mismo md5); prompt de un negocio ajeno sin nada nuestro; 0 renglones
+  y 0 precios cruzados entre sucursales; los confirmados siguen cuadrando al centavo. Mapa previo + revision adversarial
+  (2 workflows) antes de aplicar.
+- **Pendiente antes del primer cliente externo** (plataforma, no aprendizaje; detalle en `MULTI_NEGOCIO.md`): permisos por
+  cuenta (`is_admin()` es global), DEFAULT de `sucursales.cuenta_id`, categorias/objetivos globales, pantalla para
+  `reglas_ia`, correo de alertas y Google Sheets unicos, fotos sin separar por negocio, umbrales fijos, zona horaria, marca.
 
 ## Sesion 2026-09-19 (Claude) -- "Subidos vs oficiales" en Tickets + API de solo lectura para el programa de cuentas
 **Idea (Alejandro):** si un gerente mete tickets de mas (duplicados, facturas dobles, alterados) para que su gasto real cuadre, hay que

@@ -50,8 +50,20 @@ export function modelosCandidatos(): string[] {
   return [...env, ...MODELOS_DEFAULT].filter((m, i, a) => a.indexOf(m) === i)
 }
 
-export function buildGeminiPrompt(catalogContext: string, hoyISO: string): string {
-  return `Analiza esta imagen de un ticket o comprobante de gasto de un restaurante en Mexico. Un ticket puede contener VARIOS productos (renglones). Extrae la informacion en este formato JSON exacto:
+// Este prompt lo comparten TODOS los negocios que usan la app: aqui solo van reglas universales (tickets de Mexico, IVA,
+// envios anotados a mano, senales de alteracion). Lo propio de un negocio (como se llama, sus categorias especiales, su
+// gente, sus productos) llega en `negocio` desde la BD (sucursales.nombres_cliente y tabla reglas_ia) y NUNCA se escribe aqui.
+export interface NegocioPrompt { compradores: string[]; reglas: string[] }
+
+export function buildGeminiPrompt(catalogContext: string, hoyISO: string, negocio?: NegocioPrompt): string {
+  const compradores = (negocio?.compradores ?? []).map(n => `"${n}"`)
+  const quienCompra = compradores.length
+    ? `El negocio que COMPRA se llama ${compradores.join(' o ')}: si aparece impreso o escrito como cliente o receptor (ej. "Cliente: ${negocio!.compradores[0]}")`
+    : 'El negocio que COMPRA (el que aparece como cliente o receptor)'
+  const reglasNegocio = (negocio?.reglas ?? []).length
+    ? `\nReglas propias de este negocio (si alguna contradice una regla general, manda la del negocio):\n${negocio!.reglas.map(r => `- ${r}`).join('\n')}`
+    : ''
+  return `Analiza esta imagen de un ticket o comprobante de gasto de un negocio (restaurante, cafeteria u otro local) en Mexico. Un ticket puede contener VARIOS productos (renglones). Extrae la informacion en este formato JSON exacto:
 {
   "comercio": "nombre del establecimiento o proveedor que VENDE, o null",
   "fecha": "YYYY-MM-DD o null si no se puede determinar",
@@ -79,7 +91,7 @@ ${catalogContext}
 Reglas importantes:
 - Crea un objeto dentro de "items" por CADA producto o renglon del ticket. No agrupes varios productos en uno.
 - NO son renglones: subtotal, IVA, total, cambio, pago con tarjeta/efectivo, "cambio en monedero", litros, precio unitario, GPS, observaciones, leyendas legales ni datos del cliente. Un ticket de gas LP o gasolina tiene UN solo renglon: el combustible, con cantidad en litros y el monto total.
-- "comercio" es quien VENDE (el emisor). Los negocios que COMPRAN son "Wings Palace" (restaurante) y "Santa Elena" / "Cafe Santa Elena" (cafe): si aparecen impresos o escritos como cliente o receptor (ej. "RESTAURANT WINGS PALACE", "Cliente: Santa Elena"), ese NO es el comercio: busca el nombre del proveedor en el encabezado; si el papel no dice quien vende, deja "comercio" en null.
+- "comercio" es quien VENDE (el emisor). ${quienCompra}, ese NO es el comercio: busca el nombre del proveedor en el encabezado; si el papel no dice quien vende, deja "comercio" en null.
 - La "descripcion" debe ser LITERAL: conserva codigos, abreviaturas y texto raro tal como lo lees. NO reemplaces la descripcion por el nombre del catalogo.
 - FECHA: en Mexico se escribe dia/mes/año (DD/MM/AAAA o DD/MM/AA). Hoy es ${hoyISO}; el ticket es de las ultimas semanas o meses, nunca del futuro. Si lees un año imposible (ej. 2020, 2024 o 2028) en un ticket que claramente es reciente, corrigelo al año que corresponde y baja la confianza a "media".
 - "tipo_documento": "factura" si es un CFDI / factura electronica (tiene RFC, folio fiscal o UUID, uso de CFDI); "remision" si es nota de entrega del proveedor; "nota_a_mano" si esta escrita a mano; "ticket" para tickets impresos de tienda.
@@ -92,10 +104,10 @@ Reglas importantes:
 - Si una nota a mano tiene VARIOS productos sin precio por renglon pero un total general, deja "monto" en null en cada item y pon el total solo en "monto_total".
 - Si el ticket tiene un DESCUENTO, promocion o rebaja (dinero que se resta del total), capturalo como un renglon APARTE: "descripcion": "Descuento", "categoria": "Descuentos" y "monto" NEGATIVO (el ahorro, ej. -50). No lo restes de los otros renglones.
 - ENVIO ANOTADO A MANO: si sobre un ticket o nota alguien escribio a mano un cargo de envio que NO esta en lo impreso ("c/envio $1,460", "y envio $1,920", "con envio", "envio $60", "moto $60"), agrega un renglon aparte: "descripcion": "Moto envio", "cantidad": 1, "unidad": "servicio", "categoria": "Otros gastos operativos", "monto" = el envio (si solo escribieron el total con envio, es la diferencia entre ese total y el total impreso). En ese caso "monto_total" es el total pagado CON envio, aunque el envio salga caro (el sistema lo manda a revisar). Si escribieron a mano solo un total mayor SIN decir envio ni moto y la diferencia pasa de $200, casi seguro es la suma de varios tickets engrapados: NO agregues envio y deja el total impreso. Cualquier otro numero escrito a mano que no diga envio o moto NO cambia el total impreso. Una marca a mano como "MOTO" o "Moto 1" SIN importe no es un renglon.
-- MOTOS Y ENVIOS: un servicio de moto o envio para el dueno o su familia (dice "Ale", "Polo", "mama Polo" o "Toto") va con "categoria": "Extras"; cualquier otra moto o envio va en "Otros gastos operativos".
-- BODEGA (solo si "Bodega" esta en las categorias validas): cuenta SOLO la palabra "Bodega" ESCRITA A MANO sobre el papel (otra tinta o lapiz, en el margen o junto a un renglon); NO cuenta impresa en el nombre del proveedor ("EL BODEGON DE SEMILLAS", "BODEGA AURRERA") ni en campos impresos como almacen, bodega de salida o sucursal. Si esta a mano manda sobre los renglones que senala (llave, circulo, flecha o escrita a un lado); si esta en el encabezado sin senalar renglones, aplicala a todo el ticket solo cuando todos los renglones son material de empaque del tostador, y si no, solo a los de empaque. El renglon de "Moto envio" va en "Bodega" SOLO cuando todo lo demas del ticket es material de Bodega (el flete de esa entrega tambien es de Bodega); si el ticket mezcla cafeteria y Bodega, el envio va en "Otros gastos operativos". Un renglon de "Descuento" sigue la categoria de la compra a la que le baja el precio. Aunque nadie lo escriba, van siempre en "Bodega" las bolsas metalizadas para cafe (empaque del cafe en grano del tostador), la cinta de empaque canela o transparente de 48 mm con su despachador (no la cinta de aislar ni la de teflon) y el playo stretch o "strech" en rollo de 18 pulgadas de 1000 o 1300 pies (Polpusa, Reyma). El clingfilm o pelicula para alimentos de 30 cm NO es de Bodega aunque su descripcion diga "playo": va en "Desechables", salvo que ese renglon este marcado a mano. Si "Bodega" no esta en la lista de categorias validas, ignora la anotacion a mano y clasifica cada renglon por si mismo; esos empaques del tostador van en "Desechables".
+- MOTOS Y ENVIOS: un servicio de moto o de envio va en "Otros gastos operativos", salvo que una regla propia del negocio diga otra cosa.
 - "sospecha": llenalo SOLO con evidencia visible: numeros encimados, reescritos o tachados en cantidades, importes o total; corrector; otra tinta que cambia un importe; un total escrito a mano distinto del impreso que NO es envio ni suma de tickets engrapados; un comprobante de otro ano o de un talonario viejo; una nota a mano sin vendedor por un monto alto. No lo llenes por letra fea, foto borrosa o papel arrugado.
 - Incluye tambien el texto escrito a mano en tu analisis.
+${reglasNegocio}
 Responde UNICAMENTE con el JSON, sin explicaciones adicionales.`
 }
 

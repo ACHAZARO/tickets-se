@@ -23,10 +23,24 @@ export interface CatalogComercio {
   categoriasObservadas: string[]
 }
 
+// Lo propio del negocio dueno de la sucursal. Vive en la BD (por cuenta/sucursal), NUNCA en el codigo compartido:
+// la app se usa para varios negocios y lo que uno ensena no debe afectar a otro.
+export interface CatalogNegocio {
+  // Como se llama el negocio que COMPRA (para no confundirlo con el proveedor).
+  compradores: string[]
+  // Nombres de las sucursales de la cuenta (sus palabras no distinguen a un proveedor).
+  sucursales: string[]
+  // Reglas de lectura propias del negocio (tabla reglas_ia), ya ordenadas.
+  reglas: string[]
+  // Si no se pudo leer lo del negocio, el motivo. Con esto el ticket NO se lee (quedaria sin sus reglas, p. ej. Bodega).
+  fallo: string | null
+}
+
 export interface Catalog {
   products: CatalogProduct[]
   categories: CatalogCategory[]
   comercios: CatalogComercio[]
+  negocio: CatalogNegocio
 }
 
 // deno-lint-ignore no-explicit-any
@@ -56,6 +70,8 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
     .order('veces', { ascending: false }).limit(80)
   comQ = scope ? comQ.or(scope) : comQ.is('sucursal_id', null)
   const { data: comercios } = await comQ
+
+  const negocio = await cargarNegocio(supabase, sucursalId ?? null)
 
   // Categorias observadas por comercio (a partir de los renglones ya clasificados).
   const observadas = new Map<string, Map<string, number>>()
@@ -98,6 +114,47 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
         categoriasObservadas,
       }
     }),
+    negocio,
+  }
+}
+
+// Nombres del comprador y reglas propias del negocio: los de la CUENTA de la sucursal (las sucursales de prueba no
+// prestan su nombre a las demas). Si no se pueden leer, devuelve `fallo` y el ticket NO se lee (queda para releer).
+// deno-lint-ignore no-explicit-any
+async function cargarNegocio(supabase: any, sucursalId: string | null): Promise<CatalogNegocio> {
+  const vacio: CatalogNegocio = { compradores: [], sucursales: [], reglas: [], fallo: null }
+  if (!sucursalId) return vacio
+  try {
+    const { data: suc, error: errCuenta } = await supabase.from('sucursales').select('cuenta_id').eq('id', sucursalId).maybeSingle()
+    if (errCuenta) return { ...vacio, fallo: 'no se pudo leer la cuenta de la sucursal: ' + errCuenta.message }
+    const cuentaId = (suc?.cuenta_id as string | null) ?? null
+    if (!cuentaId) return vacio
+    const [{ data: hermanas, error: errSuc }, { data: reglas, error: errReglas }] = await Promise.all([
+      supabase.from('sucursales').select('id, nombre, nombres_cliente, es_prueba').eq('cuenta_id', cuentaId).order('nombre'),
+      supabase.from('reglas_ia').select('texto, sucursal_id, orden').eq('cuenta_id', cuentaId).eq('activa', true)
+        .or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`).order('orden', { ascending: true }),
+    ])
+    // supabase-js no lanza: si esto falla el ticket se leeria SIN las reglas del negocio (playo y bolsas a Desechables,
+    // motos de la familia a gasto operativo) y podria auto-confirmarse asi. Mejor no leerlo: queda para releer.
+    if (errSuc || errReglas) {
+      const motivo = (errSuc ?? errReglas).message
+      console.error('cargarNegocio: no se pudo leer lo propio del negocio:', motivo)
+      return { ...vacio, fallo: 'no se pudieron leer las reglas del negocio: ' + motivo }
+    }
+    const propias = ((hermanas ?? []) as AnyRow[]).filter(s => !s.es_prueba || s.id === sucursalId)
+    const sucursales = propias.map(s => String(s.nombre ?? '').trim()).filter(Boolean)
+    // Como aparece el negocio en los tickets: sucursales.nombres_cliente; si no se capturo, el nombre de la sucursal.
+    const compradores = [...new Set(propias.flatMap(s => {
+      const alias = ((s.nombres_cliente as string[] | null) ?? []).map(n => String(n ?? '').trim()).filter(Boolean)
+      return alias.length ? alias : [String(s.nombre ?? '').trim()]
+    }).filter(Boolean))]
+    return {
+      compradores, sucursales, fallo: null,
+      reglas: ((reglas ?? []) as AnyRow[]).map(r => String(r.texto ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean),
+    }
+  } catch (e) {
+    console.error('cargarNegocio:', e)
+    return { ...vacio, fallo: 'no se pudieron leer las reglas del negocio: ' + String((e as Error)?.message ?? e) }
   }
 }
 

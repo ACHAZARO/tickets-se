@@ -6,7 +6,7 @@ import { loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveC
 import type { Catalog } from '../_shared/catalog.ts'
 import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
-import { detectSmartDuplicate } from '../_shared/duplicados.ts'
+import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 
@@ -97,6 +97,11 @@ serve(async (req: Request) => {
     }
 
     const catalog: Catalog = await loadCatalog(reg.sucursal_id)
+    if (catalog.negocio.fallo) {
+      return json({ error: 'No se pudieron cargar las reglas del negocio; intenta de nuevo. No se cambio nada del ticket.', detalle: catalog.negocio.fallo }, 503)
+    }
+    // Lo propio del negocio (como se llama, sus reglas) viene de la BD por cuenta/sucursal, no del codigo compartido.
+    const propias = palabrasDelNegocio(catalog.negocio.sucursales)
     // Referencia de fecha = dia (hora de Mexico) en que se SUBIO el ticket, no hoy: un ticket
     // subido el 6-ago no puede ser de septiembre, y si no trae fecha se asume la de subida.
     const fechaSubida = fechaMexico(new Date(String(reg.created_at ?? new Date().toISOString())))
@@ -122,7 +127,7 @@ serve(async (req: Request) => {
       lectura = await leerTicketConGemini({
         imagenBase64: encodeBase64(imageBytes),
         mimeType: fileData.type || 'image/jpeg',
-        prompt: buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida),
+        prompt: buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida, catalog.negocio),
         modelos: modelo ? [modelo] : undefined,
       })
     }
@@ -142,6 +147,7 @@ serve(async (req: Request) => {
     const datos = lectura.datos
     ;(datos as Record<string, unknown>)._modelo = lectura.modelo
     ;(datos as Record<string, unknown>)._reproceso_manual = true
+    if (!desde_guardada) (datos as Record<string, unknown>)._reglas_negocio = catalog.negocio.reglas.length
 
     const rawItems = (Array.isArray(datos.items) ? datos.items : []).filter(it => it && (it.descripcion || it.monto != null))
     // No destruir los renglones existentes si la IA no devolvio renglones utiles.
@@ -236,7 +242,7 @@ serve(async (req: Request) => {
     const alertas: string[] = []
     const dupId = await detectSmartDuplicate(
       supabase, reg.sucursal_id, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registro_id,
-      datos.tipo_documento ?? null,
+      datos.tipo_documento ?? null, propias,
     )
     if (dupId) { await createAlert(supabase, registro_id, 'posible_duplicado', dupId); alertas.push('posible_duplicado') }
     if (asumida) { await createAlert(supabase, registro_id, 'sin_fecha'); alertas.push('sin_fecha') }
@@ -247,7 +253,7 @@ serve(async (req: Request) => {
     if (await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)) {
       await createAlert(supabase, registro_id, 'precio_anomalo'); alertas.push('precio_anomalo')
     }
-    const envioAlto = await envioMuyAlto(supabase, items, catalog.products, reg.sucursal_id, datos.comercio ?? null, registro_id)
+    const envioAlto = await envioMuyAlto(supabase, items, catalog.products, reg.sucursal_id, datos.comercio ?? null, registro_id, propias)
     if (envioAlto) { await createAlert(supabase, registro_id, 'envio_alto', undefined, { motivo: envioAlto }); alertas.push('envio_alto') }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }

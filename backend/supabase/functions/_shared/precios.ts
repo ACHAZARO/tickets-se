@@ -88,6 +88,7 @@ export async function envioMuyAlto(
   supabase: SB,
   items: { descripcion: string | null; monto: number | null; producto_catalogo_id: string | null }[],
   productos: CatalogProduct[], sucursalId: string, comercio: string | null, excluirRegistroId: string,
+  propias?: Set<string>,
 ): Promise<string | null> {
   const idsEnvio = productos.filter(p => esEnvio(p.nombre)).map(p => p.id)
   const montos = items
@@ -104,7 +105,7 @@ export async function envioMuyAlto(
         .eq('registros_tickets.sucursal_id', sucursalId).eq('registros_tickets.estado', 'confirmado')
         .order('created_at', { ascending: false }).limit(300)
       previos = ((data ?? []) as { monto: number; registros_tickets: { comercio: string | null } | null }[])
-        .filter(r => mismoComercio(comercio, r.registros_tickets?.comercio))
+        .filter(r => mismoComercio(comercio, r.registros_tickets?.comercio, propias))
         .map(r => Number(r.monto)).filter(n => Number.isFinite(n) && n > 0).slice(0, 10)
     } catch (e) { console.error('envioMuyAlto:', e) }
   }

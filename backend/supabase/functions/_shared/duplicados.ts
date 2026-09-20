@@ -1,12 +1,22 @@
 // deno-lint-ignore no-explicit-any
 type SB = any
 
-// Palabras que no distinguen a un comercio (razon social, conectores) y los nombres de los
-// propios restaurantes (notas internas "Wings Palace" no son un proveedor).
+// Palabras que no distinguen a un comercio (razon social, conectores). Esta lista es universal: la comparten
+// todos los negocios que usan la app.
 const RELLENO = new Set([
   'sa', 'de', 'cv', 'rl', 'sab', 'sapi', 'la', 'el', 'los', 'las', 'y', 'del', 'restaurant', 'sucursal', 'mexico',
-  'wings', 'palace', 'santa', 'elena',
 ])
+
+// Palabras del nombre del PROPIO negocio (sus sucursales): una nota interna "Wings Palace" no es un proveedor. Vienen de
+// la BD (nombres de las sucursales de la cuenta, catalog.negocio.sucursales), nunca escritas aqui.
+export function palabrasDelNegocio(nombres: string[] | null | undefined): Set<string> {
+  const out = new Set<string>()
+  for (const n of nombres ?? []) {
+    const limpio = (n ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
+    for (const t of limpio.split(/\s+/)) if (t.length >= 4) out.add(t)
+  }
+  return out
+}
 
 // Tokens significativos del nombre de un comercio: minusculas, sin acentos, >= 4 letras
 // ("Cervezas y Ref. Jalapa SA de CV" -> cervezas, jalapa).
@@ -16,14 +26,14 @@ const ALIAS = new Map<string, string>([
   ['propimex', 'femsa'], ['femsa', 'femsa'], ['coca', 'femsa'], ['cola', 'femsa'], ['kof', 'femsa'],
 ])
 
-export function tokensComercio(nombre: string | null | undefined): Set<string> {
+export function tokensComercio(nombre: string | null | undefined, propias?: Set<string>): Set<string> {
   const limpio = (nombre ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
     .replace(/[^a-z0-9 ]/g, ' ').replace(/propi\s*mex/g, 'propimex')
   const out = new Set<string>()
   for (const t of limpio.split(/\s+/)) {
     const canon = ALIAS.get(t)
     if (canon) out.add(canon)
-    else if (t.length >= 4 && !RELLENO.has(t)) out.add(t)
+    else if (t.length >= 4 && !RELLENO.has(t) && !propias?.has(t)) out.add(t)
   }
   return out
 }
@@ -31,9 +41,9 @@ export function tokensComercio(nombre: string | null | undefined): Set<string> {
 // Mismo proveedor: si ambos nombres tienen 2+ palabras significativas deben compartir 2
 // (evita juntar "Papeleria ... de Jalapa" con "Cervezas y Refrescos de Jalapa", o dos
 // proveedores con el mismo apellido); si uno solo tiene 1 palabra ("FEMSA"), basta esa.
-export function mismoComercio(a: string | null | undefined, b: string | null | undefined): boolean {
-  const ta = tokensComercio(a)
-  const tb = tokensComercio(b)
+export function mismoComercio(a: string | null | undefined, b: string | null | undefined, propias?: Set<string>): boolean {
+  const ta = tokensComercio(a, propias)
+  const tb = tokensComercio(b, propias)
   if (!ta.size || !tb.size) return false
   let comunes = 0
   for (const t of ta) if (tb.has(t)) comunes++
@@ -55,11 +65,11 @@ const mismoFolio = (a: string | null | undefined, b: string | null | undefined) 
 //    (la factura CFDI suele llevar otra fecha, otro folio y la razon social completa).
 //    Solo si UNO de los dos es factura y el otro no: dos notas o dos facturas con folios
 //    distintos y el mismo monto son compras que se repiten (pipa de agua, pan, gas), no duplicados.
-// excludeId evita que un ticket se detecte a si mismo.
+// excludeId evita que un ticket se detecte a si mismo. `propias` = palabrasDelNegocio(catalog.negocio.sucursales).
 export async function detectSmartDuplicate(
   supabase: SB, sucursalId: string, folio: string | null,
   comercio: string | null, monto: number | null, fecha: string | null,
-  excludeId?: string, tipoDocumento?: string | null,
+  excludeId?: string, tipoDocumento?: string | null, propias?: Set<string>,
 ): Promise<string | null> {
   const noSelf = excludeId ?? '00000000-0000-0000-0000-000000000000'
   if (folio && folioUtil(folio)) {
@@ -73,7 +83,7 @@ export async function detectSmartDuplicate(
       : q.gte('created_at', new Date(Date.now() - 60 * 864e5).toISOString())
     const { data } = await q.order('created_at', { ascending: true }).limit(5)
     const hit = ((data ?? []) as { id: string; comercio: string | null }[])
-      .find(r => !comercio || !r.comercio || mismoComercio(comercio, r.comercio))
+      .find(r => !comercio || !r.comercio || mismoComercio(comercio, r.comercio, propias))
     if (hit) return hit.id
   }
   if (comercio && monto && fecha) {
@@ -88,7 +98,7 @@ export async function detectSmartDuplicate(
       .find(r => !(folioUtil(folio) && folioUtil(r.folio_ticket) && !mismoFolio(folio, r.folio_ticket)))
     if (hit) return hit.id
   }
-  if (comercio && monto && monto > 0 && fecha && tokensComercio(comercio).size > 0) {
+  if (comercio && monto && monto > 0 && fecha && tokensComercio(comercio, propias).size > 0) {
     const { data } = await supabase.from('registros_tickets').select('id, comercio, tipo:gemini_raw->>tipo_documento')
       .eq('sucursal_id', sucursalId).neq('estado', 'rechazado').neq('id', noSelf)
       .gte('fecha_ticket', sumarDias(fecha, -10)).lte('fecha_ticket', sumarDias(fecha, 10))
@@ -97,7 +107,7 @@ export async function detectSmartDuplicate(
       .limit(20)
     const esFactura = tipoDocumento === 'factura'
     const hit = ((data ?? []) as { id: string; comercio: string | null; tipo: string | null }[])
-      .find(r => esFactura !== (r.tipo === 'factura') && mismoComercio(comercio, r.comercio))
+      .find(r => esFactura !== (r.tipo === 'factura') && mismoComercio(comercio, r.comercio, propias))
     if (hit) return hit.id
   }
   return null
