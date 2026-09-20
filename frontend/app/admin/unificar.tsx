@@ -96,7 +96,8 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
     const mio = ++seq.current
     const sug = await pedirSugerencias(sucursalId)
     if (mio !== seq.current) return
-    setN(sug.filter(s => s.motivo !== 'parecido').length)
+    // TODO lo pendiente, incluidos los "menos seguros": el numero no debe esconder trabajo por revisar.
+    setN(sug.length)
   }, [sucursalId])
   useEffect(() => { cargar() }, [cargar, pathname])
   useEffect(() => {
@@ -123,7 +124,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const toast = useToast()
   const confirm = useConfirm()
   const [sug, setSug] = useState<Sugerencia[] | null>(null)
-  const [verQuiza, setVerQuiza] = useState(false)
+  const [verQuiza, setVerQuiza] = useState<boolean | null>(null)   // null = automatico (abierto si son pocos)
   const [busy, setBusy] = useState<string | null>(null)
   const [form, setForm] = useState<Record<string, FormInsumo>>({})
 
@@ -141,6 +142,9 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const tamanos = sug.filter(s => s.motivo === 'presentacion')
   const quiza = sug.filter(s => s.motivo === 'parecido')
 
+  // Con pocos casos se muestran abiertos; con muchos (ej. 44 en Wings) se colapsan para no llenar la pantalla.
+  const abiertoPorDefecto = quiza.length <= 10
+  const abiertos = verQuiza ?? abiertoPorDefecto
   const nombreSuc = (id: string | null) => (id ? sucursales.find(x => x.id === id)?.nombre : null) ?? 'Todas las sucursales'
   const nombreCat = (id: string) => categorias.find(c => c.id === id)?.nombre ?? 'sin categoria'
 
@@ -293,7 +297,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   return (
     <section className="rounded-2xl border border-amber-800/40 bg-amber-950/10 p-4 space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-amber-200">Catalogo por revisar ({mismos.length + tamanos.length}{quiza.length ? ` + ${quiza.length} menos seguros` : ''})</h3>
+        <h3 className="text-sm font-semibold text-amber-200">Catalogo por revisar ({sug.length})</h3>
         <p className="text-xs text-zinc-500 mt-1 max-w-3xl">
           <b className="text-zinc-400">Unificar</b> = es el mismo articulo con dos nombres y queda uno solo.{' '}
           <b className="text-zinc-400">Mismo insumo, distinto tamaño</b> = quedan los dos (cada uno con su precio) pero sus compras se suman
@@ -315,10 +319,10 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
       )}
       {quiza.length > 0 && (
         <div className="space-y-2">
-          <button type="button" onClick={() => setVerQuiza(v => !v)} className="text-xs text-zinc-400 hover:text-zinc-200">
-            {verQuiza ? 'Ocultar' : 'Ver'} los {quiza.length} menos seguros
+          <button type="button" onClick={() => setVerQuiza(v => !(v ?? abiertoPorDefecto))} className="text-xs font-medium uppercase tracking-widest text-zinc-500 hover:text-zinc-300">
+            {abiertos ? '▾' : '▸'} Menos seguros ({quiza.length})
           </button>
-          {verQuiza && quiza.map(tarjeta)}
+          {abiertos && quiza.map(tarjeta)}
         </div>
       )}
     </section>
