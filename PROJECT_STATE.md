@@ -3,6 +3,22 @@
 > Estado vivo del proyecto. Ultima actualizacion: 2026-09-19.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
+## EN EL RADAR (Alejandro, 2026-09-20): la app se va a vender a otros locales -> lo aprendido NO debe salir de cada negocio
+Diagnostico (solo lectura, sin cambios todavia):
+- **Bien aislado, por sucursal:** catalogo y sinonimos (596 productos), comercios (106), historial de precios, duplicados,
+  referencia de envios por proveedor, categoria Bodega; la API ya es por cuenta (060).
+- **Fugas a corregir ANTES del primer cliente externo (hoy inofensivas: solo existen nuestros negocios):**
+  1. Prompt compartido `_shared/gemini.ts`: nombres "Wings Palace"/"Santa Elena" como compradores (linea del comercio), regla
+     de motos con "Ale, Polo, mama Polo, Toto", y regla BODEGA con nuestros productos/proveedores (protegida solo por "si
+     existe la categoria Bodega": un cliente que cree su propia "Bodega" la heredaria).
+  2. `_shared/duplicados.ts`: RELLENO trae 'wings','palace','santa','elena'.
+  3. 21 productos GLOBALES (`sucursal_id` NULL) aprendidos de nuestros tickets (DESCUENTO, Limones, BOLSA TIPICO, Cebollin,
+     Matizza, "Joutube"...): un negocio nuevo los heredaria con todo y sinonimos.
+- **Arreglo propuesto (pendiente del OK de Alejandro):** tabla de "reglas del negocio" por sucursal/cuenta que se inyecta al
+  prompt (el codigo compartido se queda solo con reglas universales: tickets mexicanos, IVA, envio a mano, sospecha); nombres
+  del comprador tomados de las sucursales de la cuenta; pasar los 21 productos globales a nuestras sucursales (dejar global
+  solo lo generico, p. ej. DESCUENTO). **Regla desde hoy: ninguna regla nueva de negocio como texto fijo en codigo compartido.**
+
 ## Sesion 2026-09-19 (Claude) -- "Subidos vs oficiales" en Tickets + API de solo lectura para el programa de cuentas
 **Idea (Alejandro):** si un gerente mete tickets de mas (duplicados, facturas dobles, alterados) para que su gasto real cuadre, hay que
 poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa de revision de cuentas debe poder consultarlo.
