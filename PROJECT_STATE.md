@@ -96,7 +96,13 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   Panel de Cerebro en dos bloques: "Parecen el mismo articulo" (unificar) y "Mismo nombre, distinto tamaño" (agrupar), con formulario
   editable (nombre del insumo, unidad base y cuanto trae cada presentacion). Entradas y Stock suman por insumo con la etiqueta "N tamaños"
   (en Stock el consumo se registra en la presentacion mas comprada y se lee de todas). Hoy: SE 1 sinonimo + 2 iguales + 11 presentaciones;
-  WP 10 + 2 + 23. Alejandro revisa y confirma el a uno.
+  WP 10 + 2 + 23. Alejandro revisa y confirma uno a uno.
+  **Probado de punta a punta en produccion (20-sep)** con dos productos ZZ en la sucursal PRUEBA (1 kg y 1.1 kg, ya borrados):
+  el formulario se llena solo leyendo el nombre, al guardar quedo el insumo con sus dos presentaciones, **Entradas y Stock
+  mostraron 2.1 kg** y al registrar 0.6 kg de consumo quedaron 1.5 kg disponibles. Dos fallas encontradas y corregidas ahi mismo:
+  Entradas/Stock pintaban la carga vieja (mostraban Santa Elena con el selector en PRUEBA; misma guarda de "ultima carga" que
+  Tickets) y el modal de consumo abria en la unidad granular (g) en vez de la del insumo (kg).
+  **Par de FRESA reabierto** (estaba en "no son iguales"): es el caso tipico de dos tamanos.
   **Ya unificado (a peticion): Santa Elena "Mantequilla" -> "Mantequilla Gloria 1 kg"** (11 renglones, $12,762.72; se le declaro 1 pz = 1 kg).
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
 - **Auditoria de evidencia (19-sep, sesion paralela): ver `AUDITORIA_EVIDENCIA.md`.** Hoy 0 fotos perdidas. Decisiones de
