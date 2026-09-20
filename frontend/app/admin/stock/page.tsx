@@ -15,6 +15,7 @@ interface Fila {
   id: string            // producto_catalogo_id donde se registra el consumo (el mas comprado del insumo)
   nombre: string
   esInsumo: boolean     // agrupa varias presentaciones (migracion 076): "Sal" = Sal 1 kg + Sal 1.1 kg
+  unidadPreferida: string | null   // unidad_base del insumo (kg/lt/pz): en esa se registra el consumo
   presentaciones: string[]
   productoIds: string[]
   entradasPorProducto: Record<string, number>
@@ -105,6 +106,7 @@ export default function StockPage() {
       const key = insumo ? 'i:' + insumo.id : 'p:' + prod.id
       const f = map.get(key) ?? {
         id: prod.id, nombre: insumo?.nombre?.trim() || prod.nombre, esInsumo: !!insumo,
+        unidadPreferida: insumo?.unidad_base?.trim() || null,
         presentaciones: [] as string[], productoIds: [] as string[], entradasPorProducto: {} as Record<string, number>,
         entradas: 0, consumo: 0, disponible: 0, baseUnidad: unidad, cadena,
       }
@@ -224,7 +226,7 @@ export default function StockPage() {
                   <td className="px-4 py-2.5 text-right text-zinc-400">{num(f.consumo * dFac)}</td>
                   <td className={`px-4 py-2.5 text-right font-semibold ${f.disponible <= 0 ? 'text-red-400' : f.disponible < f.entradas * 0.2 ? 'text-amber-400' : 'text-emerald-400'}`}>{num(f.disponible * dFac)}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => setReg({ id: f.id, nombre: f.nombre, baseUnidad: f.baseUnidad, cantidad: '', unidad: f.baseUnidad ?? '', fecha: hoyISO(), nota: '' })}
+                    <button onClick={() => setReg({ id: f.id, nombre: f.nombre, baseUnidad: f.baseUnidad, cantidad: '', unidad: f.unidadPreferida ?? dUnit ?? f.baseUnidad ?? '', fecha: hoyISO(), nota: '' })}
                       className="text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1.5 whitespace-nowrap cursor-pointer">Registrar consumo</button>
                   </td>
                 </tr>
