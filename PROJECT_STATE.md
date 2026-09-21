@@ -112,8 +112,10 @@ poder decirle "subiste $X, solo valen $Y, debes justificar $X-Y". Y el programa 
   **Datos del negocio (Alejandro, 20-sep):** "Hoja de aguacate" (manojo, para sazonar los frijoles) NO es "AGUACATE" (la fruta,
   por kg) · "CEBOLLA" (blanca) NO es "Cebolla morada": los dos pares cerrados como "no son iguales" (sus sinonimos ya estaban
   separados, la IA no deberia confundirlos) · "Guantes" SI es "Guantes desechables": unificado en este ultimo ($642.75 en 2
-  renglones). Ojo: sus capturas son 400 pz ($612.75) y 1 paquete ($30), asi que en Entradas su cantidad sale "mixta" hasta que
-  se declare la equivalencia (1 paquete = N pz).
+  renglones). Sus dos compras venian en unidades distintas y no se podian sumar: 400 pz de Costco ($612.75 = $1.5319/pz) y
+  1 "paquete" de Walmart ($30, sin decir cuantas trae). **Migracion 080:** a peticion de Alejandro el paquete se estima por
+  precio (30 / 1.5319 = 19.58 -> **20 pz**, aproximado a proposito; el gasto no cambia). Guantes desechables queda con
+  **420 pz / $642.75**. Renglon original en `respaldo.r080_guantes` por si aparece el dato real del paquete.
   **Wings Palace sin revisar** (12 fuertes + 44 menos seguros): lo vera Alejandro despues.
   **Ya unificado (a peticion): Santa Elena "Mantequilla" -> "Mantequilla Gloria 1 kg"** (11 renglones, $12,762.72; se le declaro 1 pz = 1 kg).
 - **Pendiente:** fecha de rotacion de la llave; rutas de precios/stock de la API si las pide.
