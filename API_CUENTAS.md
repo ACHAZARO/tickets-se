@@ -150,7 +150,7 @@ ENDPOINTS
    Los nombres de categoria salen en "oficiales_por_categoria" del /resumen (no importan las mayusculas). Con detalle=1 agrega cada compra (fecha, comercio, producto, cantidad, monto).
 
 QUE SIGNIFICA CADA CAMPO (/resumen)
-- subidos: TODO lo que el gerente capturo (tickets subidos) sin importar si despues se rechazo. Incluye duplicados.
+- subidos: TODO lo que el gerente capturo (tickets subidos) sin importar si despues se rechazo. Cada ticket cuenta SOLO el monto de su propio papel (si no se leyo monto, cuenta $0), por eso una nota de remision sin importe junto a su factura no infla el total.
 - oficiales: lo AUTORIZADO tras la revision (tickets confirmados, con el monto ya corregido). Es el dinero que realmente gestiono el gerente.
 - en_revision: subidos que todavia no se deciden.
 - no_validos: rechazados (notas dobles, viejas, gastos no relacionados con la operacion, fraude). "por_motivo" los separa en fraude / duplicado / otro.
