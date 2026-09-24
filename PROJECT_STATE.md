@@ -14,6 +14,9 @@ articulo con unidades y montos, descuento incluido), consultable por fechas desd
 - **API `api-cuentas` v5** (verify_jwt=false): ruta nueva `/tickets` (`estado=todos`, `formato=csv` con BOM y proteccion
   contra formulas). Documentada en `API_CUENTAS.md` y en el texto para otra IA (`_secretos/instrucciones-para-otra-ia.txt`).
 - **Panel:** Gasto -> "Reporte (Excel)" ahora trae la hoja **Tickets** (una fila por ticket) usando la misma RPC.
+- **Ajuste (mismo dia, migracion 082 + api-cuentas v6):** columna **Estado** en 2a posicion (Aprobado / Rechazado / Por
+  revisar, campo `estado_texto`). Decision: `/tickets` y la hoja Tickets traen TODOS los estados por defecto (si no, la columna
+  siempre diria Aprobado); `estado=confirmado` da solo lo oficial. Verificado: agosto 332 = 328 Aprobado + 4 Rechazado.
 - **Verificado:** agosto 2026 = 328 tickets / $185,613.74, identico a `oficiales` del resumen; 0 tickets donde los articulos
   no sumen el total; llamada real a la API (JSON, CSV, 400 por parametro malo, 401 sin llave); RPC como admin real = mismo
   total, como no-admin = 0; Excel generado con el mismo codigo del boton (hoja Tickets, 328 filas). `tsc` limpio.

@@ -1,7 +1,7 @@
 // API de SOLO LECTURA para el programa que revisa cuentas.
 //   GET /api-cuentas/resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=slug]
 //   GET /api-cuentas/desglose?categoria=Bodega&desde=..&hasta=..[&sucursal=slug][&detalle=1]
-//   GET /api-cuentas/tickets?desde=..&hasta=..[&sucursal=slug][&estado=todos][&formato=csv]
+//   GET /api-cuentas/tickets?desde=..&hasta=..[&sucursal=slug][&estado=confirmado][&formato=csv]
 //   GET /api-cuentas/sucursales
 // Auth: llave en `Authorization: Bearer tk_...` o `x-api-key: tk_...` (solo se guarda su SHA-256 en api_keys).
 // Cada llave pertenece a UNA cuenta (api_keys.cuenta_id) y solo ve las sucursales de esa cuenta.
@@ -52,7 +52,7 @@ function leerPeriodo(url: URL): { desde: string; hasta: string } | Response {
 interface Articulo { producto: string; cantidad: number | null; unidad: string | null; monto: number }
 interface TicketRep {
   ticket_id: string; folio: string | null; comercio: string | null; sucursal_nombre: string
-  fecha_ticket: string | null; fecha_captura: string; estado: string; total: number; articulos: Articulo[]
+  fecha_ticket: string | null; fecha_captura: string; estado: string; estado_texto: string; total: number; articulos: Articulo[]
 }
 const pesos = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2)
 // Comillas dobles y, si empieza con = + - @, un apostrofe para que Excel no lo tome como formula.
@@ -63,12 +63,12 @@ const celda = (v: string | number | null) => {
   return '"' + t.replace(/"/g, '""') + '"'
 }
 function ticketsCsv(tickets: TicketRep[]): string {
-  const filas = [['Ticket', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Estado', 'Total del ticket', 'Articulos', 'Desglose']
+  const filas = [['Ticket', 'Estado', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Total del ticket', 'Articulos', 'Desglose']
     .map(celda).join(',')]
   for (const t of tickets) {
     const desglose = t.articulos.map(a =>
       [a.producto, a.cantidad !== null ? `${a.cantidad}${a.unidad ? ' ' + a.unidad : ''}` : '', pesos(a.monto)].filter(Boolean).join(' ')).join(' | ')
-    filas.push([t.ticket_id.slice(0, 8), t.folio, t.comercio, t.sucursal_nombre, t.fecha_ticket, t.fecha_captura, t.estado,
+    filas.push([t.ticket_id.slice(0, 8), t.estado_texto, t.folio, t.comercio, t.sucursal_nombre, t.fecha_ticket, t.fecha_captura,
       t.total, t.articulos.length, desglose].map(celda).join(','))
   }
   // BOM para que Excel abra bien los acentos.
@@ -187,8 +187,9 @@ serve(async (req: Request) => {
     const periodo = leerPeriodo(url)
     if (periodo instanceof Response) return periodo
     const { desde, hasta } = periodo
-    const estado = (url.searchParams.get('estado') ?? 'confirmado').toLowerCase()
-    if (!['confirmado', 'todos'].includes(estado)) return json({ error: 'estado debe ser confirmado (default) o todos' }, 400)
+    // Default: todos (cada ticket dice si esta Aprobado, Rechazado o Por revisar). confirmado = solo lo autorizado.
+    const estado = (url.searchParams.get('estado') ?? 'todos').toLowerCase()
+    if (!['confirmado', 'todos'].includes(estado)) return json({ error: 'estado debe ser todos (default) o confirmado' }, 400)
     const formato = (url.searchParams.get('formato') ?? 'json').toLowerCase()
     if (!['json', 'csv'].includes(formato)) return json({ error: 'formato debe ser json (default) o csv' }, 400)
 

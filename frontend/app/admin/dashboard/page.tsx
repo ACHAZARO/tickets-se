@@ -216,8 +216,9 @@ export default function DashboardPage() {
 
   async function exportar() {
     const { exportReporteMensual } = await import('@/lib/export-xlsx')
-    // Hoja "Tickets": una fila por ticket con su desglose (la misma RPC que la API /tickets).
-    const { data: rep, error } = await supabase.rpc('reporte_tickets', { p_desde: inicio, p_hasta: fin, p_sucursal: sucursalId || null })
+    // Hoja "Tickets": una fila por ticket con su estado y desglose (la misma RPC que la API /tickets).
+    // Trae TODOS los estados (Aprobado / Rechazado / Por revisar); las demas hojas solo cuentan lo aprobado.
+    const { data: rep, error } = await supabase.rpc('reporte_tickets', { p_desde: inicio, p_hasta: fin, p_sucursal: sucursalId || null, p_estado: 'todos' })
     if (error) { toast('No se pudo armar la hoja de tickets: ' + error.message, 'error'); return }
     const tickets = ((rep as { tickets?: TicketReporte[] } | null)?.tickets) ?? []
     const categorias: ResumenCategoria[] = cats.map(c => ({
