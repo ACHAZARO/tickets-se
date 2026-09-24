@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import { useToast } from '../ui'
 import { rangoDeMes } from '@/lib/arqueo'
 import { computeBaseUnits, pretty } from '@/lib/units.mjs'
-import type { TicketDetalle, ResumenCategoria } from '@/lib/export-xlsx'
+import type { TicketDetalle, ResumenCategoria, TicketReporte } from '@/lib/export-xlsx'
 
 interface ItemRow {
   descripcion: string | null
@@ -54,6 +55,7 @@ type Modo = 'mes' | 'rango'
 
 export default function DashboardPage() {
   const { sucursalId, sucursales } = useSucursal()
+  const toast = useToast()
   const [modo, setModo] = useState<Modo>('mes')
   const [mesSel, setMesSel] = useState(MESES_SEL[0])
   const [rangoIni, setRangoIni] = useState(rangoDeMes(MESES_SEL[0]).inicio)
@@ -214,6 +216,10 @@ export default function DashboardPage() {
 
   async function exportar() {
     const { exportReporteMensual } = await import('@/lib/export-xlsx')
+    // Hoja "Tickets": una fila por ticket con su desglose (la misma RPC que la API /tickets).
+    const { data: rep, error } = await supabase.rpc('reporte_tickets', { p_desde: inicio, p_hasta: fin, p_sucursal: sucursalId || null })
+    if (error) { toast('No se pudo armar la hoja de tickets: ' + error.message, 'error'); return }
+    const tickets = ((rep as { tickets?: TicketReporte[] } | null)?.tickets) ?? []
     const categorias: ResumenCategoria[] = cats.map(c => ({
       nombre: c.nombre, gasto: c.gasto, operativo: c.operativo,
       pct: gastoPositivo > 0 && c.operativo && c.gasto > 0 ? (c.gasto / gastoPositivo) * 100 : 0,
@@ -224,7 +230,7 @@ export default function DashboardPage() {
     }))
     exportReporteMensual({
       periodo: periodoLabel, sucursal: sucursalLabel, gastoOperativo, gastoNoOperativo,
-      nTickets, categorias, comercios: comerciosAgg, productos, detalle,
+      nTickets, categorias, comercios: comerciosAgg, productos, detalle, tickets,
     })
   }
 

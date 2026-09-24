@@ -54,6 +54,25 @@ export function exportGastoXlsx(opts: {
   XLSX.writeFile(wb, `gasto_${opts.periodo.replace(/[^\w-]/g, '_')}.xlsx`)
 }
 
+// Reporte ticket por ticket (RPC reporte_tickets): una fila por ticket con su desglose.
+export interface TicketReporte {
+  ticket_id: string; folio: string | null; comercio: string | null; sucursal_nombre: string
+  fecha_ticket: string | null; fecha_captura: string; estado: string; total: number
+  articulos: { producto: string; cantidad: number | null; unidad: string | null; monto: number }[]
+}
+const pesos = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2)
+function hojaTickets(tickets: TicketReporte[]) {
+  return XLSX.utils.aoa_to_sheet([
+    ['Ticket', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Total del ticket', 'Artículos', 'Desglose'],
+    ...tickets.map(t => [
+      t.ticket_id.slice(0, 8), t.folio ?? '', t.comercio ?? '', t.sucursal_nombre, t.fecha_ticket ?? '', t.fecha_captura, t.total,
+      t.articulos.length,
+      t.articulos.map(a => [a.producto, a.cantidad !== null ? `${a.cantidad}${a.unidad ? ' ' + a.unidad : ''}` : '', pesos(a.monto)]
+        .filter(Boolean).join(' ')).join(' | '),
+    ]),
+  ])
+}
+
 export interface ResumenComercio { nombre: string; gasto: number; tickets: number }
 export interface ResumenProducto {
   nombre: string; cantidad: number; unidad: string | null
@@ -71,6 +90,7 @@ export function exportReporteMensual(opts: {
   comercios: ResumenComercio[]
   productos: ResumenProducto[]
   detalle: TicketDetalle[]
+  tickets: TicketReporte[]
 }) {
   const wb = XLSX.utils.book_new()
 
@@ -84,6 +104,7 @@ export function exportReporteMensual(opts: {
     ['Gasto total', opts.gastoOperativo + opts.gastoNoOperativo],
   ]
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen')
+  XLSX.utils.book_append_sheet(wb, hojaTickets(opts.tickets), 'Tickets')
 
   const cats = [
     ['Categoría', 'Gasto', '% del operativo', 'Tipo'],

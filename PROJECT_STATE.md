@@ -1,7 +1,27 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-20.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-23.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-09-23 (Claude) -- Reporte TICKET POR TICKET (para cuadrar contra el punto de venta)
+**Pedido (Alejandro):** un reporte con una fila por ticket (comercio, fecha del ticket, fecha de captura, total y desglose por
+articulo con unidades y montos, descuento incluido), consultable por fechas desde la API y descargable. Objetivo: compararlo
+(o a futuro conectarlo) contra el punto de venta o su API.
+- **Migracion 081 `reporte_tickets(p_desde, p_hasta, p_sucursal, p_cuenta, p_estado)`**: una sola fuente para API y panel.
+  Mismo periodo/sucursal/cuenta que `resumen_tickets`. Default solo confirmados; `todos` incluye rechazados/duplicados.
+  Max 5000 tickets (`truncado`). Ejecutable por `authenticated` pero filtra con `auth.role()='service_role' OR is_admin()`
+  (+ RLS): un usuario no admin recibe 0.
+- **API `api-cuentas` v5** (verify_jwt=false): ruta nueva `/tickets` (`estado=todos`, `formato=csv` con BOM y proteccion
+  contra formulas). Documentada en `API_CUENTAS.md` y en el texto para otra IA (`_secretos/instrucciones-para-otra-ia.txt`).
+- **Panel:** Gasto -> "Reporte (Excel)" ahora trae la hoja **Tickets** (una fila por ticket) usando la misma RPC.
+- **Verificado:** agosto 2026 = 328 tickets / $185,613.74, identico a `oficiales` del resumen; 0 tickets donde los articulos
+  no sumen el total; llamada real a la API (JSON, CSV, 400 por parametro malo, 401 sin llave); RPC como admin real = mismo
+  total, como no-admin = 0; Excel generado con el mismo codigo del boton (hoja Tickets, 328 filas). `tsc` limpio.
+  **No verificado en navegador** el clic del boton (el panel pide login de Alejandro): probarlo la proxima vez que entre.
+- **Deuda vista (sin tocar):** el tablero Gasto (`admin/dashboard/page.tsx`) trae los renglones con una consulta directa sin
+  paginar; si un periodo pasa de ~1000 renglones (limite por defecto de Supabase) las cifras/hojas Categorias, Productos y
+  Detalle se quedarian cortas. La hoja Tickets NO tiene ese problema (usa la RPC). Siguiente accion: medir el limite real
+  del proyecto y, si aplica, pasar el tablero a RPC o paginar.
 
 ## MULTI-NEGOCIO (2026-09-20): lo que aprende la IA se queda en cada negocio -> ver `MULTI_NEGOCIO.md`
 Alejandro va a vender la app a otros locales. **Regla de oro: nada propio de un negocio se escribe en codigo compartido**

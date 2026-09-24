@@ -1,6 +1,7 @@
 // API de SOLO LECTURA para el programa que revisa cuentas.
 //   GET /api-cuentas/resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=slug]
 //   GET /api-cuentas/desglose?categoria=Bodega&desde=..&hasta=..[&sucursal=slug][&detalle=1]
+//   GET /api-cuentas/tickets?desde=..&hasta=..[&sucursal=slug][&estado=todos][&formato=csv]
 //   GET /api-cuentas/sucursales
 // Auth: llave en `Authorization: Bearer tk_...` o `x-api-key: tk_...` (solo se guarda su SHA-256 en api_keys).
 // Cada llave pertenece a UNA cuenta (api_keys.cuenta_id) y solo ve las sucursales de esa cuenta.
@@ -45,6 +46,33 @@ function leerPeriodo(url: URL): { desde: string; hasta: string } | Response {
     return json({ error: `El rango maximo es de ${MAX_DIAS} dias` }, 400)
   }
   return { desde, hasta }
+}
+
+// --- CSV del reporte ticket por ticket ---
+interface Articulo { producto: string; cantidad: number | null; unidad: string | null; monto: number }
+interface TicketRep {
+  ticket_id: string; folio: string | null; comercio: string | null; sucursal_nombre: string
+  fecha_ticket: string | null; fecha_captura: string; estado: string; total: number; articulos: Articulo[]
+}
+const pesos = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2)
+// Comillas dobles y, si empieza con = + - @, un apostrofe para que Excel no lo tome como formula.
+const celda = (v: string | number | null) => {
+  if (v === null) return ''
+  if (typeof v === 'number') return String(v)
+  const t = /^[=+\-@\t\r]/.test(v) ? "'" + v : v
+  return '"' + t.replace(/"/g, '""') + '"'
+}
+function ticketsCsv(tickets: TicketRep[]): string {
+  const filas = [['Ticket', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Estado', 'Total del ticket', 'Articulos', 'Desglose']
+    .map(celda).join(',')]
+  for (const t of tickets) {
+    const desglose = t.articulos.map(a =>
+      [a.producto, a.cantidad !== null ? `${a.cantidad}${a.unidad ? ' ' + a.unidad : ''}` : '', pesos(a.monto)].filter(Boolean).join(' ')).join(' | ')
+    filas.push([t.ticket_id.slice(0, 8), t.folio, t.comercio, t.sucursal_nombre, t.fecha_ticket, t.fecha_captura, t.estado,
+      t.total, t.articulos.length, desglose].map(celda).join(','))
+  }
+  // BOM para que Excel abra bien los acentos.
+  return String.fromCharCode(0xfeff) + filas.join('\r\n') + '\r\n'
 }
 
 serve(async (req: Request) => {
@@ -154,5 +182,39 @@ serve(async (req: Request) => {
     }
   }
 
-  return json({ error: 'Ruta no encontrada. Disponibles: /resumen, /desglose, /sucursales' }, 404)
+  // Ticket por ticket con su desglose por articulo (para cuadrar contra el punto de venta).
+  if (ruta === '/tickets') {
+    const periodo = leerPeriodo(url)
+    if (periodo instanceof Response) return periodo
+    const { desde, hasta } = periodo
+    const estado = (url.searchParams.get('estado') ?? 'confirmado').toLowerCase()
+    if (!['confirmado', 'todos'].includes(estado)) return json({ error: 'estado debe ser confirmado (default) o todos' }, 400)
+    const formato = (url.searchParams.get('formato') ?? 'json').toLowerCase()
+    if (!['json', 'csv'].includes(formato)) return json({ error: 'formato debe ser json (default) o csv' }, 400)
+
+    let sucursalId: string | null = null
+    const slug = url.searchParams.get('sucursal')
+    if (slug) {
+      const s = reales.find(x => x.slug === slug)
+      if (!s) return json({ error: `Sucursal desconocida: ${slug}` }, 404)
+      sucursalId = s.id
+    }
+    const { data, error } = await supabase.rpc('reporte_tickets', {
+      p_desde: desde, p_hasta: hasta, p_sucursal: sucursalId, p_cuenta: cuentaId, p_estado: estado,
+    })
+    if (error) { console.error('api-cuentas tickets:', error.message); return json({ error: 'Error interno' }, 500) }
+    const rep = data as { tickets: TicketRep[] } & Record<string, unknown>
+
+    if (formato === 'csv') {
+      return new Response(ticketsCsv(rep.tickets), {
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+          'Content-Disposition': `attachment; filename="tickets_${slug ?? 'todas'}_${desde}_a_${hasta}.csv"`,
+        },
+      })
+    }
+    return json({ periodo: { desde, hasta }, ...(slug ? { sucursal: slug } : {}), ...rep })
+  }
+
+  return json({ error: 'Ruta no encontrada. Disponibles: /resumen, /desglose, /tickets, /sucursales' }, 404)
 })

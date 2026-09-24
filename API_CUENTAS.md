@@ -100,6 +100,36 @@ Ejemplo real (`?categoria=Bodega&sucursal=santa-elena&desde=2026-06-01&hasta=202
 }
 ```
 
+### `GET /tickets?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=slug][&estado=todos][&formato=csv]`
+
+Reporte **ticket por ticket** con su desglose por articulo. Sirve para cuadrar contra el punto de venta (o su API):
+cada ticket trae su total y los articulos que lo forman. Mismo periodo que `/resumen` (fecha del ticket; sin fecha, la de subida).
+
+- `estado`: `confirmado` (default, solo lo autorizado: el total coincide con `oficiales` del `/resumen`) o `todos` (incluye rechazados,
+  duplicados y en revision, cada uno con su `estado`; aqui el duplicado muestra el monto de su papel aunque en `/resumen` cuente $0).
+- `formato`: `json` (default) o `csv` (una fila por ticket; columnas Ticket, Folio, Comercio, Sucursal, Fecha del ticket,
+  Fecha de captura, Estado, Total del ticket, Articulos y Desglose `Producto cantidad unidad $monto | ...`). Se abre directo en Excel.
+- JSON: `total` (`tickets`, `monto`), `truncado` (maximo 5000 tickets por consulta; si es `true`, pide un rango mas corto) y `tickets`, de la fecha mas vieja a la mas nueva.
+- Cada ticket: `ticket_id`, `folio` (el del papel, si se leyo), `comercio`, `sucursal`, `sucursal_nombre`, `fecha_ticket`,
+  `fecha_captura` (cuando se subio, hora de Mexico `AAAA-MM-DD HH:MM`), `estado`, `total`, `suma_articulos` y `articulos`
+  (`producto` del catalogo o lo escrito, `descripcion` tal cual el papel, `cantidad`, `unidad`, `monto`, `categoria`), en el orden del papel.
+- Los descuentos son articulos con monto **negativo** (categoria Descuentos), asi que los articulos suman el total.
+  Probado agosto 2026: 328 tickets, $185,613.74 (igual que `oficiales`), y en todos `suma_articulos` = `total`.
+
+Ejemplo real (`?sucursal=wings-palace&desde=2026-08-01&hasta=2026-08-31`, un ticket):
+
+```json
+{ "ticket_id": "4cff7363-...", "folio": "FXALCER2207589", "comercio": "CERVEZAS Y REFRESCOS DE JALAPA",
+  "sucursal": "wings-palace", "sucursal_nombre": "WINGS PALACE", "fecha_ticket": "2026-08-04", "fecha_captura": "2026-09-11 15:34",
+  "estado": "confirmado", "total": 2756.45, "suma_articulos": 2756.45,
+  "articulos": [
+    { "producto": "Tecate 1x20 bot 325ml", "cantidad": 1, "unidad": "caja", "monto": 337.00, "categoria": "Insumos Alimentos" },
+    { "producto": "DESCUENTO", "cantidad": null, "unidad": null, "monto": -98.55, "categoria": "Descuentos" }
+  ] }
+```
+
+El panel tiene lo mismo en Excel: **Gasto -> Reporte (Excel)**, hoja **Tickets** (una fila por ticket, del mes o rango elegido).
+
 ### `GET /sucursales`
 
 Lista de sucursales reales: `{ "sucursales": [ { "slug": "santa-elena", "nombre": "SANTA ELENA" }, ... ] }`.
@@ -123,7 +153,7 @@ Solo se guarda el **hash SHA-256** de la llave (tabla `api_keys`); la llave real
 
 ## Para agregar despues (no hecho, el disenio lo permite)
 
-Cambios de precios (`precio_historial`), stock/inventario y detalle ticket por ticket: se agregan como rutas nuevas
+Cambios de precios (`precio_historial`) y stock/inventario: se agregan como rutas nuevas
 en la misma funcion, con la misma llave.
 
 ## Texto para pegarle a otra IA
@@ -148,6 +178,11 @@ ENDPOINTS
 3) GET /desglose?categoria=<nombre>&desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=<slug>][&detalle=1]
    Desglose POR PRODUCTO de una categoria, solo con lo autorizado. Ej.: categoria=Bodega dice cuanto fue en playo, bolsas metalizadas, cinta, envios, etc.
    Los nombres de categoria salen en "oficiales_por_categoria" del /resumen (no importan las mayusculas). Con detalle=1 agrega cada compra (fecha, comercio, producto, cantidad, monto).
+4) GET /tickets?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&sucursal=<slug>][&estado=todos][&formato=csv]
+   TICKET POR TICKET: folio, comercio, fecha del ticket, fecha de captura (cuando se subio), total y sus articulos (producto, cantidad, unidad, monto, categoria).
+   Default solo autorizados (estado=confirmado); estado=todos incluye rechazados/duplicados con su estado. formato=csv da una fila por ticket.
+   Los descuentos vienen como articulos con monto negativo: los articulos suman el total. Maximo 5000 tickets por consulta ("truncado": true = pide un rango mas corto).
+   Usalo para cuadrar contra el punto de venta: mismo comercio/fecha/total, y articulo por articulo.
 
 QUE SIGNIFICA CADA CAMPO (/resumen)
 - subidos: TODO lo que el gerente capturo (tickets subidos) sin importar si despues se rechazo. Cada ticket cuenta SOLO el monto de su propio papel (si no se leyo monto, cuenta $0), por eso una nota de remision sin importe junto a su factura no infla el total.
