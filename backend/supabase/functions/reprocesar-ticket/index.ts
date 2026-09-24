@@ -9,6 +9,7 @@ import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
+import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
 // lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
@@ -148,6 +149,8 @@ serve(async (req: Request) => {
     ;(datos as Record<string, unknown>)._modelo = lectura.modelo
     ;(datos as Record<string, unknown>)._reproceso_manual = true
     if (!desde_guardada) (datos as Record<string, unknown>)._reglas_negocio = catalog.negocio.reglas.length
+    const paraIA = detectarTextoParaIA(datos)
+    if (paraIA) (datos as Record<string, unknown>)._texto_para_ia = paraIA
 
     const rawItems = (Array.isArray(datos.items) ? datos.items : []).filter(it => it && (it.descripcion || it.monto != null))
     // No destruir los renglones existentes si la IA no devolvio renglones utiles.
@@ -257,6 +260,14 @@ serve(async (req: Request) => {
     if (envioAlto) { await createAlert(supabase, registro_id, 'envio_alto', undefined, { motivo: envioAlto }); alertas.push('envio_alto') }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
+    // Texto en el papel dirigido a la IA: a la revision de Fraude (no se quita solo al releer).
+    if (paraIA) {
+      const { error: sospErr } = await supabase.from('registros_tickets').update({
+        sospechoso: true, sospecha_origen: 'auto', sospecha_estado: 'abierta', sospecha_motivo: motivoTextoParaIA(paraIA),
+      }).eq('id', registro_id)
+      if (sospErr) console.error('marcar sospecha fallo:', sospErr.message)
+      alertas.push('texto_para_ia')
+    }
     if (rechazado) alertas.push('rechazado')
 
     return json({ ok: true, items: items.length, modelo: lectura.modelo, fecha: fechaTicket, posible_duplicado: dupId, alertas })

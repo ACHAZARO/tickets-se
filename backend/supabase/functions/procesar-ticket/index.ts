@@ -14,6 +14,7 @@ import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/preci
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
+import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
@@ -255,7 +256,14 @@ async function procesarEnSegundoPlano(opts: {
 
     let hayAlerta = false
     // Senales de alteracion o de comprobante reutilizado (las ve la IA): van a Fraude.
-    const sospecha = typeof datos.sospecha === 'string' ? datos.sospecha.trim().slice(0, 400) : ''
+    let sospecha = typeof datos.sospecha === 'string' ? datos.sospecha.trim().slice(0, 400) : ''
+    // Texto en el papel escrito para darle ordenes a la IA: nunca se aprueba solo, va a Fraude.
+    const paraIA = detectarTextoParaIA(datos)
+    if (paraIA) {
+      ;(datos as Record<string, unknown>)._texto_para_ia = paraIA
+      await supabase.from('registros_tickets').update({ gemini_raw: datos as unknown as Record<string, unknown> }).eq('id', registroId)
+      sospecha = motivoTextoParaIA(paraIA) + (sospecha ? ` La IA ademas vio: ${sospecha}` : '')
+    }
     if (datos.confianza === 'baja') {
       await createAlert(supabase, registroId, 'ilegible')
       notifyAlertEmail(registroId, 'ilegible'); hayAlerta = true
