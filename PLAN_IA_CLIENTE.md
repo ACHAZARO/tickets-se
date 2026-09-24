@@ -36,10 +36,10 @@
 - **Fase 0 — Blindaje de la lectura de fotos (HECHO 2026-09-24).** Regla de SEGURIDAD en el prompt de Gemini, campo
   `texto_dirigido_a_ia` y detector propio (`_shared/inyeccion.ts`) que no depende de la IA. Si el papel trae
   instrucciones para la IA: no se aprueba solo, va a Fraude con el texto citado. 0 falsas alarmas en todo el historial.
-- **Fase 1 — Conector de solo lectura (MCP).** Ruta `POST /api-cuentas/mcp` en la misma función y con la misma llave.
+- **Fase 1 — Conector de solo lectura (MCP) (HECHO 2026-09-24, api-cuentas v7).** Ruta `POST /api-cuentas/mcp` en la misma función y con la misma llave.
   Herramientas: sucursales, resumen, desglose, reporte de tickets, bandeja de pendientes, detalle de un ticket.
   Cada respuesta marca los textos que vienen de fotos como datos no confiables. Sirve ya para Claude Code,
-  Claude Desktop y Antigravity (llave en encabezado).
+  Antigravity, Cursor y cualquier cliente que acepte la llave en un encabezado (Claude Desktop/claude.ai/ChatGPT: fase 4).
 - **Fase 2 — Acciones de bajo riesgo** (sinónimos, categoría/unidad). Requiere: columna `permisos` en `api_keys`,
   tabla `bitacora_api` y deshacer.
 - **Fase 3 — Aprobar/rechazar con confirmación** del dueño (la IA pide, el dueño confirma en su chat; el servidor

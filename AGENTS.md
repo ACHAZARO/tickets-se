@@ -120,7 +120,7 @@ revision de tickets/
 |           +-- enviar-alerta-email/
 |               +-- index.ts           # Resend para alertas criticas
 |           +-- api-cuentas/
-|               +-- index.ts           # API SOLO LECTURA para el programa de cuentas (llave tk_..., ver API_CUENTAS.md)
+|               +-- index.ts           # API SOLO LECTURA + conector MCP para IAs (llave tk_..., ver API_CUENTAS.md y PLAN_IA_CLIENTE.md)
 |
 +-- supabase/
 |   +-- migrations/
