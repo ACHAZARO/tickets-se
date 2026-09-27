@@ -36,7 +36,7 @@ la API (reporte y un ticket completo) y en un reporte descargable a mano por fec
   notas (mezcla de 3 vias, compilado aparte); esos cambios siguen en la copia local sin commit. Siguiente accion: que
   Alejandro diga si se suben.
 - **Pendiente:** prueba real con una foto desde el celular con nota (en `vale`/PRUEBA) y ver la nota en el panel.
-- **HALLAZGO de seguridad (respaldo a Drive, 26-sep):** en `G:\Mi unidad\Respaldo Claude\Documents-Claude\Projectsevisión de
+- **HALLAZGO de seguridad (respaldo a Drive, 26-sep):** en `G:\Mi unidad\Respaldo Claude\Documents-Claude\Projects\revisión de
   tickets\_secretos\` hay una copia de `llave-api-programa-cuentas.txt` (creada 19-sep 13:16, antes de que el script excluyera
   `_secretos`); es la llave VIGENTE (mismo hash). El script actual ya la excluye (las otras 2 llaves de `_secretos` no estan en
   Drive). Ademas el comando "solo este proyecto" del README de `respaldo-config-claude` no excluia `_secretos` (corregido).
