@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: f679bdfe-7792-4f51-9d7b-071fd3adb4ea
-  modified: 2026-09-19T19:31:34.493Z
+  modified: 2026-09-20T18:21:17.215Z
 ---
 
 Alejandro quiere poder decirle a un gerente: "subiste $X en tickets (todo, con duplicados/fraudes), solo valen $Y, debes justificar la diferencia". Su programa de revision de cuentas consume una API de solo lectura con: total capturado, total autorizado y resumen por categoria de lo autorizado.
@@ -13,7 +13,7 @@ Alejandro quiere poder decirle a un gerente: "subiste $X en tickets (todo, con d
 **Why:** un gerente puede meter tickets de mas (facturas dobles, papel repetido, alterados) para que su gasto real cuadre contra lo subido. La diferencia subidos - oficiales es lo que no puede comprobar.
 
 **How to apply:**
-- Definiciones en la RPC `resumen_tickets` (migraciones 056-058): subidos = todo el periodo sin importar estado (duplicado sin monto propio cuenta con el monto del original, salvo si se confirma); oficiales = confirmados; por_justificar = subidos - oficiales. Una sola fuente para la tarjeta de /admin/tickets y la API; no duplicar el calculo en JS.
+- Definiciones en la RPC `resumen_tickets` (migraciones 056-058, 060 y **066**): subidos = todo el periodo sin importar estado, y **cada ticket suma SOLO el monto de su propio papel: sin monto legible cuenta $0** (066, Alejandro 19-sep: "si metieron un ticket con monto $0 no estan sacando nada de la caja"; antes se le prestaba el monto del original al duplicado); oficiales = confirmados; por_justificar = subidos - oficiales. Una sola fuente para la tarjeta de /admin/tickets y la API; no duplicar el calculo en JS.
 - En sucursales reales los tickets NO se eliminan (se rechazan): borrar los saca de "Subidos". Solo PRUEBA (`sucursales.es_prueba`) se puede borrar y queda fuera de totales.
 - API: edge function `api-cuentas` (verify_jwt=false siempre), guia `API_CUENTAS.md`. Llave en `_secretos/llave-api-programa-cuentas.txt` (gitignored); en BD solo el hash SHA-256 (`api_keys`). Nunca imprimir la llave en pantalla/logs (claude-mem la guardaria).
 - Precios/stock en la API: Alejandro dijo que con resumen basta; se agregan como rutas nuevas si las pide.
@@ -21,3 +21,5 @@ Alejandro quiere poder decirle a un gerente: "subiste $X en tickets (todo, con d
 
 **Aclaracion de Alejandro (19-sep):** NO se guarda un "monto del papel" aparte. Ticket alterado (papel $420, real $210) = se registra el monto REAL ($210) + alerta de fraude/"revisar con gerente"; al responder el gerente, subidos y oficiales suman lo mismo. "Por justificar" mide sobre todo tickets RECHAZADOS (notas dobles, viejas, gastos ajenos a la operacion). Ej.: 10 tickets x $100 = subidos 1000; se rechazan 5 = oficiales 500; si el gasto que reporta el gerente iguala 1000, esta usando tickets no validos (senal fuerte de fraude).
 **API por cuenta (migracion 060):** cada llave `tk_` pertenece a UNA cuenta (`api_keys.cuenta_id`); el futuro es multi-cuenta (otras personas crean cuentas y solo ven lo suyo). Nunca hacer endpoints globales. Al abrir registro publico: cambiar el DEFAULT de `sucursales.cuenta_id` y agregar RLS por cuenta.
+
+**Autorizacion de Alejandro (23-sep-2026):** cuando pide "el mensaje para pegarle a otra IA" la llave `tk_...` SI va completa en el chat (lo dijo explicito: "es un entorno seguro"), leida de `_secretos/instrucciones-para-otra-ia.txt` sin retocarla. Sigue prohibido ponerla en git, en docs (`API_CUENTAS.md` lleva `<TU_LLAVE>`) o en Drive. La llave es de solo lectura y se revoca en 2 minutos si algo pasa. Ojo: claude-mem guarda las conversaciones en su PC, asi que si la llave sale de su control se revoca (api_keys.activa=false) y se crea otra.

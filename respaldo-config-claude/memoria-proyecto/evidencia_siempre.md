@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e7f6dfb4-e5f5-41ea-a429-fd126748f38b
-  modified: 2026-09-19T19:46:03.963Z
+  modified: 2026-09-19T22:28:54.385Z
 ---
 
 Nunca se borra ni se pisa sin copia lo que sube un gerente: foto, fila del ticket y el monto tal como lo presento (lo que
@@ -16,7 +16,8 @@ Matices de Alejandro (19-sep): (1) la tarea mensual que borra fotos de mas de 1 
 respaldo); ojo: hoy falla cada mes porque Supabase bloquea borrar fotos por SQL, habria que rehacerla con la API de Storage
 antes de jun-2027 si se quiere que funcione. (2) "Eliminar" con candado en pantalla (solo admin) esta bien. (3) A futuro,
 cuando se escale a app para vender: permisos por usuario (p. ej. gerente sin eliminar, solo ver). (4) Pasar la foto a
-'archivo' ya es seguro (copia verificada antes de quitar el original).
+'archivo' ya es seguro (copia verificada antes de quitar el original). (5) `confirmar-ticket` (flujo viejo del gerente)
+quedo RETIRADA el 19-sep: responde 410; el codigo viejo esta en `backend/supabase/functions/_archive/`.
 
 **Why:** el reporte "Subidos vs Oficiales" sirve para decirle al gerente "subiste $X, solo valen $Y, debes $X-Y" si usa
 tickets de mas (duplicados, facturas dobles, alterados) para cuadrar su gasto real.

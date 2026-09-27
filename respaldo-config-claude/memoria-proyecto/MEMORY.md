@@ -10,7 +10,13 @@
 - [Revision en lote contra foto](revision_lote_contra_foto.md) -- Metodo agosto WP: releer sin_leer, revisores vs foto, ensenar sinonimos, desde_guardada, confirmar
 - [Gastos con IVA](gastos_con_iva.md) -- Decision 18-sep: renglones suman el total pagado; impuesto solo a renglones que lo pagan
 - [Envios, motos y fraude](envios_y_motos.md) -- 18-sep: "c/envio" = Moto envio; motos del dueno Extras; papel repetido = rechazado + Fraude; sin proveedores de confianza; envio alto se revisa; categoria Bodega
+- [App para vender: aislamiento](app_para_vender_aislamiento.md) -- 20-sep: REGLA DE ORO nada de un negocio en codigo compartido; reglas nuevas = fila en `reglas_ia`; cero productos globales; pendientes de plataforma en MULTI_NEGOCIO.md
 - [Evidencia siempre](evidencia_siempre.md) -- 19-sep: nunca borrar/pisar lo que suben los gerentes; Subidos vs Oficiales para cobrar; ver AUDITORIA_EVIDENCIA.md
 - [Cerebro/Vault de la IA](cerebro_vault_design.md) -- Rediseño vault tipo Obsidian: paneles ligados (no grafo), ligas tipadas Comercio/Categoria/Producto. Plan por fases (PLAN_CEREBRO.md). Hechas 0,1,3 + fix renglón
 - [Subidos vs Oficiales + API cuentas](subidos_vs_oficiales_api.md) -- 19-sep: detectar gerentes que inflan tickets; definiciones (RPC resumen_tickets), API api-cuentas POR CUENTA (nunca global), llave en _secretos/, sin monto_papel (ticket alterado = monto real + Fraude)
 - [Respaldo a Drive y recuperacion](respaldo_drive_recuperacion.md) -- 19-sep: RECUPERACION.md + DIRECTORIO_CUENTAS.md; respaldo manual a G:\Mi unidad\Respaldo Claude; _secretos NUNCA a Drive
+- [Unificar productos](unificar_productos.md) -- 20-sep: duplicados del catalogo se detectan, se avisan en Cerebro y se PREGUNTAN; nunca se unen solos; motor con respaldo (070-075)
+- [Insumos y presentaciones](insumos_presentaciones.md) -- 20-sep: un insumo, varios tamanos; inventario suma (Sal 1kg + 1.1kg = 2.1 kg) y cada presentacion guarda su precio
+- [Vision: gestion por IA](vision_gestion_por_ia.md) -- 24-sep: clientes manejan la app desde su IA; fases 0-1 hechas (blindaje fotos + MCP lectura), siguen acciones
+- [Notas del gerente](notas_gerente.md) -- 26-sep: nota opcional al subir; solo humanos, NUNCA a Gemini; en API/reporte/Excel
+- [Idea: formas de pago](idea_formas_de_pago.md) -- 25-sep (solo idea): forma de pago = dimension aparte de categoria; transferencia se liga a su ticket; nomina via CheckPro

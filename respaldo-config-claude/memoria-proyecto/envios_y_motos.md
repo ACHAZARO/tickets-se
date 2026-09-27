@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e7f6dfb4-e5f5-41ea-a429-fd126748f38b
-  modified: 2026-09-19T19:46:00.778Z
+  modified: 2026-09-20T19:28:07.740Z
 ---
 
 - **Envio anotado a mano** ("c/envio $1,460", "y envio $1,920"): SI se pago (la gerente del cafe lo hace bien). Renglon
@@ -22,13 +22,25 @@ metadata:
   diferencia grande como envio, buscar tickets de ese mismo dia que la expliquen. Si el otro ticket SI se subio, cada uno
   queda con lo suyo; si no se subio, desglosar dentro del ticket. Correcciones manuales asi NO deben ensenar nada a la IA
   (sin sinonimos ni renglones ajenos ligados al catalogo).
-- **"Bodega" escrito a mano** en un ticket = insumo del tostador (categoria Bodega). Ojo: en el de Adan 17-sep el playo del
-  mismo ticket si era del cafe; solo las bolsas eran Bodega.
+- **"Bodega" ESCRITA A MANO manda** (Alejandro, 19-sep): si el ticket lo dice, ese gasto es de Bodega, sea lo que sea
+  (p. ej. papel de Office Depot "Bodega hojas"). No cuenta impresa en el nombre del proveedor ("EL BODEGON DE SEMILLAS",
+  "BODEGA AURRERA") ni en campos del proveedor; nunca se lleva "Descuento" ni "Moto envio".
+- **Que es Bodega aqui (Alejandro, 19-sep):** la cafeteria esta junto al roaster y el gasto del tostador se gestiona
+  APARTE (etiquetas, cajas, valvulas no pasan por la app). La categoria Bodega es solo para lo de bodega que llega a la
+  cafeteria; por eso sus montos son chicos.
+- **Envio de una entrega 100% de Bodega = Bodega** (incluye fletes de paqueteria). Si el ticket mezcla cafeteria y bodega,
+  el envio se queda en Otros gastos operativos.
+- **Bodega por producto (aunque el ticket no lo diga):** bolsas metalizadas de cafe, cinta de empaque 48 mm + despachador,
+  y el playo stretch en rollo de 18" (Reyma 1300 ft de Adan Melchor y Polpusa 1000 ft de El Bodegon). El clingfilm de 30 cm
+  es cafeteria (Wings tambien lo compra, y Wings no tiene tostador): ese es el mejor filtro para dudas.
 - **Motos:** producto unico "Moto envio"; categoria por renglon: dueno o familia (Ale, Polo, mama Polo, Toto) = Extras;
   cualquier otra moto = Otros gastos operativos.
 - **Papel repetido** (factura + ticket de la misma compra, reimpresion, mismo folio): se RECHAZA solo y va a FRAUDE junto
   con el original (el original si cuenta); asi se le cobra al gerente si lo reporto dos veces. No cerrar como "descartada".
   Fotos identicas (mismo archivo) = rechazo tecnico, no fraude.
+- **Hoja aparte con el desglose de una factura** (19-sep: la gerente subio la factura de Adan Melchor $1,552 y ademas una
+  hoja a mano con el mismo total desglosado): NO es fraude ni gasto doble. Se queda la factura, se desglosa dentro de ella y
+  la hoja se rechaza como copia (sospecha descartada). El desglose va en el MISMO ticket, ya se le aclaro a la gerente.
 - **Alteraciones y comprobantes reutilizados** (corrector, numeros encimados, gas de talonario viejo, notas sin vendedor
   por montos altos): de agosto en adelante van a Fraude aunque no se cuenten.
 - **Precio fuera de rango** (p. ej. aceite Ave a $745 vs $490): avisarle.
@@ -38,6 +50,9 @@ metadata:
   cinta de empaque (y su despachador). Se decide por PRODUCTO, no por comercio: El Fenix / El Iris tambien venden cosas de
   la cafeteria (grapas, papeleria).
 - Meses anteriores a agosto (mayo-julio): Claude decide con criterio sin preguntar.
+
+- **OJO (20-sep):** estas reglas son de SU negocio. En el sistema viven como filas de la tabla `reglas_ia` (no en el prompt
+  compartido): para cambiarlas o agregar otra se edita/inserta ahi. Ver [[app-para-vender-aislamiento]].
 
 **Why:** Alejandro quiere gestionar lo minimo y cotejar reportes contra lo que salio de caja; el fraude se revisa aparte.
 **How to apply:** al revisar tickets aplicar estas reglas sin preguntar; preguntar solo casos raros de agosto en adelante.
