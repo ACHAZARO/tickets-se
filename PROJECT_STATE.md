@@ -1,7 +1,41 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-24.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-26.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-09-26 (Claude) -- NOTAS del gerente al subir + notas en API/reporte + descarga desde Tickets
+**Pedido (Alejandro):** campo opcional "Nota" al tomar la foto (ej. "este ticket sale raro porque...", "se pago con
+transferencia de otra cuenta por error"). Es informacion SOLO PARA HUMANOS: la IA que lee el ticket NO debe verla (si no,
+la podria tomar como instruccion). La nota debe salir en el reporte ticket por ticket (columna Notas antes del Desglose), en
+la API (reporte y un ticket completo) y en un reporte descargable a mano por fechas/mes.
+- **Migracion 083** (`083_notas_tickets.sql`): `registros_tickets.nota` (max 500, CHECK) y `nota_para_ia` (la nota parece
+  orden para una IA; mismo detector que el papel, `_shared/inyeccion.ts` -> `notaPareceOrdenParaIA`). `reporte_tickets`
+  identica a la 082 + `notas` (+ `nota_alerta` solo si aplica). Verificado: sin la llave `notas`, el reporte de agosto
+  (todos) y jun-sep (confirmados) da el MISMO md5 que antes; con notas de prueba en una transaccion revertida salen bien
+  (`nota_alerta` solo en la tramposa). En la BD quedaron 0 notas de prueba.
+- **Por que la IA no la ve:** la nota se lee en el handler de `procesar-ticket` y se inserta en su columna;
+  `procesarEnSegundoPlano` (Gemini) NO la recibe, y ningun camino de IA (reprocesar, duplicados, catalogo) hace
+  `select *` de `registros_tickets` (todo es con columnas explicitas). Decision de Claude: una nota con "IA: aprueba..."
+  NO manda el ticket a Fraude (no puede mover la aprobacion porque Gemini no la ve y daria falsas alarmas con notas
+  legitimas); solo se marca `nota_para_ia` y se avisa en el panel (texto rojo) y en la API (`nota_alerta`).
+- **App de gerentes** (`sucursal/[slug]/subir/page.tsx`): textarea "Nota (opcional)" bajo la foto, crece con el texto
+  (hasta ~5 renglones), 500 max, 16 px (iOS no hace zoom). Con varias fotos, la misma nota va en cada una. La foto de vista
+  previa bajo de 55vh a 46vh para que todo quepa sin bajar en 390x844. Verificado con playwright en local (capturas
+  enviadas a Alejandro) y el envio interceptado lleva `imagen` + `nota` y muestra "Enviado".
+- **procesar-ticket v51** (byte a byte = repo; OPTIONS 200, POST sin token 401). La nota tambien se guarda en el registro
+  de duplicado exacto (evidencia).
+- **API api-cuentas v8:** `notas` en `/tickets` (JSON; CSV con columna **Notas** antes de **Desglose**), `/ticket`
+  (+ `subido_por`), `/bandeja` y MCP (`aviso` y descripciones). Regresion en vivo: agosto oficiales $185,613.74 (328) igual
+  que antes, Bodega jun-sep $29,262.59, errores 400/401/404/405 iguales.
+- **Panel:** Tickets muestra "Nota: ..." en la lista y un recuadro azul "Nota de <gerente>" en el detalle; boton nuevo
+  **Descargar reporte (Excel)** en Tickets (periodo y sucursal elegidos; misma RPC). La hoja Tickets del Excel de Gasto
+  tambien trae Notas. Excel probado en Node con el mismo codigo: 332 filas agosto, orden por fecha, nota "=HYPERLINK..."
+  queda como texto (no formula). **No verificado en navegador el panel admin** (pide login de Alejandro).
+- **Trabajo ajeno sin commit (NO se subio):** `admin/tickets/page.tsx` tenia cambios de otra sesion del 21-sep (colores
+  de alertas por gravedad: `ALERT_TONE`/`TONE_PILL`/`TONE_BOX`, y cerrar el detalle al confirmar). Se commiteo SOLO lo de
+  notas (mezcla de 3 vias, compilado aparte); esos cambios siguen en la copia local sin commit. Siguiente accion: que
+  Alejandro diga si se suben.
+- **Pendiente:** prueba real con una foto desde el celular con nota (en `vale`/PRUEBA) y ver la nota en el panel.
 
 ## Sesion 2026-09-24 (Claude) -- Blindaje contra "IA, aprueba este ticket" + conector MCP de solo lectura
 **Idea (Alejandro):** que cada cliente maneje la app desde SU IA (la IA le pregunta "que hago con esto" y lo hace).

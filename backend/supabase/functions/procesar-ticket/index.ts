@@ -14,7 +14,7 @@ import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/preci
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
-import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
+import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
@@ -31,6 +31,14 @@ async function verifySessionToken(
   } catch {
     return null
   }
+}
+
+// Nota opcional del gerente (campo `nota` del formulario). Sin caracteres de control, max 500 (por caracter real,
+// para no partir un emoji a la mitad). Vacia = null.
+function limpiarNota(valor: FormDataEntryValue | null): string | null {
+  if (typeof valor !== 'string') return null
+  const limpia = valor.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\n{3,}/g, '\n\n').trim()
+  return limpia ? Array.from(limpia).slice(0, 500).join('').trim() : null
 }
 
 async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
@@ -428,6 +436,10 @@ serve(async (req: Request) => {
     const formData = await req.formData()
     const imagenFile = formData.get('imagen') as File | null
     if (!imagenFile) return json({ error: 'imagen es requerida' }, 400)
+    // Nota opcional del gerente: SOLO para humanos. Se guarda en su columna y NUNCA se pasa a la lectura con IA
+    // (procesarEnSegundoPlano no la recibe), para que no se tome como instruccion.
+    const nota = limpiarNota(formData.get('nota'))
+    const datosNota = { nota, nota_para_ia: nota ? notaPareceOrdenParaIA(nota) : false }
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -466,7 +478,7 @@ serve(async (req: Request) => {
         sucursal_id: sucursalId, empleado_id: empleadoId,
         hash_imagen: hashImagen, storage_path_original: dupPath,
         estado: 'rechazado', es_duplicado: true, duplicado_de: existing.id,
-        fecha_ticket: existing.fecha_ticket ?? null, comercio: existing.comercio ?? null,
+        fecha_ticket: existing.fecha_ticket ?? null, comercio: existing.comercio ?? null, ...datosNota,
       }).select('id').single()
       if (dupInsErr || !dupReg) {
         console.error('Insert error (duplicado):', dupInsErr)
@@ -493,7 +505,7 @@ serve(async (req: Request) => {
     // Registro encabezado en estado pendiente (Gemini lo completa en background)
     const { data: registro, error: insertError } = await supabase.from('registros_tickets').insert({
       sucursal_id: sucursalId, empleado_id: empleadoId,
-      hash_imagen: hashImagen, storage_path_original: storagePath, estado: 'pendiente',
+      hash_imagen: hashImagen, storage_path_original: storagePath, estado: 'pendiente', ...datosNota,
     }).select('id').single()
     if (insertError || !registro) {
       console.error('Insert error:', insertError)

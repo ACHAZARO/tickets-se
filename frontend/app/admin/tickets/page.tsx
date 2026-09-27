@@ -9,6 +9,7 @@ import { detectarSospechas } from '@/lib/fraude.mjs'
 import { buildEquivalenceUpdate, hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription, ticketFilterLabel, ticketStatusLabel } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm } from '../ui'
 import { SelectorPeriodo, rangoMesActual } from '../periodo'
+import type { TicketReporte } from '@/lib/export-xlsx'
 
 interface Item {
   id: string
@@ -53,6 +54,8 @@ interface Ticket {
   sospecha_origen?: string | null
   sospecha_grupo?: string | null
   sospecha_estado?: string | null
+  nota?: string | null // nota del gerente al subir: solo para humanos, la IA no la lee
+  nota_para_ia?: boolean
 }
 interface Bloque { tickets: number; monto: number }
 // Respuesta de la RPC resumen_tickets (migracion 056/057): la misma que usa la API del programa de cuentas.
@@ -207,6 +210,28 @@ export default function TicketsPage() {
   const [resumenAbierto, setResumenAbierto] = useState(false)
   const resumenSeq = useRef(0)
   const resumenClave = useRef('')
+  const [descargando, setDescargando] = useState(false)
+
+  // Reporte ticket por ticket (misma RPC que la API /tickets y la hoja Tickets del Excel de Gasto): todos los
+  // estados, ordenado por fecha del ticket, con total, notas del gerente y desglose.
+  async function descargarReporte() {
+    setDescargando(true)
+    try {
+      await ensureFreshSession()
+      const { data, error } = await supabase.rpc('reporte_tickets', {
+        p_desde: desde, p_hasta: hasta, p_sucursal: sucursalId || null, p_estado: 'todos',
+      })
+      if (error) { toast('No se pudo armar el reporte: ' + error.message, 'error'); return }
+      const rep = data as { tickets?: TicketReporte[]; truncado?: boolean } | null
+      const lista = rep?.tickets ?? []
+      if (!lista.length) { toast('No hay tickets en este periodo', 'error'); return }
+      const { exportTicketsXlsx } = await import('@/lib/export-xlsx')
+      exportTicketsXlsx({ tickets: lista, sucursal: sucursalId ? nombreSucursal : 'Todas', desde, hasta })
+      if (rep?.truncado) toast('El periodo pasa de 5000 tickets: el archivo trae los primeros 5000. Acorta el rango.', 'error')
+    } finally {
+      setDescargando(false)
+    }
+  }
 
   // Totales del periodo: subidos (todo, duplicados incluidos) vs oficiales (confirmados). Se calculan en la
   // base (no con la lista cargada) para que coincidan con la API y no dependan del limite de la lista.
@@ -251,7 +276,7 @@ export default function TicketsPage() {
     const vigente = () => seq === fetchSeq.current
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
       // Periodo por FECHA DEL TICKET (igual que el Dashboard). Antes filtraba por fecha
       // de subida y se colaban tickets de julio subidos en agosto. Los que aun no
       // tienen fecha (IA sin leer, duplicados) entran por su fecha de subida.
@@ -760,7 +785,7 @@ export default function TicketsPage() {
       // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
       // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
       const { data: fresh } = await supabase.from('registros_tickets')
-        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
+        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
         .eq('id', t.id).maybeSingle()
       await abrirDetalle((fresh as unknown as Ticket) ?? t)
       toast('Ticket releido con IA')
@@ -906,6 +931,11 @@ export default function TicketsPage() {
           <h2 className="text-xl font-semibold text-zinc-100">Tickets</h2>
           <p className="text-xs text-zinc-500 mt-0.5">{nombreSucursal} · revision completa por ticket</p>
         </div>
+        <button type="button" onClick={descargarReporte} disabled={descargando}
+          title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
+          {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
+        </button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -1062,6 +1092,7 @@ export default function TicketsPage() {
                     {badges.map(b => <span key={b} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300">{b}</span>)}
                   </div>
                   <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}</p>
+                  {t.nota && <p className="text-xs text-sky-300 truncate">Nota: {t.nota}</p>}
                 </div>
                 <span className="text-sm text-zinc-300 whitespace-nowrap">{fmt(t.monto)}</span>
               </button>
@@ -1083,6 +1114,15 @@ export default function TicketsPage() {
                 {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
                   <p key={i} className="mt-2 text-xs text-sky-300">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
                 ))}
+                {detalle.ticket.nota && (
+                  <div className="mt-3 max-w-xl rounded-xl border border-sky-800/60 bg-sky-950/40 px-3 py-2">
+                    <p className="text-[11px] font-medium text-sky-400">Nota de {detalle.ticket.empleados?.nombre ?? 'quien lo subió'}</p>
+                    <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-zinc-100">{detalle.ticket.nota}</p>
+                    {detalle.ticket.nota_para_ia && (
+                      <p className="mt-1 text-xs text-red-300">Ojo: la nota parece una orden para una IA. No cambia la aprobación (la IA que lee el ticket no ve las notas), pero conviene preguntarle al gerente.</p>
+                    )}
+                  </div>
+                )}
               </div>
               <button onClick={() => setDetalle(null)} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">x</button>
             </div>

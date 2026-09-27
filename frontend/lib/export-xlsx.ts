@@ -58,19 +58,27 @@ export function exportGastoXlsx(opts: {
 export interface TicketReporte {
   ticket_id: string; folio: string | null; comercio: string | null; sucursal_nombre: string
   fecha_ticket: string | null; fecha_captura: string; estado: string; estado_texto: string; total: number
+  notas: string | null // nota del gerente al subir (solo para humanos)
   articulos: { producto: string; cantidad: number | null; unidad: string | null; monto: number }[]
 }
 const pesos = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2)
 function hojaTickets(tickets: TicketReporte[]) {
   return XLSX.utils.aoa_to_sheet([
-    ['Ticket', 'Estado', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Total del ticket', 'Artículos', 'Desglose'],
+    ['Ticket', 'Estado', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Total del ticket', 'Artículos', 'Notas', 'Desglose'],
     ...tickets.map(t => [
       t.ticket_id.slice(0, 8), t.estado_texto, t.folio ?? '', t.comercio ?? '', t.sucursal_nombre, t.fecha_ticket ?? '', t.fecha_captura, t.total,
-      t.articulos.length,
+      t.articulos.length, t.notas ?? '',
       t.articulos.map(a => [a.producto, a.cantidad !== null ? `${a.cantidad}${a.unidad ? ' ' + a.unidad : ''}` : '', pesos(a.monto)]
         .filter(Boolean).join(' ')).join(' | '),
     ]),
   ])
+}
+
+// Solo el reporte ticket por ticket (boton de la pantalla Tickets): ya viene ordenado por fecha desde la RPC.
+export function exportTicketsXlsx(opts: { tickets: TicketReporte[]; sucursal: string; desde: string; hasta: string }) {
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, hojaTickets(opts.tickets), 'Tickets')
+  XLSX.writeFile(wb, `tickets_${opts.sucursal.replace(/[^\w-]/g, '_')}_${opts.desde}_a_${opts.hasta}.xlsx`)
 }
 
 export interface ResumenComercio { nombre: string; gasto: number; tickets: number }

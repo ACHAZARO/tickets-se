@@ -149,6 +149,7 @@ revision de tickets/
 1. Gerente escanea QR -> /sucursal/[slug]
 2. Ingresa PIN -> verificar-pin -> session_token (JWT HMAC propio, 1hr) en sessionStorage
 3. Toma/elige UNA O VARIAS fotos -> "Enviar"
+   (opcional) escribe una NOTA para quien revisa: se guarda en `registros_tickets.nota`, NUNCA se manda a la IA
 4. procesar-ticket (con Authorization: Bearer session_token):
    a. Deriva sucursal/empleado del JWT (no confia en el cliente)
    b. Sube imagen a por-revisar, SHA-256 anti-duplicado
@@ -293,7 +294,7 @@ cd frontend && npx vercel --prod
 - `026` revision de fraude (`sospechoso`, `sospecha_motivo`/`origen`/`grupo`/`estado`)
 - `027` hardening RPC grants v2 · `028` `ticket_items.orden` · `029` storage admin-only
 - `030`–`055`: ver `PROJECT_STATE.md` (IA de lectura, revision contra foto, envios, Bodega, etc.)
-- `056` `resumen_tickets` (subidos vs oficiales) + `api_keys` + `sucursales.es_prueba` · `057` motivo fraude primero · `058` ajustes de revision (duplicado confirmado cuenta $0; solo sucursales activas) · `059` cinta de empaque a Bodega · `060` `cuentas` + llaves de API atadas a una cuenta (la API nunca es global) · `068` `desglose_categoria` (API `/desglose`: una categoria por producto, ej. Bodega) · `069` unidades en minusculas en el desglose · `070`-`072` unificar productos del catalogo (motor con respaldo, detector `sugerir_unificaciones`, descartados) · `075` indices por producto + detector rapido (65 ms) · `076`-`079` INSUMOS (un insumo = varias presentaciones; Entradas y Stock suman juntas) · `081`-`082` `reporte_tickets` (API `/tickets` + hoja Tickets del Excel: ticket por ticket con estado y desglose)
+- `056` `resumen_tickets` (subidos vs oficiales) + `api_keys` + `sucursales.es_prueba` · `057` motivo fraude primero · `058` ajustes de revision (duplicado confirmado cuenta $0; solo sucursales activas) · `059` cinta de empaque a Bodega · `060` `cuentas` + llaves de API atadas a una cuenta (la API nunca es global) · `068` `desglose_categoria` (API `/desglose`: una categoria por producto, ej. Bodega) · `069` unidades en minusculas en el desglose · `070`-`072` unificar productos del catalogo (motor con respaldo, detector `sugerir_unificaciones`, descartados) · `075` indices por producto + detector rapido (65 ms) · `076`-`079` INSUMOS (un insumo = varias presentaciones; Entradas y Stock suman juntas) · `081`-`082` `reporte_tickets` (API `/tickets` + hoja Tickets del Excel: ticket por ticket con estado y desglose) · `083` NOTAS del gerente al subir (`registros_tickets.nota` / `nota_para_ia`): solo para humanos, NUNCA se mandan a Gemini; salen en `reporte_tickets` (`notas`), la API y el Excel
 
 ## API para el programa de cuentas (2026-09-19)
 Edge function `api-cuentas` (solo lectura, `verify_jwt=false` con llave propia `tk_...`, solo hash en `api_keys`). Guia y ejemplos: `API_CUENTAS.md`.

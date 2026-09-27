@@ -42,6 +42,15 @@ App móvil para que los gerentes de los restaurantes de Alejandro (Santa Elena y
 
 ## 2. Dónde nos quedamos (a 2026-09-19)
 
+> **Actualización 2026-09-26 (lo posterior al 19-sep está detallado sesión por sesión en `PROJECT_STATE.md`, que manda):**
+> desde el 19-sep se agregaron: API `api-cuentas` por cuenta (+ `/desglose`, `/tickets` ticket por ticket, `/bandeja`, `/ticket`
+> y conector MCP de solo lectura), aislamiento multi-negocio (`MULTI_NEGOCIO.md`), unificar productos e insumos, blindaje contra
+> texto para la IA en las fotos y, hoy, **notas del gerente al subir** (solo para humanos, la IA no las lee; salen en la API y el Excel).
+> Verificado hoy en vivo: migración más reciente aplicada `083_notas_tickets`; funciones `procesar-ticket` v51, `api-cuentas` v8,
+> `reprocesar-ticket` v22, `confirmar-admin` v12, `confirmar-ticket` v15, `verificar-pin` v11, `enviar-alerta-email` v5;
+> tickets: 1,391 en total (1,293 confirmados · 81 rechazados · 17 pendientes · 21 alertas abiertas). El trabajo de `api-cuentas`
+> y las migraciones 056-083 ya están en GitHub. Las tablas de abajo son la foto del 19-sep.
+
 **Resultado de la sesión del 18-sep (noche):** se revisaron 884 tickets uno por uno contra su foto (Santa Elena jun–sep completo + Wings Palace mayo–julio) y se cargaron mediante un archivo de carga, sin pegar código a mano. Todos los confirmados cuadran al centavo (renglones = total con IVA). **Al 19-sep hay cero tickets pendientes y cero alertas abiertas.** El último ticket dudoso (`65809be7`, Adan Melchor 17-sep) se resolvió el 19-sep (migración 055): el $1,920 anotado a mano por la gerente juntaba la compra de Adan ($1,490.09) + cinta de El Fenix ($339.60, ticket aparte con "Bodega" a mano) + moto $90; el ticket quedó confirmado en $1,580.09.
 
 | Sucursal | May | Jun | Jul | Ago | Sep (al 18) |
@@ -97,7 +106,7 @@ App móvil para que los gerentes de los restaurantes de Alejandro (Santa Elena y
 7. Vigilar consumo de playo en Santa Elena (11 rollos jun, 7 jul, 16 ago, 10 al 17-sep) y precio del jugo de limón en Wings.
 8. Limpieza menor: borrar `_tmp_bake`; la función `confirmar-ticket` está huérfana (nadie la llama; opcional borrarla desde el Dashboard).
 9. Decidir con Alejandro si se hace commit de `AGENTS.md`/`CLAUDE.md` y de los archivos de recuperación (ver sección 9).
-10. Cuando la otra sesión cierre su trabajo (`api-cuentas`, migraciones 056–057): que lo commitee y lo suba a GitHub, y agregar a `DIRECTORIO_CUENTAS.md` §3 los nombres de las llaves de API de solo lectura que cree (solo nombres, nunca valores).
+10. *(Commit y subida a GitHub: HECHOS, verificado 2026-09-26.)* Cuando la otra sesión cierre su trabajo (`api-cuentas`, migraciones 056–057): que lo commitee y lo suba a GitHub, y agregar a `DIRECTORIO_CUENTAS.md` §3 los nombres de las llaves de API de solo lectura que cree (solo nombres, nunca valores).
 
 > Nota: en `PROJECT_STATE.md` hay una lista "PENDIENTE" de la tarde del 18-sep que quedó parcialmente vieja (habla de tickets de Wings "sin leer" que la sesión de la noche ya cerró). Para pendientes, valen los de arriba.
 

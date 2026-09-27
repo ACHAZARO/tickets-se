@@ -32,6 +32,12 @@ export function detectarTextoParaIA(datos: GeminiResult): string | null {
   return null
 }
 
+// Nota que escribe el gerente al subir: es solo para humanos y NUNCA llega a Gemini, asi que no mueve la
+// aprobacion. Solo se marca (registros_tickets.nota_para_ia) para avisarle al dueno y a su IA de gestion.
+export function notaPareceOrdenParaIA(nota: string): boolean {
+  return coincide(nota)
+}
+
 export function motivoTextoParaIA(texto: string): string {
   return `El papel trae texto dirigido a la IA (posible intento de enganar la revision): "${texto}". No se aprobo solo.`
 }

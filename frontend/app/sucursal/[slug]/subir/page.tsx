@@ -48,6 +48,9 @@ export default function SubirPage({ params }: PageProps) {
   const [fallidas, setFallidas] = useState(0)
   const [progreso, setProgreso] = useState({ actual: 0, total: 0 })
   const [errorMsg, setErrorMsg] = useState<string>('')
+  // Nota opcional para quien revisa (solo humanos): el servidor la guarda aparte y NUNCA se la pasa a la IA.
+  const [nota, setNota] = useState('')
+  const notaRef = useRef<HTMLTextAreaElement>(null)
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
 
@@ -78,6 +81,14 @@ export default function SubirPage({ params }: PageProps) {
       router.replace(`/sucursal/${slug}`)
     }
   }, [slug, router])
+
+  // El cuadro de la nota crece con el texto (hasta ~5 renglones) para que no se vea cortado.
+  useEffect(() => {
+    const t = notaRef.current
+    if (!t) return
+    t.style.height = 'auto'
+    t.style.height = `${Math.min(t.scrollHeight + 2, 140)}px`
+  }, [nota, state])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -115,6 +126,8 @@ export default function SubirPage({ params }: PageProps) {
 
     const archivos = imageFiles.length ? imageFiles : (imageFile ? [imageFile] : [])
     if (archivos.length === 0) return
+    // Con varias fotos, la misma nota va en cada una.
+    const notaEnvio = nota.trim()
 
     // Envia UNA foto con reintentos. Devuelve el resultado para contarlo.
     async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail' | 'expired'> {
@@ -127,6 +140,7 @@ export default function SubirPage({ params }: PageProps) {
       for (let intento = 1; intento <= 3; intento++) {
         const formData = new FormData()
         formData.append('imagen', imagen, 'ticket.jpg')
+        if (notaEnvio) formData.append('nota', notaEnvio)
         const ctrl = new AbortController()
         const t = setTimeout(() => ctrl.abort(), 60000)
         try {
@@ -189,7 +203,7 @@ export default function SubirPage({ params }: PageProps) {
     } else {
       setState('done')
     }
-  }, [imageFile, imageFiles, sessionToken, slug, router])
+  }, [imageFile, imageFiles, nota, sessionToken, slug, router])
 
   const handleDiscard = useCallback(() => {
     setImageFile(null)
@@ -199,6 +213,7 @@ export default function SubirPage({ params }: PageProps) {
     setFallidas(0)
     setProgreso({ actual: 0, total: 0 })
     setImagePreview(null)
+    setNota('')
     setErrorMsg('')
     setState('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -335,7 +350,7 @@ export default function SubirPage({ params }: PageProps) {
       {(state === 'preview' || state === 'processing') && imagePreview && (
         <div className="flex flex-1 flex-col gap-4">
           {/* Image preview */}
-          <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-900" style={{ aspectRatio: '3/4', maxHeight: '55vh' }}>
+          <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-900" style={{ aspectRatio: '3/4', maxHeight: '46vh' }}>
             <Image
               src={imagePreview}
               alt="Vista previa del ticket"
@@ -363,6 +378,27 @@ export default function SubirPage({ params }: PageProps) {
 
           {state === 'preview' && (
             <div className="flex flex-col gap-3">
+              <div>
+                <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <label htmlFor="nota" className="text-sm font-medium text-zinc-300">
+                    Nota <span className="font-normal text-zinc-500">(opcional)</span>
+                  </label>
+                  {nota.length > 0 && <span className="text-xs text-zinc-600">{nota.length}/500</span>}
+                </div>
+                <textarea
+                  ref={notaRef}
+                  id="nota"
+                  value={nota}
+                  onChange={e => setNota(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Solo si hace falta explicar algo. Ej. se pagó con transferencia de otra cuenta"
+                  className="w-full resize-none rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-zinc-500">
+                  La lee la persona que revisa, no la IA.{imageFiles.length > 1 ? ` Se guarda en las ${imageFiles.length} fotos.` : ''}
+                </p>
+              </div>
               <button
                 onClick={handleProcess}
                 className="w-full rounded-2xl bg-zinc-100 py-4 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98]"
