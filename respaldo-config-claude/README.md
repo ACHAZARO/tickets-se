@@ -17,7 +17,7 @@
 
 ## Respaldo de esta carpeta en Google Drive
 
-Toda la carpeta del proyecto (incluida esta) se copia a `G:\Mi unidad\Respaldo Claude\Documents-Claude\Projects\revisión de tickets\` (cuenta `alepolch@gmail.com`) con `Documents\Claude\respaldar_claude_a_drive.ps1` (acceso directo del Escritorio: `RESPALDO A DRIVE.cmd`). Es manual e incremental: **primero refrescar las copias de esta carpeta (comandos abajo) y después correr ese script.** Detalle y verificación: `../RECUPERACION.md` §9, riesgo 2. Para copiar solo este proyecto: `robocopy "<origen>" "<destino en Drive>" /E /R:1 /W:2 /XD node_modules .next .turbo /XF .env .env.local`.
+Toda la carpeta del proyecto (incluida esta) se copia a `G:\Mi unidad\Respaldo Claude\Documents-Claude\Projects\revisión de tickets\` (cuenta `alepolch@gmail.com`) con `Documents\Claude\respaldar_claude_a_drive.ps1` (acceso directo del Escritorio: `RESPALDO A DRIVE.cmd`). Es manual e incremental: **primero refrescar las copias de esta carpeta (comandos abajo) y después correr ese script.** Detalle y verificación: `../RECUPERACION.md` §9, riesgo 2. Para copiar solo este proyecto: `robocopy "<origen>" "<destino en Drive>" /E /R:1 /W:2 /XD node_modules .next .turbo _secretos /XF .env .env.local` (**nunca** quitar `_secretos` de la lista).
 
 ## Qué NO está copiado (y por qué)
 
