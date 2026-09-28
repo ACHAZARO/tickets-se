@@ -1,7 +1,14 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-26.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-09-28.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-09-28 (Claude) -- cierre antes del respaldo
+- Alejandro aprobo subir los cambios del 21-sep en `admin/tickets/page.tsx` (colores de alertas por gravedad + cerrar
+  detalle al confirmar). `tsc` y `next build` limpios; commit `0db0d3d`, push a `main`. Ya no queda codigo sin commit.
+- BD verificada en vivo: sin cambios desde el 26-sep (1,391 tickets; 17 pendientes; 21 alertas abiertas).
+- `Documents\Claude\RECUPERACION.md` (indice maestro): fila de Tickets al dia y la llave en Drive agregada a la lista 🧹.
+- Decision de Alejandro: las llaves pueden quedarse en Drive SI van cifradas (como la boveda de Antigravity con pista).
 
 ## Sesion 2026-09-26 (Claude) -- NOTAS del gerente al subir + notas en API/reporte + descarga desde Tickets
 **Pedido (Alejandro):** campo opcional "Nota" al tomar la foto (ej. "este ticket sale raro porque...", "se pago con
