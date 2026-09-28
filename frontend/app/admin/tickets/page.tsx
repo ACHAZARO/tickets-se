@@ -105,6 +105,41 @@ const ALERT_LABEL: Record<string, string> = {
   monto_anomalo: 'Monto anomalo',
   envio_alto: 'Envío muy alto',
 }
+// Que tan grave es cada alerta, para pintarla: rojo = dinero/duplicado en riesgo (revisar ya),
+// naranja = falta clasificar el producto, ambar = informativo o leve (ej. cambio de precio).
+type AlertTone = 'rojo' | 'naranja' | 'ambar'
+const ALERT_TONE: Record<string, AlertTone> = {
+  duplicado: 'rojo',
+  posible_duplicado: 'rojo',
+  monto_anomalo: 'rojo',
+  ilegible: 'rojo',
+  ia_sin_leer: 'rojo',
+  revisar_gerente: 'rojo',
+  rechazado: 'rojo',
+  producto_no_reconocido: 'naranja',
+  producto_nuevo: 'naranja',
+  sin_categoria: 'naranja',
+  envio_alto: 'naranja',
+  sin_sucursal: 'naranja',
+  sin_unidad: 'ambar',
+  sin_fecha: 'ambar',
+  fecha_asumida: 'ambar',
+  precio_anomalo: 'ambar',
+}
+function alertTone(tipo: string): AlertTone {
+  return ALERT_TONE[tipo] ?? 'ambar'
+}
+const TONE_PILL: Record<AlertTone, string> = {
+  rojo: 'bg-red-900/40 text-red-300 border border-red-800/60',
+  naranja: 'bg-orange-900/40 text-orange-300 border border-orange-800/60',
+  ambar: 'bg-amber-900/30 text-amber-300 border border-amber-800/50',
+}
+// Fondo fuerte para el renglon que necesita revision (antes era casi invisible, bg-.../10).
+const TONE_BOX: Record<AlertTone, string> = {
+  rojo: 'border-red-700/70 bg-red-950/50',
+  naranja: 'border-orange-700/70 bg-orange-950/50',
+  ambar: 'border-amber-700/70 bg-amber-950/50',
+}
 
 const LIMITE_TICKETS = 1000
 
@@ -357,15 +392,15 @@ export default function TicketsPage() {
     return 'manual'
   }
 
-  function ticketBadges(t: Ticket): string[] {
-    const out = new Set<string>()
+  function ticketBadges(t: Ticket): { tipo: string; label: string }[] {
+    const out = new Map<string, string>() // label -> tipo (para el color de la pildora)
     const rows = alertas[t.id] ?? []
-    if (!t.sucursal_id) out.add('Sin sucursal')
-    if (!t.fecha_ticket) out.add('Sin fecha')
-    if (t.gemini_raw?._fecha_asumida) out.add('Fecha asumida')
-    if (t.estado === 'rechazado') out.add(`Rechazado: ${rejectionReason(t, rows)}`)
-    for (const a of rows) out.add(ALERT_LABEL[a.tipo] ?? a.tipo)
-    return [...out]
+    if (!t.sucursal_id) out.set('Sin sucursal', 'sin_sucursal')
+    if (!t.fecha_ticket) out.set('Sin fecha', 'sin_fecha')
+    if (t.gemini_raw?._fecha_asumida) out.set('Fecha asumida', 'fecha_asumida')
+    if (t.estado === 'rechazado') out.set(`Rechazado: ${rejectionReason(t, rows)}`, 'rechazado')
+    for (const a of rows) out.set(ALERT_LABEL[a.tipo] ?? a.tipo, a.tipo)
+    return [...out].map(([label, tipo]) => ({ tipo, label }))
   }
 
   async function abrirDetalle(t: Ticket) {
@@ -761,9 +796,10 @@ export default function TicketsPage() {
     if (!error) await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('resuelta', false)
     setBusy(null)
     if (error) { toast('No se pudo confirmar: ' + error.message + ' (si dice sesion/401, recarga la pagina)', 'error'); return }
-    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, estado: 'confirmado' } } : d)
     setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'confirmado' } : x))
     setAlertas(prev => ({ ...prev, [t.id]: [] }))
+    toast('Ticket confirmado')
+    setDetalle(null)
   }
 
   async function rechazarTicket(t: Ticket) {
@@ -1089,7 +1125,7 @@ export default function TicketsPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm text-zinc-100 truncate">{t.comercio ?? 'Sin comercio'}</p>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_COLOR[t.estado] ?? 'bg-zinc-800 text-zinc-400'}`}>{ticketStatusLabel(t.estado)}</span>
-                    {badges.map(b => <span key={b} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300">{b}</span>)}
+                    {badges.map(b => <span key={b.label} className={`text-[10px] px-2 py-0.5 rounded-full ${TONE_PILL[alertTone(b.tipo)]}`}>{b.label}</span>)}
                   </div>
                   <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}</p>
                   {t.nota && <p className="text-xs text-sky-300 truncate">Nota: {t.nota}</p>}
@@ -1110,7 +1146,7 @@ export default function TicketsPage() {
               <div>
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
                 <p className="text-xs text-zinc-500">{detalle.ticket.sucursales?.nombre ?? 'Sin sucursal'} · subido por {detalle.ticket.empleados?.nombre ?? 'Desconocido'}</p>
-                <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300">{b}</span>)}</div>
+                <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={`text-[10px] px-2 py-0.5 rounded-full ${TONE_PILL[alertTone(b.tipo)]}`}>{b.label}</span>)}</div>
                 {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
                   <p key={i} className="mt-2 text-xs text-sky-300">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
                 ))}
@@ -1162,7 +1198,7 @@ export default function TicketsPage() {
                 <div className="space-y-2">
                   {detalle.items.length === 0 && <p className="rounded-xl bg-zinc-800/40 px-3 py-4 text-sm text-zinc-500">Sin renglones. Agrega los productos manualmente o vuelve a leer con IA.</p>}
                   {detalle.items.map(it => editando ? (
-                    <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-xl border p-3 space-y-2 ${it.necesita_revision ? 'border-amber-800/50 bg-amber-950/10' : 'border-zinc-800 bg-zinc-900'}`}>
+                    <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-xl border p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'border-zinc-800 bg-zinc-900'}`}>
                       <div className="flex gap-2">
                         <input value={it.descripcion} onChange={e => setItemField(it.id, 'descripcion', e.target.value)} placeholder="Producto correcto" className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
                         <button type="button" onClick={() => borrarRenglon(it)} className="rounded-lg bg-zinc-800 px-3 text-xs text-red-400">Borrar</button>
@@ -1219,7 +1255,7 @@ export default function TicketsPage() {
                       </div>
                     </form>
                   ) : (
-                    <div key={it.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-800/50 px-3 py-2 text-sm">
+                    <div key={it.id} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'border-transparent bg-zinc-800/50'}`}>
                       <div className="min-w-0"><p className="text-zinc-100 truncate">{it.descripcion}</p><p className="text-xs text-zinc-500">{it.cantidad ?? ''} {it.unidad ?? ''} · {it.categorias_gasto?.nombre ?? 'sin categoria'}</p></div>
                       <span className="text-zinc-300 whitespace-nowrap">{fmt(it.monto)}</span>
                     </div>
