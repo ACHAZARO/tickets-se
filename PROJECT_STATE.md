@@ -9,6 +9,11 @@
 - BD verificada en vivo: sin cambios desde el 26-sep (1,391 tickets; 17 pendientes; 21 alertas abiertas).
 - `Documents\Claude\RECUPERACION.md` (indice maestro): fila de Tickets al dia y la llave en Drive agregada a la lista 🧹.
 - Decision de Alejandro: las llaves pueden quedarse en Drive SI van cifradas (como la boveda de Antigravity con pista).
+- Boveda con pista: `Documents\Claude\BOVEDA CLAUDE.cmd` + `boveda_claude.ps1` (abrir/cerrar/actualizar/estado). Vigente:
+  `G:\Mi unidad\00 PARA RECONECTAR AGENTES\Boveda cifrada\BOVEDA_2026-09-28_1320.7z` (incluye `_secretos` de Tickets).
+  La llave suelta de Tickets que estaba en Drive se borro (papelera de Drive).
+- Respaldo reorganizado en Drive: `00 PARA RECONECTAR AGENTES\` (Claude / ChatGPT / ChatGPT y Antigravity / Boveda cifrada).
+  Corrida completa 28-sep 14:15, fallas: 0. Detalle en `Documents\Claude\RECUPERACION.md`.
 
 ## Sesion 2026-09-26 (Claude) -- NOTAS del gerente al subir + notas en API/reporte + descarga desde Tickets
 **Pedido (Alejandro):** campo opcional "Nota" al tomar la foto (ej. "este ticket sale raro porque...", "se pago con
