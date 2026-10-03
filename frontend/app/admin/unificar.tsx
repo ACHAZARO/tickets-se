@@ -120,14 +120,12 @@ interface EjemploTicket {
   fecha: string | null
   bucket: string | null
   path: string | null
-  ligadoA: string | null   // a que producto quedo ligado el renglon (importa cuando se encontro por sinonimo)
 }
 
 type FilaItem = { descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null
-  catalogo_productos: { nombre: string } | null
   registros_tickets: { comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }
 
-const SELECT_EJEMPLO = 'descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(nombre), ' +
+const SELECT_EJEMPLO = 'descripcion, cantidad, unidad, monto, ' +
   'registros_tickets!inner(comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)'
 
 function aEjemplos(data: unknown): EjemploTicket[] {
@@ -142,24 +140,23 @@ function aEjemplos(data: unknown): EjemploTicket[] {
         comercio: t.comercio, fecha: fecha(t).slice(0, 10),
         bucket: t.storage_path_archivo ? 'archivo' : t.storage_path_original ? 'por-revisar' : null,
         path: t.storage_path_archivo ?? t.storage_path_original,
-        ligadoA: r.catalogo_productos?.nombre ?? null,
       }
     })
 }
 
 // Los renglones donde sale un producto, con la foto de su ticket (mas recientes primero, sin rechazados).
 // Si el producto no tiene renglones propios, busca los renglones cuyo texto es uno de sus sinonimos: asi se ve
-// que ese texto SI aparece en un ticket pero quedo ligado a otro producto (caso "Sal 1 kg" vs "Sal fina").
-async function ejemplosDe(productoId: string): Promise<{ ejemplos: EjemploTicket[]; porSinonimo: boolean }> {
+// que ese texto SI aparece en un ticket aunque quedo ligado a otro producto (caso "Sal 1 kg" vs "Sal fina").
+async function ejemplosDe(productoId: string): Promise<EjemploTicket[]> {
   const { data, error } = await supabase.from('ticket_items').select(SELECT_EJEMPLO)
     .eq('producto_catalogo_id', productoId).neq('registros_tickets.estado', 'rechazado').limit(40)
-  if (error) return { ejemplos: [], porSinonimo: false }
+  if (error) return []
   const propios = aEjemplos(data)
-  if (propios.length) return { ejemplos: propios, porSinonimo: false }
+  if (propios.length) return propios
 
   const { data: prod } = await supabase.from('catalogo_productos').select('sinonimos, sucursal_id').eq('id', productoId).maybeSingle()
   const sinonimos = ((prod?.sinonimos as string[] | null) ?? []).filter(Boolean)
-  if (!sinonimos.length) return { ejemplos: [], porSinonimo: false }
+  if (!sinonimos.length) return []
   // "Contiene", no exacto: el ticket trae prefijos como "2 x " antes del texto aprendido. Una consulta por
   // sinonimo (con % y _ escapados) para no armar un filtro .or() que se rompe con comas o parentesis.
   const porTexto: unknown[] = []
@@ -170,75 +167,62 @@ async function ejemplosDe(productoId: string): Promise<{ ejemplos: EjemploTicket
     const { data: filas } = await q
     porTexto.push(...((filas as unknown[] | null) ?? []))
   }
-  return { ejemplos: aEjemplos(porTexto), porSinonimo: true }
+  return aEjemplos(porTexto)
 }
 
-/** Una columna de "Ver tickets": la foto de un ticket donde sale el producto + lo que la IA leyo en ese renglon. */
-function LadoTicket({ producto }: { producto: ProdSug }) {
-  const [ejemplos, setEjemplos] = useState<EjemploTicket[] | null>(null)
-  const [porSinonimo, setPorSinonimo] = useState(false)
-  const [i, setI] = useState(0)
+// Escoge un ticket para cada lado que NO sea la misma foto: el chiste es ver un ticket con cada nombre.
+function elegirPar(as: EjemploTicket[], bs: EjemploTicket[]): { a: EjemploTicket | null; b: EjemploTicket | null } {
+  for (const x of as) {
+    const y = bs.find(e => e.path !== x.path)
+    if (y) return { a: x, b: y }
+  }
+  if (as.length) return { a: as[0], b: null }
+  return { a: null, b: bs[0] ?? null }
+}
+
+/** Una columna de "Ver tickets": nombre + foto. Toca la foto para verla completa. */
+function FotoTicket({ nombre, ej }: { nombre: string; ej: EjemploTicket | null | undefined }) {
   const [url, setUrl] = useState<string | null>(null)
-  const [cargandoFoto, setCargandoFoto] = useState(false)
-
-  useEffect(() => { let vivo = true; ejemplosDe(producto.id).then(r => { if (vivo) { setEjemplos(r.ejemplos); setPorSinonimo(r.porSinonimo) } }); return () => { vivo = false } }, [producto.id])
-
-  const actual = ejemplos?.[i] ?? null
   useEffect(() => {
-    if (!actual?.bucket || !actual.path) { setUrl(null); return }
+    setUrl(null)
+    if (!ej?.bucket || !ej.path) return
     let vivo = true
-    setCargandoFoto(true)
     // Foto reducida: la original pesa varios MB y en celular tarda.
-    supabase.storage.from(actual.bucket).createSignedUrl(actual.path, 3600, { transform: { width: 1000, quality: 72, resize: 'contain' } })
-      .then(({ data }) => { if (vivo) { setUrl(data?.signedUrl ?? null); setCargandoFoto(false) } })
-      .catch(() => { if (vivo) { setUrl(null); setCargandoFoto(false) } })
+    supabase.storage.from(ej.bucket).createSignedUrl(ej.path, 3600, { transform: { width: 1000, quality: 72, resize: 'contain' } })
+      .then(({ data }) => { if (vivo) setUrl(data?.signedUrl ?? null) })
+      .catch(() => {})
     return () => { vivo = false }
-  }, [actual?.bucket, actual?.path])
+  }, [ej?.bucket, ej?.path])
 
-  const cant = Number(actual?.cantidad); const monto = Number(actual?.monto)
-  const precioUnit = Number.isFinite(cant) && cant > 0 && Number.isFinite(monto) && monto > 0 ? monto / cant : null
-
+  const hueco = (texto: string) => <span className="px-3 text-center text-xs text-zinc-500">{texto}</span>
   return (
     <div className="min-w-0 space-y-1.5">
-      <p className="text-xs font-semibold text-zinc-100 truncate" title={producto.nombre}>{producto.nombre}</p>
-      {ejemplos === null ? (
-        <p className="text-[11px] text-zinc-500">Buscando tickets…</p>
-      ) : ejemplos.length === 0 || !actual ? (
-        <p className="text-[11px] text-zinc-500">No hay tickets con este nombre.</p>
-      ) : (
-        <>
-          {porSinonimo && (
-            <p className="rounded-md bg-amber-950/40 border border-amber-800/40 px-2 py-1 text-[11px] text-amber-200">
-              Este nombre no tiene tickets propios. Este renglon dice lo mismo que su sinonimo, pero quedo ligado a
-              {' '}<b>&quot;{actual.ligadoA ?? 'ningun producto'}&quot;</b>.
-            </p>
-          )}
-          <div className="aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center">
-            {cargandoFoto ? <span className="text-[11px] text-zinc-600">Cargando foto…</span>
-              : url ? (
-                <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full" title="Abrir foto completa">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={`Ticket con ${producto.nombre}`} className="h-full w-full object-contain" />
-                </a>
-              ) : <span className="text-[11px] text-zinc-600">Sin foto</span>}
-          </div>
-          <p className="text-[11px] text-zinc-300 break-words">En el ticket dice: <b className="text-zinc-100">&quot;{actual.descripcion ?? '—'}&quot;</b></p>
-          <p className="text-[11px] text-zinc-500">
-            {actual.cantidad ?? '?'} {actual.unidad ?? ''} · {actual.monto != null ? fmt(actual.monto) : '—'}
-            {precioUnit != null ? ` · ${'$' + precioUnit.toLocaleString('es-MX', { maximumFractionDigits: 2 })} c/u` : ''}
-          </p>
-          <p className="text-[11px] text-zinc-500 truncate">{actual.comercio ?? 'sin comercio'} · {actual.fecha ?? ''}</p>
-          {ejemplos.length > 1 && (
-            <div className="flex items-center gap-2">
-              <button type="button" disabled={i === 0} onClick={() => setI(n => n - 1)}
-                className="rounded-md bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 disabled:opacity-30">‹</button>
-              <span className="text-[11px] text-zinc-500">{i + 1} de {ejemplos.length}</span>
-              <button type="button" disabled={i >= ejemplos.length - 1} onClick={() => setI(n => n + 1)}
-                className="rounded-md bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 disabled:opacity-30">›</button>
-            </div>
-          )}
-        </>
-      )}
+      <p className="text-sm font-medium text-zinc-100 truncate" title={nombre}>{nombre}</p>
+      <div className="aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center">
+        {ej === undefined ? hueco('Buscando…')
+          : !ej ? hueco('No hay otro ticket con este nombre')
+          : url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full" title="Ver foto completa">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Ticket con ${nombre}`} className="h-full w-full object-contain" />
+            </a>
+          ) : hueco('Cargando foto…')}
+      </div>
+    </div>
+  )
+}
+
+function CompararTickets({ a, b }: { a: ProdSug; b: ProdSug }) {
+  const [par, setPar] = useState<{ a: EjemploTicket | null; b: EjemploTicket | null } | null>(null)
+  useEffect(() => {
+    let vivo = true
+    Promise.all([ejemplosDe(a.id), ejemplosDe(b.id)]).then(([ea, eb]) => { if (vivo) setPar(elegirPar(ea, eb)) })
+    return () => { vivo = false }
+  }, [a.id, b.id])
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <FotoTicket nombre={a.nombre} ej={par ? par.a : undefined} />
+      <FotoTicket nombre={b.nombre} ej={par ? par.b : undefined} />
     </div>
   )
 }
@@ -383,13 +367,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
           {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
         </button>
         {viendo[k] && (
-          <div className="rounded-lg bg-zinc-800/40 p-2 space-y-2">
-            <p className="text-[11px] text-zinc-400">Un ticket de cada nombre. Toca la foto para verla completa.</p>
-            <div className="grid grid-cols-2 gap-2">
-              <LadoTicket producto={s.a} />
-              <LadoTicket producto={s.b} />
-            </div>
-          </div>
+          <CompararTickets a={s.a} b={s.b} />
         )}
 
         {f ? (
