@@ -120,38 +120,68 @@ interface EjemploTicket {
   fecha: string | null
   bucket: string | null
   path: string | null
+  ligadoA: string | null   // a que producto quedo ligado el renglon (importa cuando se encontro por sinonimo)
 }
 
-// Los renglones donde sale un producto, con la foto de su ticket (mas recientes primero, sin rechazados).
-async function ejemplosDe(productoId: string): Promise<EjemploTicket[]> {
-  const { data, error } = await supabase.from('ticket_items')
-    .select('descripcion, cantidad, unidad, monto, registros_tickets!inner(comercio, fecha_ticket, created_at, estado, storage_path_original, storage_path_archivo)')
-    .eq('producto_catalogo_id', productoId).neq('registros_tickets.estado', 'rechazado').limit(40)
-  if (error || !data) return []
-  type Fila = { descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null
-    registros_tickets: { comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }
-  return (data as unknown as Fila[])
+type FilaItem = { descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null
+  catalogo_productos: { nombre: string } | null
+  registros_tickets: { comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }
+
+const SELECT_EJEMPLO = 'descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(nombre), ' +
+  'registros_tickets!inner(comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)'
+
+function aEjemplos(data: unknown): EjemploTicket[] {
+  const fecha = (t: NonNullable<FilaItem['registros_tickets']>) => t.fecha_ticket ?? t.created_at
+  return ((data as FilaItem[] | null) ?? [])
     .filter(r => r.registros_tickets)
-    .sort((x, y) => (y.registros_tickets!.fecha_ticket ?? y.registros_tickets!.created_at).localeCompare(x.registros_tickets!.fecha_ticket ?? x.registros_tickets!.created_at))
+    .sort((x, y) => fecha(y.registros_tickets!).localeCompare(fecha(x.registros_tickets!)))
     .map(r => {
       const t = r.registros_tickets!
       return {
         descripcion: r.descripcion, cantidad: r.cantidad, unidad: r.unidad, monto: r.monto,
-        comercio: t.comercio, fecha: t.fecha_ticket ?? t.created_at.slice(0, 10),
+        comercio: t.comercio, fecha: fecha(t).slice(0, 10),
         bucket: t.storage_path_archivo ? 'archivo' : t.storage_path_original ? 'por-revisar' : null,
         path: t.storage_path_archivo ?? t.storage_path_original,
+        ligadoA: r.catalogo_productos?.nombre ?? null,
       }
     })
+}
+
+// Los renglones donde sale un producto, con la foto de su ticket (mas recientes primero, sin rechazados).
+// Si el producto no tiene renglones propios, busca los renglones cuyo texto es uno de sus sinonimos: asi se ve
+// que ese texto SI aparece en un ticket pero quedo ligado a otro producto (caso "Sal 1 kg" vs "Sal fina").
+async function ejemplosDe(productoId: string): Promise<{ ejemplos: EjemploTicket[]; porSinonimo: boolean }> {
+  const { data, error } = await supabase.from('ticket_items').select(SELECT_EJEMPLO)
+    .eq('producto_catalogo_id', productoId).neq('registros_tickets.estado', 'rechazado').limit(40)
+  if (error) return { ejemplos: [], porSinonimo: false }
+  const propios = aEjemplos(data)
+  if (propios.length) return { ejemplos: propios, porSinonimo: false }
+
+  const { data: prod } = await supabase.from('catalogo_productos').select('sinonimos, sucursal_id').eq('id', productoId).maybeSingle()
+  const sinonimos = ((prod?.sinonimos as string[] | null) ?? []).filter(Boolean)
+  if (!sinonimos.length) return { ejemplos: [], porSinonimo: false }
+  // "Contiene", no exacto: el ticket trae prefijos como "2 x " antes del texto aprendido. Una consulta por
+  // sinonimo (con % y _ escapados) para no armar un filtro .or() que se rompe con comas o parentesis.
+  const porTexto: unknown[] = []
+  for (const sin of sinonimos.slice(0, 6)) {
+    let q = supabase.from('ticket_items').select(SELECT_EJEMPLO)
+      .ilike('descripcion', `%${sin.replace(/[\\%_]/g, m => '\\' + m)}%`).neq('registros_tickets.estado', 'rechazado').limit(20)
+    if (prod?.sucursal_id) q = q.eq('registros_tickets.sucursal_id', prod.sucursal_id)
+    const { data: filas } = await q
+    porTexto.push(...((filas as unknown[] | null) ?? []))
+  }
+  return { ejemplos: aEjemplos(porTexto), porSinonimo: true }
 }
 
 /** Una columna de "Ver tickets": la foto de un ticket donde sale el producto + lo que la IA leyo en ese renglon. */
 function LadoTicket({ producto }: { producto: ProdSug }) {
   const [ejemplos, setEjemplos] = useState<EjemploTicket[] | null>(null)
+  const [porSinonimo, setPorSinonimo] = useState(false)
   const [i, setI] = useState(0)
   const [url, setUrl] = useState<string | null>(null)
   const [cargandoFoto, setCargandoFoto] = useState(false)
 
-  useEffect(() => { let vivo = true; ejemplosDe(producto.id).then(r => { if (vivo) setEjemplos(r) }); return () => { vivo = false } }, [producto.id])
+  useEffect(() => { let vivo = true; ejemplosDe(producto.id).then(r => { if (vivo) { setEjemplos(r.ejemplos); setPorSinonimo(r.porSinonimo) } }); return () => { vivo = false } }, [producto.id])
 
   const actual = ejemplos?.[i] ?? null
   useEffect(() => {
@@ -177,6 +207,12 @@ function LadoTicket({ producto }: { producto: ProdSug }) {
         <p className="text-[11px] text-zinc-500">No hay tickets con este nombre.</p>
       ) : (
         <>
+          {porSinonimo && (
+            <p className="rounded-md bg-amber-950/40 border border-amber-800/40 px-2 py-1 text-[11px] text-amber-200">
+              Este nombre no tiene tickets propios. Este renglon dice lo mismo que su sinonimo, pero quedo ligado a
+              {' '}<b>&quot;{actual.ligadoA ?? 'ningun producto'}&quot;</b>.
+            </p>
+          )}
           <div className="aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center">
             {cargandoFoto ? <span className="text-[11px] text-zinc-600">Cargando foto…</span>
               : url ? (
