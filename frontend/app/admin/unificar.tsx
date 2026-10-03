@@ -111,6 +111,102 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
   )
 }
 
+interface EjemploTicket {
+  descripcion: string | null
+  cantidad: number | null
+  unidad: string | null
+  monto: number | null
+  comercio: string | null
+  fecha: string | null
+  bucket: string | null
+  path: string | null
+}
+
+// Los renglones donde sale un producto, con la foto de su ticket (mas recientes primero, sin rechazados).
+async function ejemplosDe(productoId: string): Promise<EjemploTicket[]> {
+  const { data, error } = await supabase.from('ticket_items')
+    .select('descripcion, cantidad, unidad, monto, registros_tickets!inner(comercio, fecha_ticket, created_at, estado, storage_path_original, storage_path_archivo)')
+    .eq('producto_catalogo_id', productoId).neq('registros_tickets.estado', 'rechazado').limit(40)
+  if (error || !data) return []
+  type Fila = { descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null
+    registros_tickets: { comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }
+  return (data as unknown as Fila[])
+    .filter(r => r.registros_tickets)
+    .sort((x, y) => (y.registros_tickets!.fecha_ticket ?? y.registros_tickets!.created_at).localeCompare(x.registros_tickets!.fecha_ticket ?? x.registros_tickets!.created_at))
+    .map(r => {
+      const t = r.registros_tickets!
+      return {
+        descripcion: r.descripcion, cantidad: r.cantidad, unidad: r.unidad, monto: r.monto,
+        comercio: t.comercio, fecha: t.fecha_ticket ?? t.created_at.slice(0, 10),
+        bucket: t.storage_path_archivo ? 'archivo' : t.storage_path_original ? 'por-revisar' : null,
+        path: t.storage_path_archivo ?? t.storage_path_original,
+      }
+    })
+}
+
+/** Una columna de "Ver tickets": la foto de un ticket donde sale el producto + lo que la IA leyo en ese renglon. */
+function LadoTicket({ producto }: { producto: ProdSug }) {
+  const [ejemplos, setEjemplos] = useState<EjemploTicket[] | null>(null)
+  const [i, setI] = useState(0)
+  const [url, setUrl] = useState<string | null>(null)
+  const [cargandoFoto, setCargandoFoto] = useState(false)
+
+  useEffect(() => { let vivo = true; ejemplosDe(producto.id).then(r => { if (vivo) setEjemplos(r) }); return () => { vivo = false } }, [producto.id])
+
+  const actual = ejemplos?.[i] ?? null
+  useEffect(() => {
+    if (!actual?.bucket || !actual.path) { setUrl(null); return }
+    let vivo = true
+    setCargandoFoto(true)
+    // Foto reducida: la original pesa varios MB y en celular tarda.
+    supabase.storage.from(actual.bucket).createSignedUrl(actual.path, 3600, { transform: { width: 1000, quality: 72, resize: 'contain' } })
+      .then(({ data }) => { if (vivo) { setUrl(data?.signedUrl ?? null); setCargandoFoto(false) } })
+      .catch(() => { if (vivo) { setUrl(null); setCargandoFoto(false) } })
+    return () => { vivo = false }
+  }, [actual?.bucket, actual?.path])
+
+  const cant = Number(actual?.cantidad); const monto = Number(actual?.monto)
+  const precioUnit = Number.isFinite(cant) && cant > 0 && Number.isFinite(monto) && monto > 0 ? monto / cant : null
+
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <p className="text-xs font-semibold text-zinc-100 truncate" title={producto.nombre}>{producto.nombre}</p>
+      {ejemplos === null ? (
+        <p className="text-[11px] text-zinc-500">Buscando tickets…</p>
+      ) : ejemplos.length === 0 || !actual ? (
+        <p className="text-[11px] text-zinc-500">No hay tickets con este nombre.</p>
+      ) : (
+        <>
+          <div className="aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center">
+            {cargandoFoto ? <span className="text-[11px] text-zinc-600">Cargando foto…</span>
+              : url ? (
+                <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full" title="Abrir foto completa">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`Ticket con ${producto.nombre}`} className="h-full w-full object-contain" />
+                </a>
+              ) : <span className="text-[11px] text-zinc-600">Sin foto</span>}
+          </div>
+          <p className="text-[11px] text-zinc-300 break-words">En el ticket dice: <b className="text-zinc-100">&quot;{actual.descripcion ?? '—'}&quot;</b></p>
+          <p className="text-[11px] text-zinc-500">
+            {actual.cantidad ?? '?'} {actual.unidad ?? ''} · {actual.monto != null ? fmt(actual.monto) : '—'}
+            {precioUnit != null ? ` · ${'$' + precioUnit.toLocaleString('es-MX', { maximumFractionDigits: 2 })} c/u` : ''}
+          </p>
+          <p className="text-[11px] text-zinc-500 truncate">{actual.comercio ?? 'sin comercio'} · {actual.fecha ?? ''}</p>
+          {ejemplos.length > 1 && (
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={i === 0} onClick={() => setI(n => n - 1)}
+                className="rounded-md bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 disabled:opacity-30">‹</button>
+              <span className="text-[11px] text-zinc-500">{i + 1} de {ejemplos.length}</span>
+              <button type="button" disabled={i >= ejemplos.length - 1} onClick={() => setI(n => n + 1)}
+                className="rounded-md bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 disabled:opacity-30">›</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 interface FormInsumo {
   nombre: string
   unidadBase: string
@@ -127,6 +223,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const [verQuiza, setVerQuiza] = useState<boolean | null>(null)   // null = automatico (abierto si son pocos)
   const [busy, setBusy] = useState<string | null>(null)
   const [form, setForm] = useState<Record<string, FormInsumo>>({})
+  const [viendo, setViendo] = useState<Record<string, boolean>>({})   // tarjetas con "Ver tickets" abierto
 
   const seq = useRef(0)
   const cargar = useCallback(async () => {
@@ -245,6 +342,19 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
       <div key={k} className="rounded-xl bg-zinc-900 border border-zinc-800 p-3 space-y-2">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-zinc-600 self-center">=?</span>{prod(s.b)}</div>
         <p className="text-[11px] text-zinc-500">{MOTIVO_TEXTO[s.motivo]} · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}</p>
+        <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))}
+          className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-amber-200 hover:bg-zinc-700">
+          {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
+        </button>
+        {viendo[k] && (
+          <div className="rounded-lg bg-zinc-800/40 p-2 space-y-2">
+            <p className="text-[11px] text-zinc-400">Un ticket de cada nombre. Toca la foto para verla completa.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <LadoTicket producto={s.a} />
+              <LadoTicket producto={s.b} />
+            </div>
+          </div>
+        )}
 
         {f ? (
           <div className="rounded-lg bg-zinc-800/40 p-3 space-y-2">
