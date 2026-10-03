@@ -9,7 +9,11 @@
 - Hecho (commit `944ab3d`, solo frontend, sin migracion): boton "Ver tickets" en cada tarjeta de `PanelDuplicados`
   (`frontend/app/admin/unificar.tsx`, componente `LadoTicket`). Por cada nombre: foto reducida del ticket mas reciente
   (toca = foto completa), texto del renglon tal cual, cantidad, monto, precio c/u, comercio, fecha y flechas para otros
-  tickets. Excluye tickets rechazados. Si un producto no tiene tickets dice "No hay tickets con este nombre" (ej. "Sal 1 kg").
+  tickets. Excluye tickets rechazados.
+- Commit `8ab67a6`: si un producto NO tiene renglones propios, busca renglones cuyo texto CONTIENE alguno de sus sinonimos
+  (misma sucursal) y avisa a que producto quedo ligado. Caso real: "Sal 1 kg" (sinonimo "034587030013 SAL LA FINA 1KG")
+  tiene 0 renglones; ese renglon (ticket 31/07 Tipico Alto Lucero) quedo en "Sal fina", que ademas tiene como sinonimo
+  "SAL GRAND FINO SOL 25 KG" (costal). PENDIENTE decision de Alejandro: separar costal vs bolsa 1 kg.
 
 ## Sesion 2026-10-03 (Claude) -- cierre de SEPTIEMBRE Santa Elena (revision contra foto)
 - Revisados contra foto los 26 pendientes de SE (+ 1 rechazado por error). Respaldo previo: `respaldo.r20261003_registros/_items/_alertas`.
