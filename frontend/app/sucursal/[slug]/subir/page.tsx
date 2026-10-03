@@ -10,6 +10,15 @@ interface PageProps {
 
 type UploadState = 'idle' | 'preview' | 'processing' | 'done' | 'error'
 
+// Como se pago el ticket. Se guarda tal cual (registros_tickets.forma_pago); la IA que lee la foto no la ve.
+type FormaPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto'
+const FORMAS_PAGO: { valor: FormaPago; texto: string }[] = [
+  { valor: 'efectivo', texto: 'Efectivo' },
+  { valor: 'tarjeta', texto: 'Tarjeta' },
+  { valor: 'transferencia', texto: 'Transferencia directa' },
+  { valor: 'mixto', texto: 'Mixto' },
+]
+
 const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
 
 // Reduce la foto antes de subir sin destruir texto chico del ticket. Mantener
@@ -51,6 +60,10 @@ export default function SubirPage({ params }: PageProps) {
   // Nota opcional para quien revisa (solo humanos): el servidor la guarda aparte y NUNCA se la pasa a la IA.
   const [nota, setNota] = useState('')
   const notaRef = useRef<HTMLTextAreaElement>(null)
+  // Forma de pago (obligatoria): se elige en cada envio, sin recordar la anterior, para que sea una decision consciente.
+  const [formaPago, setFormaPago] = useState<FormaPago | null>(null)
+  const notaObligatoria = formaPago === 'mixto'
+  const puedeEnviar = formaPago !== null && (!notaObligatoria || nota.trim().length > 0)
   const [empleadoId, setEmpleadoId] = useState<string | null>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
 
@@ -120,7 +133,7 @@ export default function SubirPage({ params }: PageProps) {
   }, [])
 
   const handleProcess = useCallback(async () => {
-    if (!imageFile) return
+    if (!imageFile || !puedeEnviar || !formaPago) return
     setState('processing')
     setErrorMsg('')
 
@@ -128,6 +141,7 @@ export default function SubirPage({ params }: PageProps) {
     if (archivos.length === 0) return
     // Con varias fotos, la misma nota va en cada una.
     const notaEnvio = nota.trim()
+    const pagoEnvio: FormaPago = formaPago
 
     // Envia UNA foto con reintentos. Devuelve el resultado para contarlo.
     async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail' | 'expired'> {
@@ -141,6 +155,7 @@ export default function SubirPage({ params }: PageProps) {
         const formData = new FormData()
         formData.append('imagen', imagen, 'ticket.jpg')
         if (notaEnvio) formData.append('nota', notaEnvio)
+        formData.append('forma_pago', pagoEnvio)
         const ctrl = new AbortController()
         const t = setTimeout(() => ctrl.abort(), 60000)
         try {
@@ -203,7 +218,7 @@ export default function SubirPage({ params }: PageProps) {
     } else {
       setState('done')
     }
-  }, [imageFile, imageFiles, nota, sessionToken, slug, router])
+  }, [imageFile, imageFiles, nota, formaPago, puedeEnviar, sessionToken, slug, router])
 
   const handleDiscard = useCallback(() => {
     setImageFile(null)
@@ -214,6 +229,7 @@ export default function SubirPage({ params }: PageProps) {
     setProgreso({ actual: 0, total: 0 })
     setImagePreview(null)
     setNota('')
+    setFormaPago(null)
     setErrorMsg('')
     setState('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -350,7 +366,7 @@ export default function SubirPage({ params }: PageProps) {
       {(state === 'preview' || state === 'processing') && imagePreview && (
         <div className="flex flex-1 flex-col gap-4">
           {/* Image preview */}
-          <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-900" style={{ aspectRatio: '3/4', maxHeight: '46vh' }}>
+          <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-900" style={{ aspectRatio: '3/4', maxHeight: '36vh' }}>
             <Image
               src={imagePreview}
               alt="Vista previa del ticket"
@@ -378,10 +394,39 @@ export default function SubirPage({ params }: PageProps) {
 
           {state === 'preview' && (
             <div className="flex flex-col gap-3">
+              <fieldset>
+                <legend className="mb-1.5 text-sm font-medium text-zinc-300">¿Cómo se pagó?</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {FORMAS_PAGO.map(op => {
+                    const activo = formaPago === op.valor
+                    return (
+                      <button
+                        key={op.valor}
+                        type="button"
+                        aria-pressed={activo}
+                        onClick={() => setFormaPago(op.valor)}
+                        className={`min-h-[48px] rounded-2xl border px-3 py-2.5 text-sm font-medium transition-colors active:scale-[0.98] ${
+                          activo
+                            ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
+                            : 'border-zinc-800 bg-zinc-900 text-zinc-300'
+                        }`}
+                      >
+                        {op.texto}
+                      </button>
+                    )
+                  })}
+                </div>
+                {imageFiles.length > 1 && formaPago && (
+                  <p className="mt-1 text-xs text-zinc-500">Se aplica a las {imageFiles.length} fotos.</p>
+                )}
+              </fieldset>
               <div>
                 <div className="mb-1.5 flex items-baseline justify-between gap-2">
                   <label htmlFor="nota" className="text-sm font-medium text-zinc-300">
-                    Nota <span className="font-normal text-zinc-500">(opcional)</span>
+                    Nota{' '}
+                    <span className={notaObligatoria ? 'font-normal text-amber-400' : 'font-normal text-zinc-500'}>
+                      {notaObligatoria ? '(obligatoria con pago mixto)' : '(opcional)'}
+                    </span>
                   </label>
                   {nota.length > 0 && <span className="text-xs text-zinc-600">{nota.length}/500</span>}
                 </div>
@@ -392,7 +437,9 @@ export default function SubirPage({ params }: PageProps) {
                   onChange={e => setNota(e.target.value)}
                   maxLength={500}
                   rows={2}
-                  placeholder="Solo si hace falta explicar algo. Ej. se pagó con transferencia de otra cuenta"
+                  placeholder={notaObligatoria
+                    ? 'Qué parte se pagó con qué. Ej. envío $60 en efectivo, bolsas con transferencia'
+                    : 'Solo si hace falta explicar algo'}
                   className="w-full resize-none rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none"
                 />
                 <p className="mt-1 text-xs text-zinc-500">
@@ -401,9 +448,14 @@ export default function SubirPage({ params }: PageProps) {
               </div>
               <button
                 onClick={handleProcess}
-                className="w-full rounded-2xl bg-zinc-100 py-4 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98]"
+                disabled={!puedeEnviar}
+                className="w-full rounded-2xl bg-zinc-100 py-4 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:active:scale-100"
               >
-                {imageFiles.length > 1 ? `Enviar ${imageFiles.length} fotos` : 'Enviar ticket'}
+                {!formaPago
+                  ? 'Elige cómo se pagó'
+                  : notaObligatoria && !nota.trim()
+                    ? 'Escribe la nota del pago mixto'
+                    : imageFiles.length > 1 ? `Enviar ${imageFiles.length} fotos` : 'Enviar ticket'}
               </button>
               <button
                 onClick={handleDiscard}

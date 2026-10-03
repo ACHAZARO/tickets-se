@@ -56,6 +56,10 @@ interface Ticket {
   sospecha_estado?: string | null
   nota?: string | null // nota del gerente al subir: solo para humanos, la IA no la lee
   nota_para_ia?: boolean
+  forma_pago?: string | null // como se pago segun el gerente al subir; null = no registrado (antes del 03-oct-2026)
+}
+const FORMA_PAGO_TEXTO: Record<string, string> = {
+  efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia directa', mixto: 'Mixto',
 }
 interface Bloque { tickets: number; monto: number }
 // Respuesta de la RPC resumen_tickets (migracion 056/057): la misma que usa la API del programa de cuentas.
@@ -311,7 +315,7 @@ export default function TicketsPage() {
     const vigente = () => seq === fetchSeq.current
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
+      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, forma_pago, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
       // Periodo por FECHA DEL TICKET (igual que el Dashboard). Antes filtraba por fecha
       // de subida y se colaban tickets de julio subidos en agosto. Los que aun no
       // tienen fecha (IA sin leer, duplicados) entran por su fecha de subida.
@@ -821,7 +825,7 @@ export default function TicketsPage() {
       // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
       // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
       const { data: fresh } = await supabase.from('registros_tickets')
-        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
+        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, forma_pago, sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
         .eq('id', t.id).maybeSingle()
       await abrirDetalle((fresh as unknown as Ticket) ?? t)
       toast('Ticket releido con IA')
@@ -1127,7 +1131,7 @@ export default function TicketsPage() {
                     <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_COLOR[t.estado] ?? 'bg-zinc-800 text-zinc-400'}`}>{ticketStatusLabel(t.estado)}</span>
                     {badges.map(b => <span key={b.label} className={`text-[10px] px-2 py-0.5 rounded-full ${TONE_PILL[alertTone(b.tipo)]}`}>{b.label}</span>)}
                   </div>
-                  <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}</p>
+                  <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}{t.forma_pago ? ` · ${FORMA_PAGO_TEXTO[t.forma_pago] ?? t.forma_pago}` : ''}</p>
                   {t.nota && <p className="text-xs text-sky-300 truncate">Nota: {t.nota}</p>}
                 </div>
                 <span className="text-sm text-zinc-300 whitespace-nowrap">{fmt(t.monto)}</span>
@@ -1146,6 +1150,12 @@ export default function TicketsPage() {
               <div>
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
                 <p className="text-xs text-zinc-500">{detalle.ticket.sucursales?.nombre ?? 'Sin sucursal'} · subido por {detalle.ticket.empleados?.nombre ?? 'Desconocido'}</p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Pagado con:{' '}
+                  {detalle.ticket.forma_pago
+                    ? <span className="font-medium text-zinc-100">{FORMA_PAGO_TEXTO[detalle.ticket.forma_pago] ?? detalle.ticket.forma_pago}{detalle.ticket.forma_pago === 'mixto' ? ' (ver nota)' : ''}</span>
+                    : <span className="text-zinc-500">No registrado</span>}
+                </p>
                 <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={`text-[10px] px-2 py-0.5 rounded-full ${TONE_PILL[alertTone(b.tipo)]}`}>{b.label}</span>)}</div>
                 {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
                   <p key={i} className="mt-2 text-xs text-sky-300">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>

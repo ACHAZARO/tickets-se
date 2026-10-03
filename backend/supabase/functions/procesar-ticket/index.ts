@@ -41,6 +41,10 @@ function limpiarNota(valor: FormDataEntryValue | null): string | null {
   return limpia ? Array.from(limpia).slice(0, 500).join('').trim() : null
 }
 
+// Forma de pago que elige el gerente al subir (obligatoria en la app). Sin valor = null ("no registrado"), para no
+// tumbar envios de una pantalla vieja abierta antes del cambio; un valor que no esta en la lista se rechaza.
+const FORMAS_PAGO = ['efectivo', 'tarjeta', 'transferencia', 'mixto']
+
 async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -439,7 +443,12 @@ serve(async (req: Request) => {
     // Nota opcional del gerente: SOLO para humanos. Se guarda en su columna y NUNCA se pasa a la lectura con IA
     // (procesarEnSegundoPlano no la recibe), para que no se tome como instruccion.
     const nota = limpiarNota(formData.get('nota'))
-    const datosNota = { nota, nota_para_ia: nota ? notaPareceOrdenParaIA(nota) : false }
+    const fpCruda = formData.get('forma_pago')
+    const formaPago = typeof fpCruda === 'string' && fpCruda.trim() ? fpCruda.trim().toLowerCase() : null
+    if (formaPago && !FORMAS_PAGO.includes(formaPago)) return json({ error: 'forma_pago no valida' }, 400)
+    // Mixto = parte y parte: la nota debe decir que parte se pago con que.
+    if (formaPago === 'mixto' && !nota) return json({ error: 'Con pago mixto escribe en la nota que parte se pago con que' }, 400)
+    const datosNota = { nota, nota_para_ia: nota ? notaPareceOrdenParaIA(nota) : false, forma_pago: formaPago }
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 

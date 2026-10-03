@@ -3,6 +3,28 @@
 > Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
+## Sesion 2026-10-03 noche (Claude) -- FORMA DE PAGO al subir + API para la conciliacion de Caja
+- Origen: pedido del cotejo de septiembre de Santa Elena (Caja / Gastos / Mercado Pago) -- saber como se pago cada ticket.
+  Verificado antes: el corte 1-30/sep SE cuadra (151 subidos; 150 aprobados $82,157.06; 1 duplicado $1,552). Caso Adan
+  Melchor folio 7185 (24-sep, $7,350.04 = bolsas $7,290.04 + envio $60): SIN nota; la app nunca registro que solo el envio
+  fue con Caja. Los $0.04 son contra su hoja de Gastos ($7,290), no de la app.
+- Decision de Alejandro: forma de pago OBLIGATORIA al subir: Efectivo / Tarjeta / Transferencia directa / Mixto. Mixto exige
+  nota ("que parte con que"). Lista fija (no por cuenta) por ahora. Se elige en cada envio (no se recuerda la anterior);
+  con varias fotos aplica a todas. NO hay importes por forma de pago (el detalle de mixto vive en la nota).
+- Migracion `084_forma_pago` (aplicada): `registros_tickets.forma_pago` (CHECK de los 4 valores; NULL = no registrado, todo lo
+  previo; nunca se infiere) + `reporte_tickets` agrega `forma_pago`, `forma_pago_texto`, `motivo_rechazo`, `moneda` (MXN) y
+  `actualizado` (updated_at, hora MX). Probado con service_role: sep SE 151 tickets, 7185 sale "No registrado".
+- `procesar-ticket`: lee `forma_pago` del formulario; valor fuera de lista = 400; mixto sin nota = 400; SIN valor = null (para no
+  tumbar una pantalla vieja abierta). Tambien en duplicados.
+- `api-cuentas`: forma de pago/motivo/moneda/actualizado en `/tickets` (JSON y CSV, columna "Forma de pago"), `/ticket` y MCP;
+  paginacion REST opcional `limite`/`saltar` (misma funcion `paginar` que el MCP).
+- Frontend: selector 2x2 "¿Como se pago?" en `/sucursal/[slug]/subir` (boton Enviar deshabilitado hasta elegir; con Mixto la
+  nota pasa a obligatoria); foto de vista previa baja a 36vh para que quepa. Panel Tickets: forma de pago en lista y detalle
+  ("Pagado con: ... / No registrado"); Excel hoja Tickets con columna "Forma de pago".
+- Verificado: `deno check` de ambas funciones, `tsc` y `next build` OK; pantalla vista a 375px (sin enviar).
+- NO hecho (decision pendiente): enlace autorizado a la foto original para la API (hoy bloqueado a proposito; si se pide,
+  URL firmada de pocos minutos solo con llave de la cuenta). Devoluciones/cancelaciones: no se registran.
+
 ## Sesion 2026-10-03 tarde (Claude) -- "Ver tickets" en Catalogo por revisar (Cerebro)
 - Idea de Alejandro: para decidir si dos nombres del catalogo son lo mismo, ver un ticket de cada uno lado a lado y
   preguntarle a gerente/cocina (el se los ensena o les manda captura; el admin sigue siendo solo para admins).
