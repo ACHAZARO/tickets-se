@@ -3,6 +3,14 @@
 > Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
+## Sesion 2026-10-03 tarde (Claude) -- "Ver tickets" en Catalogo por revisar (Cerebro)
+- Idea de Alejandro: para decidir si dos nombres del catalogo son lo mismo, ver un ticket de cada uno lado a lado y
+  preguntarle a gerente/cocina (el se los ensena o les manda captura; el admin sigue siendo solo para admins).
+- Hecho (commit `944ab3d`, solo frontend, sin migracion): boton "Ver tickets" en cada tarjeta de `PanelDuplicados`
+  (`frontend/app/admin/unificar.tsx`, componente `LadoTicket`). Por cada nombre: foto reducida del ticket mas reciente
+  (toca = foto completa), texto del renglon tal cual, cantidad, monto, precio c/u, comercio, fecha y flechas para otros
+  tickets. Excluye tickets rechazados. Si un producto no tiene tickets dice "No hay tickets con este nombre" (ej. "Sal 1 kg").
+
 ## Sesion 2026-10-03 (Claude) -- cierre de SEPTIEMBRE Santa Elena (revision contra foto)
 - Revisados contra foto los 26 pendientes de SE (+ 1 rechazado por error). Respaldo previo: `respaldo.r20261003_registros/_items/_alertas`.
   Aprobados 26 via `confirmar-admin` (todos 200). SE queda con 0 pendientes y 0 alertas abiertas.
