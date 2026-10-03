@@ -21,6 +21,12 @@
   Costco $170 (23-sep) y $249 (30-sep) aprobados como dice el papel; confirmar con la gerente. (4) Ya confirmados de antes que no
   cuadran: Costco 21-sep $734 vs renglones $539 (faltan $195) y Casa Ahued 21-sep $250 vs $230 (ya en Fraude).
 - **Donde la IA pudo resolver sola (mejoras para vender, NO hechas):** ver "Pendiente / ideas" abajo, bloque 03-oct.
+- **Ajuste (mismo dia, decision Alejandro; respaldo `respaldo.r20261003b_*`):** nota $935 = "bolsas de Bodega, le creeremos" ->
+  aprobada en Bodega (producto "Bolsas Bodega (sin especificar)", moto $65 tambien Bodega), sospecha descartada. Casa Ahued 21-sep:
+  total $200 + envio $50 = **$250** (renglon caja 180 -> 200, producto "Caja Casa Ahued 39001"), sospecha descartada (ya se le
+  senalo a la gerente). **Septiembre SE final: oficiales $82,157.06 (150)**, operativo $63,148.11, fuera de operacion $18,813.95,
+  no validos $1,552 (hoja duplicada). Queda abierto solo: Costco 21-sep faltan $195 de renglones; Costco 30-sep $442 sin ticket;
+  envios Costco $170/$249 por confirmar con la gerente.
 
 ## Sesion 2026-09-28 (Claude) -- cierre antes del respaldo
 - Alejandro aprobo subir los cambios del 21-sep en `admin/tickets/page.tsx` (colores de alertas por gravedad + cerrar
