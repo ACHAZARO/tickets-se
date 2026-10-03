@@ -1,7 +1,26 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-09-28.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-10-03 (Claude) -- cierre de SEPTIEMBRE Santa Elena (revision contra foto)
+- Revisados contra foto los 26 pendientes de SE (+ 1 rechazado por error). Respaldo previo: `respaldo.r20261003_registros/_items/_alertas`.
+  Aprobados 26 via `confirmar-admin` (todos 200). SE queda con 0 pendientes y 0 alertas abiertas.
+- **Septiembre SE (resumen_tickets):** oficiales **$81,222.06 (149)**; operativo $63,128.11; fuera de operacion $17,878.95 (Bodega
+  $17,603.05 -- bolsas metalizadas Adan 24-sep $7,290); no validos $2,487 (nota $935 a Fraude + hoja duplicada $1,552).
+- Correcciones: 3 fechas mal leidas (Jugotropick: la IA tomo el "04/26" impreso del formato como mes; nota $935 leida 29-ene);
+  IVA repartido a mano en 3 de Adan (total a mano = impreso + envio -> `montos.ts` no reparte); Costco 30-sep engrapado
+  (a mano $1,145 vs impreso $703: se deja $703 + envio $249 = $952); naranja suelta ligada a "Naranja Galon" -> "Naranja (fruta)";
+  motos de Ale -> Extras; "Bodega Javi paquetes" -> Bodega; Papeleria El Iris solo voucher -> Otros gastos operativos.
+  4 productos nuevos: Mezcla frutos rojos Costco, Juego Casa Ahued 020-001-045, Limpiador banos Cloralex 750 ml, Papeleria (voucher sin desglose).
+- **Falso positivo del detector de duplicados:** Adan 22-sep folio 403460 ($653.50, bolsa 3.21 kg) se rechazo solo como "papel
+  repetido" del 15-sep (folio 253016, stretch $656). Era otra compra; la suma a mano del folio 403448 ($1,553.32) = $899.82 + $653.50.
+  Se reactivo y aprobo; sospecha de ambos "descartada".
+- **Para Alejandro (decisiones abiertas):** (1) nota $935 del 25-sep sin proveedor -> rechazada + Fraude (regla "nota sin vendedor
+  por monto alto"); si la gerente trae el comprobante se reactiva. (2) Costco 30-sep: $442 de la suma a mano sin ticket. (3) envios
+  Costco $170 (23-sep) y $249 (30-sep) aprobados como dice el papel; confirmar con la gerente. (4) Ya confirmados de antes que no
+  cuadran: Costco 21-sep $734 vs renglones $539 (faltan $195) y Casa Ahued 21-sep $250 vs $230 (ya en Fraude).
+- **Donde la IA pudo resolver sola (mejoras para vender, NO hechas):** ver "Pendiente / ideas" abajo, bloque 03-oct.
 
 ## Sesion 2026-09-28 (Claude) -- cierre antes del respaldo
 - Alejandro aprobo subir los cambios del 21-sep en `admin/tickets/page.tsx` (colores de alertas por gravedad + cerrar
@@ -801,6 +820,13 @@ Auditoría multi-agente (32 hallazgos confirmados). Arreglado lo crítico:
 - **Eliminar tickets** + descarga ZIP del periodo + retencion de imagenes +1 año (pg_cron).
 
 ## Pendiente / ideas
+- **03-oct -- mejoras de IA vistas al cerrar septiembre (de 26 tickets, ~20 se hubieran aprobado solos):**
+  1. `montos.ts`: si el total a mano = total impreso + envio, repartir el impuesto contra el IMPRESO (3 de Adan quedaron en monto_anomalo por esto).
+  2. Fecha: ignorar la fecha de impresion del formato (pie "04/26" de Jugotropick); si el dia/mes leido cae >30 dias antes de la subida, usar la de subida y no alertar si el folio es consecutivo.
+  3. Duplicados (`duplicados.ts`): no tratar como papel repetido si el folio es distinto y los productos no coinciden (falso positivo Adan 403460).
+  4. `precio_anomalo`: guardar QUE renglon y cuanto subio (hoy la alerta no dice cual); las 8 de septiembre eran subidas reales en Tipico (limon $8->$14-17/kg, cebolla $22->$63/kg).
+  5. Notas de moto a mano ("envio mama Ale", "moto cafe Ale"): ligar a "Moto envio" y aplicar la regla Extras sin pedir revision (hoy salen como producto_no_reconocido).
+  6. Unidades de catalogo raras: "FRESA 907 G" y "SPRING MIX 454 G" tienen unidad `g` (la IA pone cantidad 1 g); pasar a pz o capturar gramos.
 - Siguiente sesion de pulido: revisar primero deuda `confirmar-ticket`/pantalla review legacy, visibilidad de fallas Sheets y UX movil de subida multiple.
 - Re-aprender comercio al confirmar desde Alertas (que las correcciones del admin refuercen el mapa comercio→categoria).
 - Marcar esquinas de la foto para recortar ruido a Gemini (opcional; 2.5-flash lee bien).
