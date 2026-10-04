@@ -56,7 +56,9 @@ Claude AUDITOR -> Alejandro decide. Procedimiento de cada ronda:
 |---|---|---|---|---|---|---|
 | (pendiente primera ronda) | v2 | | | | | |
 
-## Fase futura (BETA, sin prisa; idea de Alejandro 03-oct): Claude como auditor permanente por API
+## Fase futura OPCIONAL (plan B): Claude como auditor permanente por API
+> Decision Alejandro 03-oct: por ahora SOLO modo sombra por rondas. Si las rondas cumplen los criterios, se declara listo
+> para venta SIN meter este auditor a la app. Esto solo se activa si las rondas muestran fallas que reglas/candados no arreglan.
 - En beta, la app llama a Claude (API Anthropic) como 3a capa: audita cada juicio del revisor y deja su opinion en el ticket.
 - Cada semana resume hallazgos en PROPUESTAS de mejora (reglas por negocio en `reglas_ia`, candados, prompt). Nada cambia solo:
   el admin del negocio aprueba (regla de aislamiento por negocio).
