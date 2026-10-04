@@ -38,6 +38,24 @@
 3. **Activado**: aprueba solo; humano revisa muestra semanal.
 4. Criterios 6 y 7 -> listo para venta.
 
+## Fase 2 elegida: RONDAS MANUALES (decision Alejandro 03-oct; la app NO se mueve)
+En vez de meter el revisor a `procesar-ticket`, se hace la sombra por conversacion. 4 capas: lector Gemini -> revisor IA ->
+Claude AUDITOR -> Alejandro decide. Procedimiento de cada ronda:
+1. Alejandro avisa "hay tickets nuevos" (ideal: ANTES de que el los revise, para no juzgar algo ya corregido).
+2. Claude lista pendientes con alertas automaticas (sucursales no de prueba) y corre `revisor-ia` sobre cada uno desde el admin
+   logueado en el Chrome de Alejandro (`fetch` a functions/revisor-ia con el access_token de `sb-...-auth-token`).
+3. Claude audita cada juicio contra la FOTO (no contra la lectura) y anota: de acuerdo / en desacuerdo + por que.
+4. Entrega tabla: ticket | revisor dijo | auditor dice | recomendacion. Alejandro decide (Claude aprueba via `confirmar-admin` solo con su OK).
+5. Marcador acumulado en "Rondas" (abajo): aciertos, errores (aprobo algo malo / mando a humano sin necesidad / dato mal).
+   Cada error -> regla o candado nuevo -> nueva `VERSION_PROMPT`; las rondas siguientes miden la version nueva.
+6. Listo para venta tras ~3 semanas con: 0 aprobados que Alejandro rechace, >=95% correcto en lo aprobado, <=15% a humano.
+   Meter tickets de Wings Palace en alguna ronda (criterio 7).
+
+## Rondas
+| Fecha | Version | Tickets | Revisor aprobo | Aprobo mal | Mando a humano sin necesidad | Notas |
+|---|---|---|---|---|---|---|
+| (pendiente primera ronda) | v2 | | | | | |
+
 ## Limitaciones conocidas de la prueba en seco
 - El catalogo de hoy trae sinonimos ensenados DESPUES de esos tickets (el arreglo `sinonimos` no tiene fecha): favorece un
   poco al revisor. Se excluyen productos creados despues de la subida y precios posteriores.
