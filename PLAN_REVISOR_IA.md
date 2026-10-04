@@ -56,6 +56,14 @@ Claude AUDITOR -> Alejandro decide. Procedimiento de cada ronda:
 |---|---|---|---|---|---|---|
 | (pendiente primera ronda) | v2 | | | | | |
 
+## Fase futura (BETA, sin prisa; idea de Alejandro 03-oct): Claude como auditor permanente por API
+- En beta, la app llama a Claude (API Anthropic) como 3a capa: audita cada juicio del revisor y deja su opinion en el ticket.
+- Cada semana resume hallazgos en PROPUESTAS de mejora (reglas por negocio en `reglas_ia`, candados, prompt). Nada cambia solo:
+  el admin del negocio aprueba (regla de aislamiento por negocio).
+- "Ya esta" = falsas alarmas (tickets al humano que se aprueban sin cambios) ~0 y % al humano estable varias semanas; lo que
+  queda es irreducible (fraude, papel faltante, decisiones del dueno). Claude lo declara con numeros.
+- Decidir entonces: costo (auditar todo vs muestra) y aviso de privacidad (fotos tambien pasan por Anthropic, ademas de Google).
+
 ## Limitaciones conocidas de la prueba en seco
 - El catalogo de hoy trae sinonimos ensenados DESPUES de esos tickets (el arreglo `sinonimos` no tiene fecha): favorece un
   poco al revisor. Se excluyen productos creados despues de la subida y precios posteriores.
