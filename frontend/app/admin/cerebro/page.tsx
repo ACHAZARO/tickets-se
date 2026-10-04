@@ -194,6 +194,15 @@ export default function CerebroPage() {
     }
     return pendientes
   }, [sel, pendientes, comercios])
+  // Un mismo articulo se compra en varios comercios: es UNO solo (asi se comparan precios y se suma el stock).
+  const comerciosDeProducto = useMemo(() => {
+    const nombre = new Map(comercios.map(c => [c.nombre.toLowerCase(), c.nombre]))
+    const m = new Map<string, string[]>()
+    for (const [k, v] of Object.entries(comCat)) for (const pid of v.prods) {
+      const l = m.get(pid) ?? []; l.push(nombre.get(k) ?? k); m.set(pid, l)
+    }
+    return m
+  }, [comCat, comercios])
   const opcionesArticulo: OpcionArticulo[] = useMemo(
     () => productos.map(p => ({ id: p.id, nombre: p.nombre, detalle: catNombre(p.categoria_id) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,7 +215,7 @@ export default function CerebroPage() {
     <section className={`tarjeta flex min-h-0 flex-col overflow-hidden ${tono}`}>
       <h3 className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-4 py-3 text-sm font-semibold text-zinc-100">{titulo}</h3>
       {buscador && <div className="border-b border-zinc-800/60 p-2">{buscador}</div>}
-      <div className="min-h-0 flex-1 overflow-y-auto xl:max-h-[calc(100dvh-17rem)] max-h-[60vh]">{cuerpo}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto xl:max-h-[calc(100dvh-22rem)] max-h-[55vh]">{cuerpo}</div>
     </section>
   )
   const filaClase = (activo: boolean, resaltado?: boolean, apagado?: boolean | null) =>
@@ -215,12 +224,19 @@ export default function CerebroPage() {
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Cerebro</h2>
-          {sel && <button onClick={() => setSel(null)} className="btn-quieto btn-sm">Ver todo</button>}
-        </div>
-        <p className="nota max-w-2xl">Lo que la IA ya aprendió, de lo general a lo particular. Toca una categoría o un comercio para ver solo lo suyo.</p>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Cerebro</h2>
+        <p className="nota max-w-3xl">Lo importante aquí: que <b className="font-medium text-zinc-300">cada artículo vaya a la categoría correcta</b>. Aquí no se borra nada; solo decides a dónde va cada cosa.</p>
       </div>
+
+      {/* Solo guia: fondo gris, en 3 pasos a lo ancho para no empujar las columnas hacia abajo */}
+      <section aria-labelledby="instrucciones" className="rounded-xl bg-zinc-800/60 px-4 py-3">
+        <h3 id="instrucciones" className="text-sm font-semibold text-zinc-300">Instrucciones</h3>
+        <ol className="mt-2 grid gap-x-6 gap-y-2 text-[13px] leading-relaxed text-zinc-400 md:grid-cols-3">
+          <li><b className="font-medium text-zinc-300">1. Filtra.</b> Toca una categoría o un comercio: lo relacionado se pinta de verde. «Todas» quita el filtro.</li>
+          <li><b className="font-medium text-zinc-300">2. Revisa los artículos.</b> Si uno está en la categoría equivocada, cámbialo con el selector de su renglón.</li>
+          <li><b className="font-medium text-zinc-300">3. Sin clasificar.</b> La IA leyó algo y no sabe qué es: di qué artículo es y la próxima vez lo reconoce sola.</li>
+        </ol>
+      </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {/* 1. CATEGORIAS */}
@@ -228,6 +244,10 @@ export default function CerebroPage() {
           <>Categorías <span className="font-normal text-zinc-500">{categorias.length}</span></>,
           <input value={bCat} onChange={e => setBCat(e.target.value)} placeholder="Buscar categoría…" aria-label="Buscar categoría" className="campo w-full py-1.5" />,
           <div className="divide-y divide-zinc-800/60">
+            <button onClick={() => setSel(null)} aria-pressed={!sel} className={`${filaClase(!sel)} ${!sel ? '' : 'bg-zinc-800/50'}`}>
+              <span className="text-sm font-medium text-zinc-100">Todas</span>
+              <span className="shrink-0 text-xs text-zinc-500">{sel ? 'quitar filtro' : 'sin filtro'}</span>
+            </button>
             {categorias.filter(c => !bCat || c.nombre.toLowerCase().includes(bCat.toLowerCase())).map(c => {
               const activo = sel?.tipo === 'categoria' && sel.id === c.id
               const resaltado = catsResaltadas?.has(c.id)
@@ -248,6 +268,10 @@ export default function CerebroPage() {
           <input value={bCom} onChange={e => setBCom(e.target.value)} placeholder="Buscar comercio…" aria-label="Buscar comercio" className="campo w-full py-1.5" />,
           comercios.length === 0 ? <p className="px-4 py-4 nota">Aún no hay comercios.</p> : (
             <div className="divide-y divide-zinc-800/60">
+              <button onClick={() => setSel(null)} aria-pressed={!sel} className={`${filaClase(!sel)} ${!sel ? '' : 'bg-zinc-800/50'}`}>
+                <span className="text-sm font-medium text-zinc-100">Todos</span>
+                <span className="shrink-0 text-xs text-zinc-500">{sel ? 'quitar filtro' : 'sin filtro'}</span>
+              </button>
               {comercios.filter(c => !bCom || c.nombre.toLowerCase().includes(bCom.toLowerCase())).map(c => {
                 const activo = sel?.tipo === 'comercio' && sel.id === c.id
                 const resaltado = comerciosResaltados?.has(c.nombre.toLowerCase())
@@ -258,12 +282,13 @@ export default function CerebroPage() {
                       <span className="shrink-0 text-xs text-zinc-500">{c.veces}×</span>
                     </button>
                     {activo && (
-                      <div className="bg-emerald-900/40 px-4 pb-3 pt-1">
-                        <label className="etiqueta mb-1 block" htmlFor={`forzar-${c.id}`}>Mandar siempre a una categoría</label>
+                      <div className="space-y-1.5 bg-emerald-900/40 px-4 pb-3 pt-1">
+                        <label className="etiqueta block" htmlFor={`forzar-${c.id}`}>Categoría preestablecida (opcional)</label>
                         <select id={`forzar-${c.id}`} value={c.categoria_id ?? ''} onChange={e => forzarCategoriaComercio(c, e.target.value)} className="campo w-full py-1.5">
-                          <option value="">No, la IA decide renglón por renglón</option>
-                          {categorias.map(k => <option key={k.id} value={k.id}>Siempre: {k.nombre}</option>)}
+                          <option value="">Ninguna: la IA decide artículo por artículo</option>
+                          {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                         </select>
+                        <p className="text-xs leading-relaxed text-zinc-400">Lo que la IA no reconozca de este comercio se manda aquí. Cada artículo lo puedes cambiar a mano en la columna Artículos.</p>
                       </div>
                     )}
                   </div>
@@ -284,6 +309,10 @@ export default function CerebroPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-zinc-100" title={p.nombre}>{p.nombre}</p>
                     <p className="text-xs text-zinc-500">{catNombre(p.categoria_id)}{p.unidad_default ? ` · ${p.unidad_default}` : ''}</p>
+                    {sel?.tipo !== 'comercio' && (comerciosDeProducto.get(p.id)?.length ?? 0) > 0 && (() => {
+                      const l = comerciosDeProducto.get(p.id)!
+                      return <p className="truncate text-xs text-zinc-500" title={l.join(', ')}>Se compra en: {l.slice(0, 3).join(', ')}{l.length > 3 ? ` y ${l.length - 3} más` : ''}</p>
+                    })()}
                   </div>
                   <select value={p.categoria_id ?? ''} onChange={e => moverProducto(p, e.target.value)} title="Mover a otra categoría" aria-label={`Categoría de ${p.nombre}`}
                     className="campo max-w-[120px] px-2 py-1 text-[13px]">

@@ -159,7 +159,7 @@ export default function ComerciosPage() {
     const { error } = await supabase.from('comercios').update({ categoria_id: categoriaId || null }).in('id', c.ids)
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     setComercios(prev => prev.map(x => x.clave === c.clave ? { ...x, categoria_id: categoriaId || null } : x))
-    toast(categoriaId ? 'Listo: la IA mandará este comercio a esa categoría' : 'Listo: la IA vuelve a clasificar renglón por renglón')
+    toast(categoriaId ? 'Listo: lo que la IA no reconozca de este comercio irá a esa categoría' : 'Listo: la IA decide artículo por artículo')
   }
   async function eliminar(c: Grupo) {
     if (!(await confirm(`¿Olvidar el comercio "${c.nombre}"? Sale de esta lista; sus tickets no cambian. Si vuelve a aparecer en un ticket, la IA lo aprende de nuevo.`, { danger: true }))) return
@@ -213,7 +213,7 @@ export default function ComerciosPage() {
       ) : filtrados.length === 0 ? (
         <p className="text-sm text-zinc-500 text-center py-12">{comercios.length === 0 ? 'Aún no hay comercios. Aparecen solos al procesar tickets.' : 'Sin coincidencias'}</p>
       ) : (
-        <div className="grid items-start gap-2 xl:grid-cols-2">
+        <div className="grid items-start gap-2">
           {filtrados.map(c => {
             const r = resumen[clave(c.nombre)]
             const arts = articulos[clave(c.nombre)] ?? []
@@ -230,7 +230,7 @@ export default function ComerciosPage() {
                       {r && r.tickets > 0
                         ? `${r.tickets} ${r.tickets === 1 ? 'ticket' : 'tickets'} · última compra ${fechaCorta(r.ultima)}`
                         : 'Sin compras en este periodo'}
-                      {forzada && <> · <span className="text-blue-400">siempre {forzada}</span></>}
+                      {forzada && <> · <span className="text-blue-400">preestablecida: {forzada}</span></>}
                     </p>
                   </div>
                   <div className="text-right">
@@ -291,13 +291,13 @@ export default function ComerciosPage() {
                       <summary className="cursor-pointer select-none text-[13px] font-medium text-zinc-400 hover:text-zinc-200">Opciones avanzadas</summary>
                       <div className="space-y-4 pt-3 pb-1">
                         <div className="space-y-1.5">
-                          <label className="etiqueta block" htmlFor={`forzar-${c.clave}`}>Mandar siempre a una categoría</label>
+                          <label className="etiqueta block" htmlFor={`forzar-${c.clave}`}>Categoría preestablecida</label>
                           <select id={`forzar-${c.clave}`} value={c.categoria_id ?? ''} onChange={e => setCategoria(c, e.target.value)}
                             className="campo w-full sm:w-auto">
-                            <option value="">No, la IA decide renglón por renglón</option>
-                            {categorias.map(k => <option key={k.id} value={k.id}>Siempre: {k.nombre}</option>)}
+                            <option value="">Ninguna: la IA decide artículo por artículo</option>
+                            {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                           </select>
-                          <p className="nota">Solo si este comercio vende una sola cosa (gasolinera, luz, gas). En tiendas como Chedraui o Costco déjalo en «No».</p>
+                          <p className="nota">Lo que la IA no reconozca de este comercio se manda aquí. Cada artículo lo puedes cambiar en Cerebro. Útil si el comercio vende una sola cosa (gasolinera, luz, gas); en Chedraui o Costco mejor «Ninguna».</p>
                         </div>
                         <div className="space-y-1">
                           <button onClick={() => eliminar(c)} className="btn-peligro btn-sm -ml-2">Olvidar comercio</button>
