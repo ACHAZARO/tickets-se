@@ -194,11 +194,11 @@ function FotoTicket({ nombre, ej }: { nombre: string; ej: EjemploTicket | null |
     return () => { vivo = false }
   }, [ej?.bucket, ej?.path])
 
-  const hueco = (texto: string) => <span className="px-3 text-center text-xs text-zinc-500">{texto}</span>
+  const hueco = (texto: string) => <span className="px-3 text-center nota">{texto}</span>
   return (
     <div className="min-w-0 space-y-1.5">
       <p className="text-sm font-medium text-zinc-100 truncate" title={nombre}>{nombre}</p>
-      <div className="aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center">
+      <div className="aspect-[3/4] w-full overflow-hidden rounded-lg bg-zinc-900 flex items-center justify-center">
         {ej === undefined ? hueco('Buscando…')
           : !ej ? hueco('No hay otro ticket con este nombre')
           : url ? (
@@ -220,7 +220,7 @@ function CompararTickets({ a, b }: { a: ProdSug; b: ProdSug }) {
     return () => { vivo = false }
   }, [a.id, b.id])
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 rounded-lg bg-zinc-800/50 p-2">
       <FotoTicket nombre={a.nombre} ej={par ? par.a : undefined} />
       <FotoTicket nombre={b.nombre} ej={par ? par.b : undefined} />
     </div>
@@ -324,8 +324,8 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
 
     const prod = (p: ProdSug) => (
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-zinc-100 truncate" title={p.nombre}>{p.nombre}</p>
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-[15px] font-medium text-zinc-100 truncate" title={p.nombre}>{p.nombre}</p>
+        <p className="text-[13px] text-zinc-500">
           {p.unidad ?? 'sin unidad'} · {p.usos} {p.usos === 1 ? 'compra' : 'compras'} · {fmt(p.gasto)}
           {p.contiene ? ` · trae ${p.contiene.cantidad} ${p.contiene.unidad}` : ''}
         </p>
@@ -333,55 +333,47 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     )
     const btnUnificar = (destino: ProdSug, origen: ProdSug, principal: boolean) => (
       <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
-        className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${principal ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-300' : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'}`}>
+        className={`${principal ? 'btn-primario' : 'btn-secundario'} btn-sm`}>
         Unificar en &quot;{destino.nombre}&quot;
       </button>
     )
     const btnInsumo = (
       <button type="button" disabled={ocupado} onClick={() => abrirForm(s)}
-        className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${esTamano && !f ? 'bg-sky-600 text-white hover:bg-sky-500' : 'bg-zinc-800 text-sky-300 hover:bg-zinc-700'}`}>
+        className={`${f ? 'btn-quieto' : esTamano ? 'btn-primario' : 'btn-secundario'} btn-sm`}>
         {f ? 'Cancelar' : 'Mismo insumo, distinto tamaño'}
       </button>
     )
 
     const campos = (lado: 'a' | 'b', p: ProdSug) => (
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] text-zinc-400 min-w-0 flex-1 truncate">1 {p.unidad ?? 'unidad'} de &quot;{p.nombre}&quot; =</span>
+        <span className="text-[13px] text-zinc-400 min-w-0 flex-1 truncate">1 {p.unidad ?? 'unidad'} de &quot;{p.nombre}&quot; =</span>
         <input value={f[lado].cantidad} inputMode="decimal" placeholder="cantidad"
           onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], cantidad: e.target.value } } }))}
-          className="w-24 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100" />
+          className="campo w-24 py-1.5" />
         <select value={f[lado].unidad}
           onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], unidad: e.target.value } } }))}
-          className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+          className="campo py-1.5">
           {[...new Set([...UNIDADES_CONTENIDO, f[lado].unidad].filter(Boolean))].map(u => <option key={u} value={u}>{u}</option>)}
         </select>
       </div>
     )
 
     return (
-      <div key={k} className="rounded-xl bg-zinc-900 border border-zinc-800 p-3 space-y-2">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-zinc-600 self-center">=?</span>{prod(s.b)}</div>
-        <p className="text-[11px] text-zinc-500">{MOTIVO_TEXTO[s.motivo]} · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}</p>
-        <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))}
-          className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-amber-200 hover:bg-zinc-700">
-          {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
-        </button>
-        {viendo[k] && (
-          <CompararTickets a={s.a} b={s.b} />
-        )}
+      <div key={k} className="tarjeta p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-zinc-500 self-center" aria-hidden>≟</span>{prod(s.b)}</div>
+        <p className="nota">{MOTIVO_TEXTO[s.motivo]} · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}</p>
+        {viendo[k] && <CompararTickets a={s.a} b={s.b} />}
 
         {f ? (
-          <div className="rounded-lg bg-zinc-800/40 p-3 space-y-2">
-            <p className="text-[11px] text-zinc-400">
-              Quedan los dos productos (cada uno con su precio), pero sus compras se suman en un solo insumo para el inventario.
-            </p>
+          <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
+            <p className="nota">Quedan los dos, cada uno con su precio; el inventario los suma.</p>
             <div className="flex items-center gap-2 flex-wrap">
-              <label className="text-[11px] text-zinc-500">Insumo</label>
+              <label className="etiqueta">Insumo</label>
               <input value={f.nombre} onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: e.target.value } }))}
-                className="flex-1 min-w-[140px] rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-sm text-zinc-100" />
-              <label className="text-[11px] text-zinc-500">se mide en</label>
+                className="campo flex-1 min-w-[140px] py-1.5" />
+              <label className="etiqueta">se mide en</label>
               <select value={f.unidadBase} onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], unidadBase: e.target.value } }))}
-                className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-sm text-zinc-100">
+                className="campo py-1.5">
                 {[...new Set([...UNIDADES_BASE, f.unidadBase])].map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
@@ -389,14 +381,14 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
             {campos('b', s.b)}
             <div className="flex flex-wrap gap-2 pt-1">
               <button type="button" disabled={ocupado} onClick={() => guardarInsumo(s)}
-                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 disabled:opacity-50">
+                className="btn-primario btn-sm">
                 {ocupado ? 'Guardando…' : 'Guardar insumo'}
               </button>
               {btnInsumo}
             </div>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {esTamano ? (
               <>
                 {btnInsumo}
@@ -410,8 +402,11 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
                 {btnInsumo}
               </>
             )}
+            <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))} className="btn-texto btn-sm">
+              {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
+            </button>
             <button type="button" disabled={ocupado} onClick={() => noSonIguales(s)}
-              className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50">No son iguales</button>
+              className="btn-quieto btn-sm sm:ml-auto">No son iguales</button>
           </div>
         )}
       </div>
@@ -419,31 +414,29 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   }
 
   return (
-    <section className="rounded-2xl border border-amber-800/40 bg-amber-950/10 p-4 space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold text-amber-200">Catalogo por revisar ({sug.length})</h3>
-        <p className="text-xs text-zinc-500 mt-1 max-w-3xl">
-          <b className="text-zinc-400">Unificar</b> = es el mismo articulo con dos nombres y queda uno solo.{' '}
-          <b className="text-zinc-400">Mismo insumo, distinto tamaño</b> = quedan los dos (cada uno con su precio) pero sus compras se suman
-          para el inventario, por ejemplo Sal de 1 kg y de 1.1 kg = 2.1 kg de Sal. Nunca se hace nada sin tu respuesta.
-        </p>
+    <section className="space-y-5">
+      <div className="space-y-1">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
+          Catálogo por revisar <span className="chip-revisar">{sug.length}</span>
+        </h2>
+        <p className="nota max-w-2xl">¿Son el mismo producto? Nada cambia hasta que respondas.</p>
       </div>
 
       {mismos.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Parecen el mismo articulo ({mismos.length})</p>
+          <h3 className="text-sm font-semibold text-zinc-300">Parecen el mismo ({mismos.length})</h3>
           {mismos.map(tarjeta)}
         </div>
       )}
       {tamanos.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Mismo nombre, distinto tamaño ({tamanos.length})</p>
+          <h3 className="text-sm font-semibold text-zinc-300">Mismo nombre, distinto tamaño ({tamanos.length})</h3>
           {tamanos.map(tarjeta)}
         </div>
       )}
       {quiza.length > 0 && (
         <div className="space-y-2">
-          <button type="button" onClick={() => setVerQuiza(v => !(v ?? abiertoPorDefecto))} className="text-xs font-medium uppercase tracking-widest text-zinc-500 hover:text-zinc-300">
+          <button type="button" onClick={() => setVerQuiza(v => !(v ?? abiertoPorDefecto))} className="text-sm font-semibold text-zinc-300 hover:text-zinc-100">
             {abiertos ? '▾' : '▸'} Menos seguros ({quiza.length})
           </button>
           {abiertos && quiza.map(tarjeta)}
