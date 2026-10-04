@@ -102,19 +102,20 @@ export default function ComerciosPage() {
             const expandido = abierto === c.id
             return (
               <div key={c.id} className="tarjeta overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                   <button onClick={() => setAbierto(expandido ? null : c.id)} className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-zinc-100 truncate">{c.nombre}</p>
+                      <p className="text-sm font-medium text-zinc-100 break-words sm:truncate">{c.nombre}</p>
                       {c.sucursal_id === null && <span className="chip-neutro">global</span>}
                     </div>
                     <p className="text-xs text-zinc-500">
-                      {c.veces} ticket(s){r ? ` · ${r.productos.length} producto(s)` : ''}
+                      {c.veces} {c.veces === 1 ? 'ticket' : 'tickets'}{r ? ` · ${r.productos.length} ${r.productos.length === 1 ? 'producto' : 'productos'}` : ''}
                       {cats.length > 0 && <> · {cats.length === 1 ? cats[0] : `${cats.length} categorías`}</>}
                     </p>
                   </button>
                   <select value={c.categoria_id ?? ''} onChange={e => setCategoria(c, e.target.value)} title="Forzar categoría (opcional)"
-                    className="campo px-2 py-1.5 max-w-[150px]">
+                    aria-label={`Forzar categoría de ${c.nombre}`}
+                    className="campo px-2 py-1.5 order-last w-full sm:order-none sm:w-auto sm:max-w-[190px]">
                     <option value="">No forzar</option>
                     {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                   </select>
