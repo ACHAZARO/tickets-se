@@ -65,7 +65,7 @@ export function SucursalSelector() {
     <select
       value={sucursalId}
       onChange={e => setSucursalId(e.target.value)}
-      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 max-w-[160px]"
+      className="h-9 rounded-lg bg-zinc-900 border border-zinc-700 px-2.5 text-[13px] font-medium text-zinc-100 max-w-[170px] hover:border-zinc-600"
       title="Sucursal activa"
     >
       <option value="">Todas las sucursales</option>

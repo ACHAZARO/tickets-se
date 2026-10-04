@@ -973,7 +973,7 @@ export default function TicketsPage() {
         </div>
         <button type="button" onClick={descargarReporte} disabled={descargando}
           title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">
           {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
         </button>
       </div>

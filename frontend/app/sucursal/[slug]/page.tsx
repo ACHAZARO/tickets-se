@@ -202,7 +202,7 @@ export default function PinPage({ params }: PageProps) {
                     transition-all duration-100 active:scale-95 select-none
                     ${
                       isOk
-                        ? 'bg-zinc-100 text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600'
+                        ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-300 disabled:bg-zinc-800 disabled:text-zinc-600'
                         : isDel
                         ? 'bg-zinc-800/60 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30'
                         : 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700 active:bg-zinc-600'

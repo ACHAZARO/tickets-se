@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Llaves locales (NUNCA commitear)
 _secretos/
+
+mobile-audit/
+.playwright-cli/

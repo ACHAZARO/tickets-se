@@ -214,7 +214,7 @@ export default function CatalogoPage() {
           placeholder="Nueva categoría (ej. Mantenimiento)"
           className="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600" />
         <button onClick={agregarCat} disabled={savingCat || !nuevaCat.trim()}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">+ Categoría</button>
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">+ Categoría</button>
       </div>
 
       <div className="space-y-4">

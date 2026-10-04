@@ -120,7 +120,7 @@ export default function FormasPago() {
           <button
             onClick={agregar}
             disabled={!nueva.nombre.trim() || !cuentaId}
-            className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-white disabled:opacity-40"
+            className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-40"
           >+ Agregar</button>
         </div>
       </div>

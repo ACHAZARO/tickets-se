@@ -240,7 +240,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-xl font-semibold text-zinc-100">Gasto · {sucursalLabel}</h2>
         <button onClick={exportar} disabled={cats.length === 0}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">
           Reporte (Excel)
         </button>
       </div>

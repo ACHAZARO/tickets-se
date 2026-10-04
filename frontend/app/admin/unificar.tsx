@@ -107,7 +107,7 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
   if (!n) return null
   return (
     <span title={`${n} productos del catalogo por revisar`}
-      className="ml-1.5 inline-flex min-w-[18px] justify-center rounded-full bg-amber-600 px-1.5 text-[10px] font-semibold text-white">{n}</span>
+      className="ml-1.5 inline-flex min-w-[18px] justify-center rounded-full bg-amber-600 px-1.5 text-[11px] font-semibold leading-[18px] text-white">{n}</span>
   )
 }
 
@@ -333,7 +333,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     )
     const btnUnificar = (destino: ProdSug, origen: ProdSug, principal: boolean) => (
       <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
-        className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${principal ? 'bg-zinc-100 text-zinc-900 hover:bg-white' : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'}`}>
+        className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${principal ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-300' : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'}`}>
         Unificar en &quot;{destino.nombre}&quot;
       </button>
     )

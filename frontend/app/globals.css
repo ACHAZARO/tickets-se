@@ -2,6 +2,191 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  PALETA "PISTACHE" (rediseno 2026-10). Los colores de Tailwind (zinc, red, amber, emerald, blue; sky=blue y
+  orange=amber) leen estas variables, asi TODA la app cambia de dia a noche sin tocar cada pantalla.
+  Dia: la escala de grises se invierte (zinc-950 = fondo claro, zinc-100 = tinta oscura). Los colores de estado
+  quedan: 300/400 = texto legible, 900 = fondo tenue, 800 = borde tenue, 600 = relleno con texto blanco.
+  Contraste AA verificado (texto >= 4.5:1) en ambos modos.
+  Modo: sigue al celular; el boton del menu lo fija en <html data-theme="light|dark"> (localStorage "tema").
+*/
+:root {
+  color-scheme: light;
+  --c-zinc-50: 21 25 18;
+  --c-zinc-100: 31 36 25;
+  --c-zinc-200: 43 49 37;
+  --c-zinc-300: 57 64 49;
+  --c-zinc-400: 72 80 65;
+  --c-zinc-500: 90 99 81;
+  --c-zinc-600: 162 170 148;
+  --c-zinc-700: 211 217 197;
+  --c-zinc-800: 232 236 221;
+  --c-zinc-900: 252 253 248;
+  --c-zinc-950: 243 245 235;
+  --c-red-50: 61 23 11;
+  --c-red-100: 85 32 15;
+  --c-red-200: 110 43 28;
+  --c-red-300: 138 56 36;
+  --c-red-400: 158 65 42;
+  --c-red-500: 184 77 51;
+  --c-red-600: 176 74 49;
+  --c-red-700: 143 58 38;
+  --c-red-800: 239 198 185;
+  --c-red-900: 251 227 218;
+  --c-red-950: 253 241 236;
+  --c-amber-50: 42 29 12;
+  --c-amber-100: 63 43 18;
+  --c-amber-200: 94 63 22;
+  --c-amber-300: 111 72 16;
+  --c-amber-400: 126 83 17;
+  --c-amber-500: 176 122 34;
+  --c-amber-600: 147 96 15;
+  --c-amber-700: 122 79 18;
+  --c-amber-800: 235 207 151;
+  --c-amber-900: 248 235 207;
+  --c-amber-950: 252 245 230;
+  --c-emerald-50: 22 35 13;
+  --c-emerald-100: 35 55 21;
+  --c-emerald-200: 52 80 28;
+  --c-emerald-300: 59 89 29;
+  --c-emerald-400: 68 103 34;
+  --c-emerald-500: 92 138 46;
+  --c-emerald-600: 78 120 39;
+  --c-emerald-700: 63 95 31;
+  --c-emerald-800: 201 221 175;
+  --c-emerald-900: 229 239 214;
+  --c-emerald-950: 242 247 234;
+  --c-blue-50: 20 29 37;
+  --c-blue-100: 30 44 56;
+  --c-blue-200: 44 64 82;
+  --c-blue-300: 51 80 106;
+  --c-blue-400: 59 92 120;
+  --c-blue-500: 74 109 137;
+  --c-blue-600: 68 102 127;
+  --c-blue-700: 54 82 106;
+  --c-blue-800: 195 211 224;
+  --c-blue-900: 225 234 241;
+  --c-blue-950: 240 245 248;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --c-zinc-50: 244 246 236;
+    --c-zinc-100: 231 236 223;
+    --c-zinc-200: 211 218 199;
+    --c-zinc-300: 186 195 173;
+    --c-zinc-400: 162 172 150;
+    --c-zinc-500: 149 158 137;
+    --c-zinc-600: 95 104 85;
+    --c-zinc-700: 58 67 51;
+    --c-zinc-800: 40 48 36;
+    --c-zinc-900: 29 35 25;
+    --c-zinc-950: 21 25 18;
+    --c-red-50: 253 243 239;
+    --c-red-100: 251 230 223;
+    --c-red-200: 248 211 200;
+    --c-red-300: 242 184 168;
+    --c-red-400: 232 144 122;
+    --c-red-500: 210 105 79;
+    --c-red-600: 181 82 58;
+    --c-red-700: 150 65 45;
+    --c-red-800: 107 46 33;
+    --c-red-900: 74 32 23;
+    --c-red-950: 46 20 14;
+    --c-amber-50: 253 246 231;
+    --c-amber-100: 250 234 202;
+    --c-amber-200: 244 214 154;
+    --c-amber-300: 237 193 112;
+    --c-amber-400: 227 169 74;
+    --c-amber-500: 201 140 44;
+    --c-amber-600: 156 104 24;
+    --c-amber-700: 133 87 26;
+    --c-amber-800: 94 63 22;
+    --c-amber-900: 63 43 18;
+    --c-amber-950: 42 29 12;
+    --c-emerald-50: 241 248 232;
+    --c-emerald-100: 223 239 203;
+    --c-emerald-200: 198 227 163;
+    --c-emerald-300: 174 213 126;
+    --c-emerald-400: 147 194 92;
+    --c-emerald-500: 116 166 62;
+    --c-emerald-600: 78 120 39;
+    --c-emerald-700: 73 110 37;
+    --c-emerald-800: 52 80 28;
+    --c-emerald-900: 35 55 21;
+    --c-emerald-950: 22 35 13;
+    --c-blue-50: 238 243 247;
+    --c-blue-100: 218 229 238;
+    --c-blue-200: 185 206 223;
+    --c-blue-300: 163 191 213;
+    --c-blue-400: 134 169 196;
+    --c-blue-500: 92 132 164;
+    --c-blue-600: 68 102 127;
+    --c-blue-700: 60 88 111;
+    --c-blue-800: 44 64 82;
+    --c-blue-900: 30 44 56;
+    --c-blue-950: 20 29 37;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-zinc-50: 244 246 236;
+  --c-zinc-100: 231 236 223;
+  --c-zinc-200: 211 218 199;
+  --c-zinc-300: 186 195 173;
+  --c-zinc-400: 162 172 150;
+  --c-zinc-500: 149 158 137;
+  --c-zinc-600: 95 104 85;
+  --c-zinc-700: 58 67 51;
+  --c-zinc-800: 40 48 36;
+  --c-zinc-900: 29 35 25;
+  --c-zinc-950: 21 25 18;
+  --c-red-50: 253 243 239;
+  --c-red-100: 251 230 223;
+  --c-red-200: 248 211 200;
+  --c-red-300: 242 184 168;
+  --c-red-400: 232 144 122;
+  --c-red-500: 210 105 79;
+  --c-red-600: 181 82 58;
+  --c-red-700: 150 65 45;
+  --c-red-800: 107 46 33;
+  --c-red-900: 74 32 23;
+  --c-red-950: 46 20 14;
+  --c-amber-50: 253 246 231;
+  --c-amber-100: 250 234 202;
+  --c-amber-200: 244 214 154;
+  --c-amber-300: 237 193 112;
+  --c-amber-400: 227 169 74;
+  --c-amber-500: 201 140 44;
+  --c-amber-600: 156 104 24;
+  --c-amber-700: 133 87 26;
+  --c-amber-800: 94 63 22;
+  --c-amber-900: 63 43 18;
+  --c-amber-950: 42 29 12;
+  --c-emerald-50: 241 248 232;
+  --c-emerald-100: 223 239 203;
+  --c-emerald-200: 198 227 163;
+  --c-emerald-300: 174 213 126;
+  --c-emerald-400: 147 194 92;
+  --c-emerald-500: 116 166 62;
+  --c-emerald-600: 78 120 39;
+  --c-emerald-700: 73 110 37;
+  --c-emerald-800: 52 80 28;
+  --c-emerald-900: 35 55 21;
+  --c-emerald-950: 22 35 13;
+  --c-blue-50: 238 243 247;
+  --c-blue-100: 218 229 238;
+  --c-blue-200: 185 206 223;
+  --c-blue-300: 163 191 213;
+  --c-blue-400: 134 169 196;
+  --c-blue-500: 92 132 164;
+  --c-blue-600: 68 102 127;
+  --c-blue-700: 60 88 111;
+  --c-blue-800: 44 64 82;
+  --c-blue-900: 30 44 56;
+  --c-blue-950: 20 29 37;
+}
+
 @layer base {
   html {
     /* Prevent font size inflation on mobile */
@@ -10,12 +195,57 @@
 
   body {
     @apply bg-zinc-950 text-zinc-100 antialiased;
+    font-feature-settings: "tnum" 1;
   }
 
   * {
     /* Better tap targets on mobile */
     -webkit-tap-highlight-color: transparent;
   }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-emerald-400));
+    outline-offset: 2px;
+  }
+}
+
+/*
+  JERARQUIA DE BOTONES (usar estas clases, no colores sueltos):
+  .btn-primario   -> la accion principal de la tarjeta/pantalla (una sola)
+  .btn-secundario -> otra accion valida, con borde
+  .btn-texto      -> ver / consultar / abrir (texto verde, sin caja)
+  .btn-quieto     -> descartar / cancelar / cerrar (texto gris)
+  .btn-peligro    -> borrar / rechazar (texto rojo; el relleno rojo solo en la confirmacion final)
+  .btn-sm         -> version compacta para tarjetas y renglones
+*/
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium
+      transition-[background-color,color,border-color,transform] duration-150 ease-out
+      active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 whitespace-nowrap;
+  }
+  .btn-sm { @apply px-3 py-1.5 text-[13px]; }
+  .btn-primario { @apply btn bg-zinc-100 text-zinc-900 hover:bg-zinc-300; }
+  .btn-secundario { @apply btn border border-zinc-700 text-zinc-100 hover:bg-zinc-800 hover:border-zinc-600; }
+  .btn-texto { @apply btn px-2 text-emerald-400 hover:bg-emerald-900/50; }
+  .btn-quieto { @apply btn px-2 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800; }
+  .btn-peligro { @apply btn px-2 text-red-400 hover:bg-red-900/50; }
+  .btn-peligro-lleno { @apply btn bg-red-600 text-white hover:bg-red-700; }
+
+  .tarjeta { @apply rounded-xl border border-zinc-800 bg-zinc-900; }
+  .campo {
+    @apply rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100
+      placeholder:text-zinc-500 focus:border-emerald-500 focus:outline-none;
+  }
+  .etiqueta { @apply text-[13px] font-medium text-zinc-400; }
+  .nota { @apply text-[13px] text-zinc-500; }
+
+  .chip { @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium; }
+  .chip-bien { @apply chip bg-emerald-900 text-emerald-300; }
+  .chip-revisar { @apply chip bg-amber-900 text-amber-300; }
+  .chip-mal { @apply chip bg-red-900 text-red-300; }
+  .chip-info { @apply chip bg-blue-900 text-blue-300; }
+  .chip-neutro { @apply chip bg-zinc-800 text-zinc-300; }
 }
 
 @layer utilities {
@@ -30,6 +260,9 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { scrollbar-width: none; }

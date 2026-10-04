@@ -300,7 +300,7 @@ export default function CerebroPage() {
                         {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
                       <button onClick={() => ligarHuerfano(h)} disabled={!h.categoria_id || guardando === h.nombre}
-                        className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">
+                        className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">
                         {guardando === h.nombre ? '…' : 'Ligar'}
                       </button>
                     </div>

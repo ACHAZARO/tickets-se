@@ -108,7 +108,7 @@ export default function EntradasPage() {
           <p className="text-sm text-zinc-500 mt-0.5">{nombreSucursal} · qué y cuánto se compró (por fecha del ticket). Las unidades base salen de las equivalencias del catálogo (ej. 1 caja = 24 pz). Los insumos con varios tamaños suman juntos.</p>
         </div>
         <button onClick={exportarCSV} disabled={filtradas.length === 0}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50">Descargar CSV</button>
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">Descargar CSV</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

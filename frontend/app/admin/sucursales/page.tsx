@@ -89,7 +89,7 @@ export default function SucursalesPage() {
         <h2 className="text-xl font-semibold text-zinc-100">Sucursales</h2>
         <button
           onClick={() => setSucForm({ nombre: '', slug: '', direccion: '', activa: true })}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white"
+          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300"
         >+ Agregar</button>
       </div>
 

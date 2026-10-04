@@ -1,5 +1,10 @@
 import type { Config } from 'tailwindcss'
 
+// Paleta "Pistache": cada tono lee una variable CSS (ver app/globals.css), asi el modo dia/noche cambia solo.
+const escala = (nombre: string) => Object.fromEntries(
+  [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map(n => [n, `rgb(var(--c-${nombre}-${n}) / <alpha-value>)`]),
+)
+
 const config: Config = {
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
@@ -9,6 +14,15 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      colors: {
+        zinc: escala('zinc'),
+        red: escala('red'),
+        amber: escala('amber'),
+        emerald: escala('emerald'),
+        blue: escala('blue'),
+        sky: escala('blue'),
+        orange: escala('amber'),
+      },
       keyframes: {
         shake: {
           '0%, 100%': { transform: 'translateX(0)' },
