@@ -9,10 +9,10 @@ import { PanelDuplicados } from '../unificar'
 // La base las detecta (sugerir_unificaciones) y aqui se PREGUNTA; nada se une solo.
 
 const AYUDA: { boton: string; estilo: string; texto: string }[] = [
-  { boton: 'Nombre', estilo: 'btn-opcion', texto: 'Si son el mismo producto con distinto nombre, toca el nombre que quieres conservar. Las compras del otro pasan a ese.' },
-  { boton: 'Mismo insumo, distinto tamaño', estilo: 'btn-secundario', texto: 'Elige el nombre que quieras usar para identificar ambas cosas. Quedan las dos, cada una con su precio, y el inventario las suma.' },
-  { boton: 'Ver tickets', estilo: 'btn-texto !px-0', texto: 'Muestra una foto de cada uno para compararlos.' },
-  { boton: 'No son iguales', estilo: 'btn-quieto !px-0', texto: 'Cada uno se queda con su nombre, separados. La IA los seguirá clasificando por separado.' },
+  { boton: 'Unificar', estilo: 'btn-opcion', texto: 'Son el mismo artículo con otro nombre. Eliges con qué nombre se queda y la IA usará ese de ahora en adelante.' },
+  { boton: 'Mismo insumo, distinto tamaño', estilo: 'btn-opcion', texto: 'Son dos tamaños de lo mismo (Sal 1 kg y Sal 500 g). Quedan los dos, cada uno con su precio, y el inventario los suma.' },
+  { boton: 'No son iguales', estilo: 'btn-opcion', texto: 'Cada uno se queda con su nombre, separados. La IA los seguirá clasificando por separado.' },
+  { boton: 'Ver tickets', estilo: 'btn-texto !px-0', texto: 'Muestra una foto de cada uno para compararlos antes de decidir.' },
 ]
 
 export default function InsumosPage() {

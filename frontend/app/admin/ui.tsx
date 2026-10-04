@@ -61,7 +61,7 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
           <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-5 shadow-xl" onClick={e => e.stopPropagation()}>
             <p className="text-[15px] leading-relaxed text-zinc-100 whitespace-pre-line">{confirmState.msg}</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => closeConfirm(false)} autoFocus={confirmState.danger} className="btn-quieto">Cancelar</button>
+              <button onClick={() => closeConfirm(false)} autoFocus={confirmState.danger} className="btn-quieto">Atrás</button>
               <button onClick={() => closeConfirm(true)} autoFocus={!confirmState.danger}
                 className={confirmState.danger ? 'btn-peligro-lleno' : 'btn-primario'}>
                 {confirmState.danger ? 'Sí, continuar' : 'Aceptar'}
@@ -89,5 +89,17 @@ export function Interruptor({ encendido, onCambiar, etiqueta, ayuda, compacto = 
       </span>
       {etiqueta}
     </button>
+  )
+}
+
+/** Consejo corto en azul (focito): ayuda a decidir bien sin llenar la pantalla de instrucciones. */
+export function Consejo({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex gap-2 rounded-lg bg-blue-900 px-3 py-2 text-[13px] leading-relaxed text-blue-300">
+      <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0">
+        <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z" />
+      </svg>
+      <span>{children}</span>
+    </p>
   )
 }

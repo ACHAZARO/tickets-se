@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { buildEquivalenceUpdate } from '@/lib/ticket-workflow.mjs'
-import { useToast, useConfirm, Interruptor } from '../ui'
+import { useToast, useConfirm, Interruptor, Consejo } from '../ui'
 import { unificarProductos, ejemplosDe } from '../unificar'
 import { GaleriaTickets } from '../galeria-tickets'
 
@@ -293,13 +293,14 @@ export default function CatalogoPage() {
                     className="campo w-full px-2 py-1.5" />
                   <input value={addProd.sinonimos} onChange={e => setAddProd({ ...addProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. barilla, espagueti)"
                     className="campo w-full px-2 py-1.5" />
+                  <Consejo>Si vas a llevar inventario, usa la misma unidad que tus recetas (ej. si la receta pide gramos, pon cuántos gramos trae).</Consejo>
                   <div className="flex flex-wrap gap-2">
                     <input list="unidades-catalogo" value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
                       placeholder="Unidad (cono, caja, pz...)"
                       className="campo basis-full px-2 py-1.5 sm:basis-auto sm:flex-1" />
                     <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
                       className="btn-primario btn-sm flex-1">Guardar</button>
-                    <button onClick={() => setAddProd(null)} className="btn-quieto btn-sm">Cancelar</button>
+                    <button onClick={() => setAddProd(null)} className="btn-quieto btn-sm">Atrás</button>
                   </div>
                 </div>
               )}
@@ -326,7 +327,7 @@ export default function CatalogoPage() {
                           className="btn-secundario btn-sm">{editProd?.id === p.id ? 'Cerrar' : 'Editar'}</button>
                         <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
                           title="Es el mismo insumo que otro producto: unificarlos"
-                          className="btn-quieto btn-sm">{unifProd?.id === p.id ? 'Cancelar' : 'Unificar'}</button>
+                          className="btn-quieto btn-sm">{unifProd?.id === p.id ? 'Atrás' : 'Unificar'}</button>
                         <Interruptor compacto encendido={p.activo} onCambiar={() => toggleProd(p)} etiqueta="Activo"
                           ayuda={p.activo
                             ? 'Encendido: la IA reconoce este artículo en tickets nuevos. Toca para apagarlo.'
@@ -350,7 +351,7 @@ export default function CatalogoPage() {
                             <div className="flex gap-2">
                               <button onClick={() => ejecutarUnificacion(p)} disabled={!unifProd.destinoId || unificando}
                                 className="btn-primario btn-sm">{unificando ? 'Unificando…' : 'Unificar'}</button>
-                              <button onClick={() => setUnifProd(null)} className="btn-quieto btn-sm">Cancelar</button>
+                              <button onClick={() => setUnifProd(null)} className="btn-quieto btn-sm">Atrás</button>
                             </div>
                           </div>
                         )
@@ -369,6 +370,7 @@ export default function CatalogoPage() {
                           <input value={editProd.sinonimos} onChange={e => setEditProd({ ...editProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. magna, premium, diesel)"
                             className="campo w-full px-2 py-1.5" />
                           <label className="etiqueta block">Equivalencia (opcional): 1 {editProd.unidad || p.unidad_default || 'unidad'} trae…</label>
+                          <Consejo>Pon lo que trae en la unidad de tus recetas: si la receta pide gramos, «1 caja trae 12 pz de 250 g». Así el inventario y el costo de cada platillo cuadran.</Consejo>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input type="number" inputMode="decimal" value={editProd.contiene_cantidad} onChange={e => setEditProd({ ...editProd, contiene_cantidad: e.target.value })}
                               placeholder="cantidad (30)" className="campo px-2 py-1.5" />
@@ -403,7 +405,7 @@ export default function CatalogoPage() {
                             className="campo w-full px-2 py-1.5" />
                           <div className="flex gap-2 pt-1">
                             <button onClick={guardarEdicion} className="btn-primario btn-sm flex-1">Guardar</button>
-                            <button onClick={() => setEditProd(null)} className="btn-quieto btn-sm">Cancelar</button>
+                            <button onClick={() => setEditProd(null)} className="btn-quieto btn-sm">Atrás</button>
                           </div>
                         </div>
                       )}
@@ -443,7 +445,7 @@ export default function CatalogoPage() {
                 {borrando ? 'Borrando…' : 'Borrar categoría'}
               </button>
               <button onClick={() => setDelCat(null)} disabled={borrando}
-                className="btn-quieto py-2.5">Cancelar</button>
+                className="btn-quieto py-2.5">Atrás</button>
             </div>
           </div>
         </div>

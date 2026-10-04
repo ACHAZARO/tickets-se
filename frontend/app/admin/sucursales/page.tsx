@@ -269,7 +269,7 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
           {error && <p className="text-sm text-red-400">{error}</p>}
           <div className="flex gap-2">
             <button onClick={guardar} disabled={saving} className="btn-primario flex-1 py-2.5">{saving ? 'Guardando...' : 'Guardar'}</button>
-            <button onClick={() => { setEditing(null); setError('') }} className="btn-quieto py-2.5">Cancelar</button>
+            <button onClick={() => { setEditing(null); setError('') }} className="btn-quieto py-2.5">Atrás</button>
           </div>
         </div>
       ) : (

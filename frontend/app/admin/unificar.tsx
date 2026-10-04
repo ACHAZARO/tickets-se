@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
-import { useToast, useConfirm } from './ui'
+import { useToast, useConfirm, Consejo } from './ui'
 
 // Catalogo ordenado: dos preguntas distintas sobre el mismo par de productos (migraciones 070-079).
 //  1) UNIFICAR (070): es el mismo articulo con dos nombres -> queda UNO ("Mantequilla" + "Mantequilla Gloria 1 kg").
@@ -75,14 +75,22 @@ async function pedirSugerencias(sucursalId: string): Promise<Sugerencia[]> {
   }
 }
 
+// "Por que aparece": explica de donde salio la pareja (no es una afirmacion de que sean lo mismo).
 const MOTIVO_TEXTO: Record<Sugerencia['motivo'], string> = {
-  sinonimo: 'Ya se habían registrado como el mismo (uno es sinónimo del otro)',
-  igual: 'Mismo nombre, sin contar tamaños ni plurales',
-  parecido: 'Uno es solo una palabra del otro (menos seguro)',
-  presentacion: 'Mismo nombre, distinto tamaño',
+  sinonimo: 'la IA ya había aprendido uno de estos nombres como otra forma de escribir el otro',
+  igual: 'tienen el mismo nombre si no cuentas tamaños ni plurales',
+  parecido: 'un nombre está dentro del otro (puede que no sean lo mismo)',
+  presentacion: 'mismo nombre, distinto tamaño',
 }
-const UNIDADES_BASE = ['kg', 'lt', 'pz']
-const UNIDADES_CONTENIDO = ['kg', 'g', 'lt', 'ml', 'pz', 'oz']
+// Unidad del insumo: gramos y mililitros primero (escribir 1000 g es mas facil que 0.001 kg).
+const UNIDADES_BASE: { valor: string; texto: string }[] = [
+  { valor: 'g', texto: 'gramos (g)' }, { valor: 'ml', texto: 'mililitros (ml)' }, { valor: 'pz', texto: 'piezas (pz)' },
+  { valor: 'kg', texto: 'kilos (kg)' }, { valor: 'lt', texto: 'litros (lt)' },
+]
+// Lo que trae cada presentacion solo puede ir en unidades que se conviertan a la del insumo.
+const COMPATIBLES: Record<string, string[]> = { g: ['g', 'kg'], kg: ['kg', 'g'], ml: ['ml', 'lt'], lt: ['lt', 'ml'], pz: ['pz'] }
+const compatibles = (base: string) => COMPATIBLES[base] ?? [base]
+const baseInicial = (sugerida: string) => sugerida === 'kg' ? 'g' : sugerida === 'lt' ? 'ml' : (COMPATIBLES[sugerida] ? sugerida : 'pz')
 const fmt = (n: number) => '$' + Number(n).toLocaleString('es-MX', { maximumFractionDigits: 0 })
 
 /** Circulito con el numero de casos muy probables, junto a "Cerebro" en la barra. */
@@ -244,6 +252,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const [busy, setBusy] = useState<string | null>(null)
   const [form, setForm] = useState<Record<string, FormInsumo>>({})
   const [viendo, setViendo] = useState<Record<string, boolean>>({})   // tarjetas con "Ver tickets" abierto
+  const [eligiendo, setEligiendo] = useState<Record<string, boolean>>({}) // tarjetas con "Unificar" abierto
 
   const seq = useRef(0)
   const cargar = useCallback(async () => {
@@ -268,8 +277,8 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
 
   async function unir(s: Sugerencia, origen: ProdSug, destino: ProdSug) {
     const ok = await confirm(
-      `¿Unificar "${origen.nombre}" dentro de "${destino.nombre}"? Sus ${origen.usos} renglones (${fmt(origen.gasto)}) pasan a "${destino.nombre}", ` +
-      `que tambien reconocera el nombre "${origen.nombre}". Queda respaldo.`)
+      `¿Unificar bajo "${destino.nombre}"?\n\nLas ${origen.usos} ${origen.usos === 1 ? 'compra' : 'compras'} de "${origen.nombre}" (${fmt(origen.gasto)}) pasan a "${destino.nombre}". ` +
+      `Cuando la IA lea "${origen.nombre}" en un ticket, lo guardará como "${destino.nombre}". Queda respaldo.`)
     if (!ok) return
     setBusy(clave(s))
     const r = await unificarProductos(origen.id, destino.id)
@@ -284,23 +293,39 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     const err = await descartarUnificacion(s.a.id, s.b.id)
     setBusy(null)
     if (err) { toast('No se pudo guardar: ' + err, 'error'); return }
+    toast(`Listo: "${s.a.nombre}" y "${s.b.nombre}" quedan separados`)
     await cargar()
+  }
+
+  const cerrarPaneles = (k: string) => {
+    setEligiendo(e => ({ ...e, [k]: false }))
+    setForm(f => { const n = { ...f }; delete n[k]; return n })
   }
 
   function abrirForm(s: Sugerencia) {
     const k = clave(s)
-    if (form[k]) { setForm(f => { const n = { ...f }; delete n[k]; return n }); return }
-    const de = (p: ProdSug) => ({
-      cantidad: p.contiene ? String(p.contiene.cantidad) : '',
-      unidad: p.contiene?.unidad ?? s.unidad_base_sugerida,
+    setEligiendo(e => ({ ...e, [k]: false }))
+    const base = baseInicial(s.unidad_base_sugerida)
+    const de = (p: ProdSug) => p.contiene && compatibles(base).includes(p.contiene.unidad)
+      ? { cantidad: String(p.contiene.cantidad), unidad: p.contiene.unidad }
+      : { cantidad: '', unidad: base }
+    setForm(f => ({ ...f, [k]: { nombre: s.insumo_sugerido, unidadBase: base, a: de(s.a), b: de(s.b) } }))
+  }
+
+  // Al cambiar la unidad del insumo, lo que traiga cada presentacion se pasa a una unidad compatible.
+  function cambiarBase(k: string, base: string) {
+    setForm(fs => {
+      const f = fs[k]
+      const ajusta = (l: { cantidad: string; unidad: string }) => compatibles(base).includes(l.unidad) ? l : { cantidad: '', unidad: base }
+      return { ...fs, [k]: { ...f, unidadBase: base, a: ajusta(f.a), b: ajusta(f.b) } }
     })
-    setForm(f => ({ ...f, [k]: { nombre: s.insumo_sugerido, unidadBase: s.unidad_base_sugerida, a: de(s.a), b: de(s.b) } }))
   }
 
   async function guardarInsumo(s: Sugerencia) {
     const k = clave(s)
     const f = form[k]
     if (!f || !f.nombre.trim()) { toast('Escribe el nombre del insumo', 'error'); return }
+    // contenidos: cantidad en la unidad elegida; el inventario la convierte a la unidad del insumo
     const contenidos: { producto_id: string; cantidad: number; unidad: string }[] = []
     for (const [prod, campo] of [[s.a, f.a], [s.b, f.b]] as const) {
       const c = Number(campo.cantidad)
@@ -319,44 +344,39 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const tarjeta = (s: Sugerencia) => {
     const k = clave(s)
     const f = form[k]
-    const esTamano = s.motivo === 'presentacion'
+    const unificando = !!eligiendo[k]
     const ocupado = busy === k
+    const toggleTickets = (
+      <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))} className="btn-texto btn-sm sm:ml-auto">
+        {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
+      </button>
+    )
+    const atras = (
+      <button type="button" onClick={() => cerrarPaneles(k)} className="btn-quieto btn-sm">Atrás</button>
+    )
 
     const prod = (p: ProdSug) => (
       <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-medium text-zinc-100 truncate" title={p.nombre}>{p.nombre}</p>
+        <p className="text-[15px] font-medium text-zinc-100 break-words">{p.nombre}</p>
         <p className="text-[13px] text-zinc-500">
           {p.unidad ?? 'sin unidad'} · {p.usos} {p.usos === 1 ? 'compra' : 'compras'} · {fmt(p.gasto)}
           {p.contiene ? ` · trae ${p.contiene.cantidad} ${p.contiene.unidad}` : ''}
         </p>
       </div>
     )
-    const btnUnificar = (destino: ProdSug, origen: ProdSug) => (
-      <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
-        title={`Unificar: se queda "${destino.nombre}"`}
-        className="btn-opcion btn-sm whitespace-normal text-left">
-        {destino.nombre}
-      </button>
-    )
-    const btnInsumo = (
-      <button type="button" disabled={ocupado} onClick={() => abrirForm(s)}
-        className={`${f ? 'btn-quieto' : 'btn-secundario'} btn-sm`}>
-        {f ? 'Cancelar' : 'Mismo insumo, distinto tamaño'}
-      </button>
-    )
 
     const campos = (lado: 'a' | 'b', p: ProdSug) => (
       <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-        <span className="text-sm text-zinc-200 break-words sm:min-w-0 sm:flex-1">{p.nombre} =</span>
+        <span className="text-sm text-zinc-200 break-words sm:min-w-0 sm:flex-1">{p.nombre} trae</span>
         <div className="flex items-center gap-2">
-        <input value={f[lado].cantidad} inputMode="decimal" placeholder="cantidad"
-          onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], cantidad: e.target.value } } }))}
-          className="campo w-24 py-1.5" />
-        <select value={f[lado].unidad}
-          onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], unidad: e.target.value } } }))}
-          className="campo py-1.5">
-          {[...new Set([...UNIDADES_CONTENIDO, f[lado].unidad].filter(Boolean))].map(u => <option key={u} value={u}>{u}</option>)}
-        </select>
+          <input value={f[lado].cantidad} inputMode="decimal" placeholder="cantidad" aria-label={`Cuánto trae ${p.nombre}`}
+            onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], cantidad: e.target.value } } }))}
+            className="campo w-28 py-1.5" />
+          <select value={f[lado].unidad} aria-label={`Unidad de ${p.nombre}`}
+            onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], unidad: e.target.value } } }))}
+            className="campo py-1.5">
+            {compatibles(f.unidadBase).map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
         </div>
       </div>
     )
@@ -364,47 +384,71 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     return (
       <div key={k} className="tarjeta p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-zinc-500 self-center" aria-hidden>≟</span>{prod(s.b)}</div>
-        <p className="nota">{MOTIVO_TEXTO[s.motivo]} · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}</p>
-        {viendo[k] && <CompararTickets a={s.a} b={s.b} />}
+        <p className="nota">
+          <span className="font-medium text-zinc-400">Por qué aparece: </span>{MOTIVO_TEXTO[s.motivo]}. · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}
+        </p>
 
-        {f ? (
+        {viendo[k] && (
+          <div className="space-y-2">
+            <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: false }))} className="btn-texto btn-sm -ml-2">Ocultar tickets</button>
+            <CompararTickets a={s.a} b={s.b} />
+          </div>
+        )}
+
+        {unificando ? (
           <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
-            <p className="nota">Quedan los dos, cada uno con su precio; el inventario los suma.</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <label className="etiqueta">Insumo</label>
-              <input value={f.nombre} onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: e.target.value } }))}
-                className="campo flex-1 min-w-[140px] py-1.5" />
-              <label className="etiqueta">se mide en</label>
-              <select value={f.unidadBase} onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], unidadBase: e.target.value } }))}
-                className="campo py-1.5">
-                {[...new Set([...UNIDADES_BASE, f.unidadBase])].map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-100">Elige el nombre con el que quieres identificar ambos artículos</p>
+              <p className="nota">Cuando la IA lea el otro nombre en un ticket, lo guardará bajo el que elijas. Sus compras pasan a ese nombre.</p>
             </div>
-            {campos('a', s.a)}
-            {campos('b', s.b)}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button type="button" disabled={ocupado} onClick={() => guardarInsumo(s)}
-                className="btn-primario btn-sm">
+            <div className="flex flex-wrap gap-2">
+              {([[s.a, s.b], [s.b, s.a]] as const).map(([destino, origen]) => (
+                <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
+                  className="btn-opcion btn-sm whitespace-normal text-left">
+                  Unificar bajo «{destino.nombre}»
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">{atras}{toggleTickets}</div>
+          </div>
+        ) : f ? (
+          <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
+            <p className="nota">Quedan los dos artículos, cada uno con su precio. El inventario los suma bajo un mismo insumo.</p>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <label className="space-y-1">
+                <span className="etiqueta block">Nombre del insumo</span>
+                <input value={f.nombre} onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: e.target.value } }))}
+                  placeholder="ej. Huevo" className="campo w-full py-1.5" />
+              </label>
+              <label className="space-y-1">
+                <span className="etiqueta block">Se mide en</span>
+                <select value={f.unidadBase} onChange={e => cambiarBase(k, e.target.value)} className="campo w-full py-1.5">
+                  {[...UNIDADES_BASE, ...(UNIDADES_BASE.some(u => u.valor === f.unidadBase) ? [] : [{ valor: f.unidadBase, texto: f.unidadBase }])]
+                    .map(u => <option key={u.valor} value={u.valor}>{u.texto}</option>)}
+                </select>
+              </label>
+            </div>
+            <Consejo>Mídelo en la misma unidad que usan tus recetas: si la receta pide gramos, elige gramos. Así el inventario y el costo de cada platillo cuadran.</Consejo>
+            <div className="space-y-2">
+              <p className="etiqueta">¿Cuánto trae cada uno?</p>
+              {campos('a', s.a)}
+              {campos('b', s.b)}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button type="button" disabled={ocupado} onClick={() => guardarInsumo(s)} className="btn-primario btn-sm">
                 {ocupado ? 'Guardando…' : 'Guardar insumo'}
               </button>
-              {btnInsumo}
+              {atras}
+              {toggleTickets}
             </div>
           </div>
         ) : (
-          <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] text-zinc-400">Unificar, se queda:</span>
-            {btnUnificar(s.a, s.b)}
-            {btnUnificar(s.b, s.a)}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {btnInsumo}
-            <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))} className="btn-texto btn-sm">
-              {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
-            </button>
-            <button type="button" disabled={ocupado} onClick={() => noSonIguales(s)}
-              className="btn-quieto btn-sm sm:ml-auto">No son iguales</button>
-          </div>
+            <button type="button" disabled={ocupado} onClick={() => { cerrarPaneles(k); setEligiendo(e => ({ ...e, [k]: true })) }}
+              className="btn-opcion btn-sm">Unificar</button>
+            <button type="button" disabled={ocupado} onClick={() => abrirForm(s)} className="btn-opcion btn-sm">Mismo insumo, distinto tamaño</button>
+            <button type="button" disabled={ocupado} onClick={() => noSonIguales(s)} className="btn-opcion btn-sm">No son iguales</button>
+            {toggleTickets}
           </div>
         )}
       </div>

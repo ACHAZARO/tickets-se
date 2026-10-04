@@ -280,7 +280,7 @@ export default function StockPage() {
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setReg(null)} className="btn-quieto">Cancelar</button>
+              <button onClick={() => setReg(null)} className="btn-quieto">Atrás</button>
               <button onClick={guardarConsumo} disabled={guardando}
                 className="btn-primario">{guardando ? 'Guardando…' : 'Registrar'}</button>
             </div>
