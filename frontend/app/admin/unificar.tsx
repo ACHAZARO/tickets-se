@@ -383,7 +383,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
 
     return (
       <div key={k} className="tarjeta p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-zinc-500 self-center" aria-hidden>≟</span>{prod(s.b)}</div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-[13px] text-zinc-500 self-center" aria-hidden>vs</span>{prod(s.b)}</div>
         <p className="nota">
           <span className="font-medium text-zinc-400">Por qué aparece: </span>{MOTIVO_TEXTO[s.motivo]}. · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}
         </p>

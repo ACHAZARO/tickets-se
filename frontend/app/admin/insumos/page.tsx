@@ -12,7 +12,7 @@ const AYUDA: { boton: string; estilo: string; texto: string }[] = [
   { boton: 'Unificar', estilo: 'btn-opcion', texto: 'Son el mismo artículo con otro nombre. Eliges con qué nombre se queda y la IA usará ese de ahora en adelante.' },
   { boton: 'Mismo insumo, distinto tamaño', estilo: 'btn-opcion', texto: 'Son dos tamaños de lo mismo (Sal 1 kg y Sal 500 g). Quedan los dos, cada uno con su precio, y el inventario los suma.' },
   { boton: 'No son iguales', estilo: 'btn-opcion', texto: 'Cada uno se queda con su nombre, separados. La IA los seguirá clasificando por separado.' },
-  { boton: 'Ver tickets', estilo: 'btn-texto !px-0', texto: 'Muestra una foto de cada uno para compararlos antes de decidir.' },
+  { boton: 'Ver tickets', estilo: 'btn-texto', texto: 'Muestra una foto de cada uno para compararlos antes de decidir.' },
 ]
 
 export default function InsumosPage() {
@@ -34,10 +34,10 @@ export default function InsumosPage() {
         <p className="nota max-w-2xl">Productos que parecen repetidos. Nada cambia hasta que respondas.</p>
       </div>
 
-      <dl className="tarjeta grid gap-4 p-4 sm:grid-cols-2">
+      <dl className="tarjeta divide-y divide-zinc-800">
         {AYUDA.map(a => (
-          <div key={a.boton} className="flex flex-col items-start gap-1.5 sm:flex-row sm:gap-3">
-            <dt className="shrink-0">
+          <div key={a.boton} className="grid gap-1.5 px-4 py-3 sm:grid-cols-[15rem_1fr] sm:items-baseline sm:gap-4">
+            <dt>
               <span aria-hidden className={`${a.estilo} btn-sm pointer-events-none`}>{a.boton}</span>
               <span className="sr-only">{a.boton}</span>
             </dt>
