@@ -34,17 +34,21 @@ export default function InsumosPage() {
         <p className="nota max-w-2xl">Productos que parecen repetidos. Nada cambia hasta que respondas.</p>
       </div>
 
-      <dl className="tarjeta divide-y divide-zinc-800">
+      {/* Solo guia: fondo gris y etiquetas apagadas para que no parezcan botones */}
+      <section aria-labelledby="instrucciones" className="rounded-xl bg-zinc-800/60 px-4 pt-3 pb-1">
+        <h3 id="instrucciones" className="text-sm font-semibold text-zinc-300">Instrucciones</h3>
+      <dl className="divide-y divide-zinc-700/60">
         {AYUDA.map(a => (
-          <div key={a.boton} className="grid gap-1.5 px-4 py-3 sm:grid-cols-[15rem_1fr] sm:items-baseline sm:gap-4">
+          <div key={a.boton} className="grid gap-1.5 py-3 sm:grid-cols-[15rem_1fr] sm:items-baseline sm:gap-4">
             <dt>
-              <span aria-hidden className={`${a.estilo} btn-sm pointer-events-none`}>{a.boton}</span>
+              <span aria-hidden className={`${a.estilo} btn-sm pointer-events-none cursor-default opacity-80 shadow-none`}>{a.boton}</span>
               <span className="sr-only">{a.boton}</span>
             </dt>
             <dd className="text-[13px] leading-relaxed text-zinc-400">{a.texto}</dd>
           </div>
         ))}
       </dl>
+      </section>
 
       <PanelDuplicados categorias={categorias} onCambio={cargarCategorias} />
     </div>
