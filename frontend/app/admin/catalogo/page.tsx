@@ -7,6 +7,7 @@ import { buildEquivalenceUpdate } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm, Interruptor, Consejo } from '../ui'
 import { unificarProductos, ejemplosDe } from '../unificar'
 import { GaleriaTickets } from '../galeria-tickets'
+import { ElegirArticulo, type OpcionArticulo } from '../elegir-articulo'
 
 interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
 interface Producto {
@@ -57,6 +58,8 @@ export default function CatalogoPage() {
   // unificar un producto con otro (mismo insumo, dos nombres)
   const [unifProd, setUnifProd] = useState<null | { id: string; destinoId: string }>(null)
   const [verTickets, setVerTickets] = useState<null | { id: string; nombre: string }>(null)
+  const [addExiste, setAddExiste] = useState<OpcionArticulo | null>(null)   // alta: el nombre ya es un articulo
+  const [editChoca, setEditChoca] = useState<OpcionArticulo | null>(null)   // edicion: el nombre nuevo es OTRO articulo
   const [unificando, setUnificando] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -91,6 +94,7 @@ export default function CatalogoPage() {
   }, [pendienteEditar, loading, productos])
 
   function abrirEdicion(p: Producto, categoriaId: string) {
+    setEditChoca(null)
     setEditProd({ id: p.id, nombre: p.nombre, nombreOriginal: p.nombre, categoria_id: p.categoria_id ?? categoriaId, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), ...splitEquivalenceFields(p) })
   }
 
@@ -221,6 +225,9 @@ export default function CatalogoPage() {
   }
 
   const prodsPorCat = (catId: string) => productos.filter(p => p.categoria_id === catId)
+  const opcionesArticulo: OpcionArticulo[] = productos.map(p => ({
+    id: p.id, nombre: p.nombre, detalle: categorias.find(c => c.id === p.categoria_id)?.nombre,
+  }))
 
   return (
     <div className="space-y-6">
@@ -280,7 +287,7 @@ export default function CatalogoPage() {
 
                 {/* 3. Que puedo hacer */}
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
+                  <button onClick={() => { setAddExiste(null); setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' }) }}
                     className="btn-secundario btn-sm">+ Agregar artículo</button>
                   <button onClick={() => pedirBorrarCat(c)} title="Borrar la categoría (te pregunta a dónde mover sus artículos)"
                     className="btn-peligro btn-sm ml-auto">Borrar categoría</button>
@@ -289,8 +296,11 @@ export default function CatalogoPage() {
 
               {addProd?.categoriaId === c.id && (
                 <div className="px-4 py-3 bg-zinc-800/50 space-y-2 border-b border-zinc-800">
-                  <input value={addProd.nombre} onChange={e => setAddProd({ ...addProd, nombre: e.target.value })} placeholder="Nombre del producto (ej. Pasta)"
-                    className="campo w-full px-2 py-1.5" />
+                  <ElegirArticulo key={`alta-${c.id}`} ariaLabel="Nombre del artículo" placeholder="Nombre del artículo (ej. Pasta)"
+                    opciones={opcionesArticulo}
+                    onCambio={(texto, elegida) => { setAddProd(a => a && { ...a, nombre: texto }); setAddExiste(elegida) }}
+                    notaNuevo={t => <>«{t}» es nuevo: se creará en «{c.nombre}» al guardar.</>}
+                    notaExistente={o => <>Ya existe{o.detalle ? ` en «${o.detalle}»` : ''}. No hace falta crearlo: ábrelo para editarlo.</>} />
                   <input value={addProd.sinonimos} onChange={e => setAddProd({ ...addProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. barilla, espagueti)"
                     className="campo w-full px-2 py-1.5" />
                   <Consejo>Si vas a llevar inventario, usa la misma unidad que tus recetas (ej. si la receta pide gramos, pon cuántos gramos trae).</Consejo>
@@ -298,9 +308,17 @@ export default function CatalogoPage() {
                     <input list="unidades-catalogo" value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
                       placeholder="Unidad (cono, caja, pz...)"
                       className="campo basis-full px-2 py-1.5 sm:basis-auto sm:flex-1" />
-                    <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
-                      className="btn-primario btn-sm flex-1">Guardar</button>
-                    <button onClick={() => setAddProd(null)} className="btn-quieto btn-sm">Atrás</button>
+                    {addExiste ? (
+                      <button onClick={() => {
+                        const ex = productos.find(x => x.id === addExiste.id)
+                        setAddProd(null); setAddExiste(null)
+                        if (ex) { abrirEdicion(ex, ex.categoria_id ?? ''); setTimeout(() => document.getElementById(`prod-${ex.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100) }
+                      }} className="btn-primario btn-sm flex-1">Abrir «{addExiste.nombre}»</button>
+                    ) : (
+                      <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
+                        className="btn-primario btn-sm flex-1">Guardar</button>
+                    )}
+                    <button onClick={() => { setAddProd(null); setAddExiste(null) }} className="btn-quieto btn-sm">Atrás</button>
                   </div>
                 </div>
               )}
@@ -360,8 +378,10 @@ export default function CatalogoPage() {
                       {editProd?.id === p.id && (
                         <div className="mt-2 space-y-2 bg-zinc-800/50 rounded-lg p-3">
                           <label className="etiqueta block">Nombre (el anterior queda como sinónimo)</label>
-                          <input value={editProd.nombre} onChange={e => setEditProd({ ...editProd, nombre: e.target.value })} placeholder="Nombre del producto"
-                            className="campo w-full px-2 py-1.5" />
+                          <ElegirArticulo key={`edit-${p.id}`} valorInicial={editProd.nombre} ariaLabel="Nombre del artículo" placeholder="Nombre del artículo"
+                            opciones={opcionesArticulo.filter(o => o.id !== p.id)}
+                            onCambio={(texto, elegida) => { setEditProd(e => e && { ...e, nombre: texto }); setEditChoca(elegida) }}
+                            notaExistente={o => <span className="text-amber-400">Ya hay otro artículo «{o.nombre}». Si son lo mismo, usa «Unificar» en vez de cambiarle el nombre.</span>} />
                           <label className="etiqueta block">Categoría</label>
                           <select value={editProd.categoria_id} onChange={e => setEditProd({ ...editProd, categoria_id: e.target.value })}
                             className="campo w-full px-2 py-1.5">
@@ -404,7 +424,8 @@ export default function CatalogoPage() {
                             placeholder="Unidad (cono, caja, pz...)"
                             className="campo w-full px-2 py-1.5" />
                           <div className="flex gap-2 pt-1">
-                            <button onClick={guardarEdicion} className="btn-primario btn-sm flex-1">Guardar</button>
+                            <button onClick={guardarEdicion} disabled={!!editChoca} title={editChoca ? 'Ese nombre ya es de otro artículo' : undefined}
+                              className="btn-primario btn-sm flex-1">Guardar</button>
                             <button onClick={() => setEditProd(null)} className="btn-quieto btn-sm">Atrás</button>
                           </div>
                         </div>

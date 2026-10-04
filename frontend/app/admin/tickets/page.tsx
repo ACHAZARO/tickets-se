@@ -10,6 +10,7 @@ import { detectarSospechas } from '@/lib/fraude.mjs'
 import { buildEquivalenceUpdate, hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription, ticketFilterLabel, ticketStatusLabel } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm } from '../ui'
 import { SelectorPeriodo, rangoMesActual } from '../periodo'
+import { ElegirArticulo } from '../elegir-articulo'
 import type { TicketReporte } from '@/lib/export-xlsx'
 import PagosTicket, { textoPagos, type PagoTicket } from './pagos-ticket'
 
@@ -1175,7 +1176,6 @@ export default function TicketsPage() {
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-0 lg:p-4" onClick={() => setDetalle(null)}>
           <div className="w-full lg:max-w-6xl rounded-t-2xl lg:rounded-2xl bg-zinc-900 border border-zinc-800 p-5 max-h-[94dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <datalist id="unidades-tickets">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
-            <datalist id="catalogo-list">{catalogo.map(p => <option key={p.id} value={p.nombre} />)}</datalist>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
@@ -1261,17 +1261,16 @@ export default function TicketsPage() {
                           <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </div>
-                      <input name="productoNombre" list="catalogo-list"
+                      <ElegirArticulo name="productoNombre" ariaLabel="Artículo del catálogo"
                         key={`prod-${it.id}-${it.producto_catalogo_id ?? 'new'}`}
-                        defaultValue={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
-                        onChange={e => {
-                          const v = e.target.value.trim()
-                          if (v === '') { vincularProducto(it, ''); return }
-                          const prod = catalogo.find(p => p.nombre.toLowerCase() === v.toLowerCase())
-                          if (prod) vincularProducto(it, prod.id)
+                        valorInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
+                        opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined }))}
+                        onCambio={(texto, elegida) => {
+                          if (!texto.trim()) { vincularProducto(it, ''); return }
+                          if (elegida && elegida.id !== it.producto_catalogo_id) vincularProducto(it, elegida.id)
                         }}
-                        placeholder="Buscar producto del catálogo… (si no, se crea por nombre al guardar)"
-                        className="campo w-full px-2 py-1.5" />
+                        placeholder="Artículo del catálogo (escribe para buscar)"
+                        notaNuevo={t => <>«{t}» es nuevo: se creará al guardar el renglón.</>} />
                       <input name="sinonimos" placeholder="Sinónimos/códigos adicionales separados por coma" className="campo w-full px-2 py-1.5" />
                       {needsEquivalence(it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)

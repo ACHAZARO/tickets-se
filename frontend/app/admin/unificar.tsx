@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useToast, useConfirm, Consejo } from './ui'
+import { ElegirArticulo } from './elegir-articulo'
 
 // Catalogo ordenado: dos preguntas distintas sobre el mismo par de productos (migraciones 070-079).
 //  1) UNIFICAR (070): es el mismo articulo con dos nombres -> queda UNO ("Mantequilla" + "Mantequilla Gloria 1 kg").
@@ -253,6 +254,8 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const [form, setForm] = useState<Record<string, FormInsumo>>({})
   const [viendo, setViendo] = useState<Record<string, boolean>>({})   // tarjetas con "Ver tickets" abierto
   const [eligiendo, setEligiendo] = useState<Record<string, boolean>>({}) // tarjetas con "Unificar" abierto
+  // Insumos que ya existen: al nombrar uno se sugieren para no crear "Huevo" dos veces.
+  const [insumos, setInsumos] = useState<{ id: string; nombre: string; unidad_base: string; sucursal_id: string | null }[]>([])
 
   const seq = useRef(0)
   const cargar = useCallback(async () => {
@@ -261,6 +264,10 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     if (mio === seq.current) setSug(r)
   }, [sucursalId])
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    supabase.from('insumos').select('id, nombre, unidad_base, sucursal_id').order('nombre')
+      .then(({ data }) => setInsumos((data as typeof insumos | null) ?? []))
+  }, [sug])
 
   if (!sug) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
   if (sug.length === 0) return <p className="tarjeta px-4 py-6 text-sm text-zinc-400">Todo en orden: no hay artículos por revisar.</p>
@@ -414,12 +421,20 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
         ) : f ? (
           <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
             <p className="nota">Quedan los dos artículos, cada uno con su precio. El inventario los suma bajo un mismo insumo.</p>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <label className="space-y-1">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
+              <div className="space-y-1">
                 <span className="etiqueta block">Nombre del insumo</span>
-                <input value={f.nombre} onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: e.target.value } }))}
-                  placeholder="ej. Huevo" className="campo w-full py-1.5" />
-              </label>
+                <ElegirArticulo key={`ins-${k}`} valorInicial={f.nombre} ariaLabel="Nombre del insumo" placeholder="ej. Huevo"
+                  opciones={insumos.filter(i => i.sucursal_id === s.sucursal_id).map(i => ({ id: i.id, nombre: i.nombre, detalle: `se mide en ${i.unidad_base}` }))}
+                  onCambio={(texto, elegida) => {
+                    setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: texto } }))
+                    // Si es un insumo que ya existe, se usa su misma unidad.
+                    const ex = elegida && insumos.find(i => i.id === elegida.id)
+                    if (ex && ex.unidad_base !== form[k]?.unidadBase) cambiarBase(k, ex.unidad_base)
+                  }}
+                  notaNuevo={t => <>«{t}» es un insumo nuevo: se creará al guardar.</>}
+                  notaExistente={o => <>Estos dos se agregan a «{o.nombre}», que ya existe.</>} />
+              </div>
               <label className="space-y-1">
                 <span className="etiqueta block">Se mide en</span>
                 <select value={f.unidadBase} onChange={e => cambiarBase(k, e.target.value)} className="campo w-full py-1.5">
