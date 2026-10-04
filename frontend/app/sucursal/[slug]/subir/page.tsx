@@ -112,6 +112,14 @@ export default function SubirPage({ params }: PageProps) {
     t.style.height = `${Math.min(t.scrollHeight + 2, 140)}px`
   }, [nota, state])
 
+  // Si el negocio lo permite (Configuracion > Opciones), el gerente tambien puede contar el inventario.
+  const [puedeContar, setPuedeContar] = useState(false)
+  useEffect(() => {
+    if (!sessionToken) return
+    fetch(`${EDGE_FUNCTIONS_URL}/conteo-gerente`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      .then(r => r.ok ? r.json() : null).then(d => setPuedeContar(!!d?.habilitado)).catch(() => {})
+  }, [sessionToken])
+
   // Formas de pago del negocio: las da procesar-ticket (GET) con el mismo token de la sesion.
   const cargarFormas = useCallback(async () => {
     if (!sessionToken) return
@@ -391,6 +399,11 @@ export default function SubirPage({ params }: PageProps) {
               <p className="nota mt-1">o elegir de la galería</p>
             </div>
           </button>
+          {puedeContar && (
+            <button onClick={() => router.push(`/sucursal/${slug}/conteo`)} className="btn-secundario w-full py-3.5 text-base">
+              Contar inventario
+            </button>
+          )}
         </div>
       )}
 

@@ -28,6 +28,7 @@ const GRUPOS = [
     { href: '/admin/comercios', label: 'Comercios' },
     { href: '/admin/sucursales', label: 'Sucursales' },
     { href: '/admin/formas-pago', label: 'Formas de pago' },
+    { href: '/admin/opciones', label: 'Opciones' },
   ] },
 ]
 
