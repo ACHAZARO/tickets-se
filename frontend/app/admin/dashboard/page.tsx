@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useToast } from '../ui'
 import { rangoDeMes } from '@/lib/arqueo'
@@ -86,12 +87,14 @@ export default function DashboardPage() {
     for (const c of catData ?? []) opMap.set(c.id as string, (c.cuenta_operativo as boolean) ?? true)
 
     // items confirmados en el rango
-    let tq = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
-      .eq('registros_tickets.estado', 'confirmado')
-      .gte('registros_tickets.fecha_ticket', inicio).lte('registros_tickets.fecha_ticket', fin)
-    if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
-    const { data } = await tq
+    const { data } = await traerTodo(() => {
+      let tq = supabase.from('ticket_items')
+        .select('id, descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
+        .eq('registros_tickets.estado', 'confirmado')
+        .gte('registros_tickets.fecha_ticket', inicio).lte('registros_tickets.fecha_ticket', fin)
+      if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
+      return tq
+    })
     const rows = (data as unknown as ItemRow[]) ?? []
 
     // por categoria
@@ -167,10 +170,13 @@ export default function DashboardPage() {
       const desde = MESES_TREND[0] + '-01'
       let catQ = supabase.from('categorias_gasto').select('id, cuenta_operativo, sucursal_id')
       catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ
-      let tq = supabase.from('ticket_items')
-        .select('monto, categoria_id, registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
-        .eq('registros_tickets.estado', 'confirmado').gte('registros_tickets.fecha_ticket', desde)
-      if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
+      const tq = traerTodo(() => {
+        let q = supabase.from('ticket_items')
+          .select('id, monto, categoria_id, registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
+          .eq('registros_tickets.estado', 'confirmado').gte('registros_tickets.fecha_ticket', desde)
+        if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+        return q
+      })
       const [{ data: catData }, { data: items }] = await Promise.all([catQ, tq])
       const opMap = new Map<string, boolean>()
       for (const c of catData ?? []) opMap.set(c.id as string, (c.cuenta_operativo as boolean) ?? true)

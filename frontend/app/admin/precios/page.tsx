@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import Link from 'next/link'
 import { FotoTicket, type EjemploTicket } from '../unificar'
@@ -63,11 +64,13 @@ export default function PreciosPage() {
     setLoading(true)
     // Fuente real: renglones CONFIRMADOS con cantidad y monto -> precio unitario.
     // (No dependemos de precio_historial, asi aparecen TODOS los productos comprados.)
-    let q = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default), registros_tickets!inner(id, comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)')
-      .eq('registros_tickets.estado', 'confirmado').limit(8000)
-    if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
-    const { data } = await q
+    const { data } = await traerTodo(() => {
+      let q = supabase.from('ticket_items')
+        .select('id, descripcion, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default), registros_tickets!inner(id, comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)')
+        .eq('registros_tickets.estado', 'confirmado')
+      if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+      return q
+    })
 
     const map = new Map<string, ProdPrecio>()
     for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; producto_catalogo_id: string | null; catalogo_productos: { nombre: string; unidad_default: string | null } | null; registros_tickets: { id: string; comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }>) ?? []) {

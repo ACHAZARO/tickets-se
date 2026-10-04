@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useToast, useConfirm } from '../ui'
 
@@ -45,10 +46,12 @@ export default function CerebroPage() {
     prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ
     comQ = sucursalId ? comQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : comQ
 
-    let itemsQ = supabase.from('ticket_items')
-      .select('descripcion, categoria_id, producto_catalogo_id, categorias_gasto:categoria_id(nombre), registros_tickets!inner(comercio, sucursal_id)')
-      .limit(4000)
-    if (sucursalId) itemsQ = itemsQ.eq('registros_tickets.sucursal_id', sucursalId)
+    const itemsQ = traerTodo(() => {
+      let q = supabase.from('ticket_items')
+        .select('id, descripcion, categoria_id, producto_catalogo_id, categorias_gasto:categoria_id(nombre), registros_tickets!inner(comercio, sucursal_id)')
+      if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+      return q
+    })
 
     const [catRes, prodRes, comRes, itemsRes] = await Promise.all([catQ, prodQ, comQ, itemsQ])
     const catList = (catRes.data as Categoria[] | null) ?? []

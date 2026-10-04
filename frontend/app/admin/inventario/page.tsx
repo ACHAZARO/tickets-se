@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { computeBaseUnits, formatBaseUnits, pretty } from '@/lib/units.mjs'
 import { SelectorPeriodo, rangoMesActual } from '../periodo'
@@ -38,13 +39,14 @@ export default function EntradasPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const seq = ++fetchSeq.current
-    let q = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(nombre, unidad_base)), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
-      .eq('registros_tickets.estado', 'confirmado')
-      .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta)
-      .limit(8000)
-    if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
-    const { data } = await q
+    const { data } = await traerTodo(() => {
+      let q = supabase.from('ticket_items')
+        .select('id, descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(nombre, unidad_base)), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
+        .eq('registros_tickets.estado', 'confirmado')
+        .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta)
+      if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+      return q
+    })
 
     const map = new Map<string, Fila>()
     for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; insumos: { nombre: string; unidad_base: string } | null } | null }>) ?? []) {

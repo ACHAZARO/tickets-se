@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { computeBaseUnits, toCanonical, sameDimension } from '@/lib/units.mjs'
 import { useToast } from '../ui'
@@ -60,13 +61,19 @@ export default function StockPage() {
     setLoading(true)
     const seq = ++fetchSeq.current
     // Entradas: renglones CONFIRMADOS ligados a un producto del catalogo, en unidades base.
-    let q = supabase.from('ticket_items')
-      .select('cantidad, unidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id)')
-      .eq('registros_tickets.estado', 'confirmado').not('producto_catalogo_id', 'is', null).limit(8000)
-    if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+    const q = traerTodo(() => {
+      let q = supabase.from('ticket_items')
+        .select('id, cantidad, unidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id)')
+        .eq('registros_tickets.estado', 'confirmado').not('producto_catalogo_id', 'is', null)
+      if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+      return q
+    })
 
-    let cq = supabase.from('consumo_inventario').select('producto_catalogo_id, cantidad_base')
-    if (sucursalId) cq = cq.eq('sucursal_id', sucursalId)
+    const cq = traerTodo(() => {
+      let cq = supabase.from('consumo_inventario').select('id, producto_catalogo_id, cantidad_base')
+      if (sucursalId) cq = cq.eq('sucursal_id', sucursalId)
+      return cq
+    })
 
     const [{ data, error }, { data: consumoData }] = await Promise.all([q, cq])
     if (seq !== fetchSeq.current) return

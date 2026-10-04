@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { buildEquivalenceUpdate } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm, Interruptor } from '../ui'
-import { unificarProductos } from '../unificar'
+import { unificarProductos, ejemplosDe } from '../unificar'
 import { GaleriaTickets } from '../galeria-tickets'
 
 interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
@@ -448,7 +448,7 @@ export default function CatalogoPage() {
           </div>
         </div>
       )}
-      {verTickets && <GaleriaTickets producto={verTickets} onCerrar={() => setVerTickets(null)} />}
+      {verTickets && <GaleriaTickets titulo={verTickets.nombre} cargar={() => ejemplosDe(verTickets.id, 200)} vacio="No hay fotos de tickets con este artículo" onCerrar={() => setVerTickets(null)} />}
     </div>
   )
 }

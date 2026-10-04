@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { supabase, ensureFreshSession } from '@/lib/supabase'
+import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { toCanonical } from '@/lib/units.mjs'
 import { detectarSospechas } from '@/lib/fraude.mjs'
@@ -504,12 +505,14 @@ export default function TicketsPage() {
       // Escanea TODOS los tickets no rechazados (incluye pendientes: el fraude suele
       // estar ahi). Si hay sucursal seleccionada, la acota; si es "Todas", la deteccion
       // se particiona por sucursal sola.
-      let q = supabase.from('ticket_items')
-        .select('registro_ticket_id, producto_catalogo_id, descripcion, cantidad, monto, registros_tickets!inner(id, comercio, fecha_ticket, monto, estado, sucursal_id, sospecha_estado)')
-        .neq('registros_tickets.estado', 'rechazado')
-        .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta).limit(12000)
-      if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
-      const { data, error } = await q
+      const { data, error } = await traerTodo(() => {
+        let q = supabase.from('ticket_items')
+          .select('id, registro_ticket_id, producto_catalogo_id, descripcion, cantidad, monto, registros_tickets!inner(id, comercio, fecha_ticket, monto, estado, sucursal_id, sospecha_estado)')
+          .neq('registros_tickets.estado', 'rechazado')
+          .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta)
+        if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+        return q
+      })
       if (error) { toast('No se pudo escanear: ' + error.message, 'error'); return }
 
       // Reagrupa por ticket
