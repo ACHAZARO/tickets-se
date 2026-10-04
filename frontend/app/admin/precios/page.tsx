@@ -4,13 +4,13 @@ import { useEffect, useState, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
-import Link from 'next/link'
+import { EditorArticulo, EditorRenglon } from '../editores'
 import { FotoTicket, type EjemploTicket } from '../unificar'
 
 // Cada punto guarda de que ticket salio, para poder ver la foto y abrir el ticket (Ver tickets).
 interface Punto {
   precio: number; fecha: string | null; created_at: string
-  ticketId: string; descripcion: string | null; cantidad: number; unidad: string | null; monto: number
+  ticketId: string; itemId: string; descripcion: string | null; cantidad: number; unidad: string | null; monto: number
   comercio: string | null; bucket: string | null; path: string | null
 }
 interface ProdPrecio {
@@ -59,6 +59,8 @@ export default function PreciosPage() {
   const [soloCambios, setSoloCambios] = useState(false)
   const [abierto, setAbierto] = useState<string | null>(null)
   const [viendo, setViendo] = useState<string | null>(null) // producto con "Ver tickets" abierto
+  const [editandoArt, setEditandoArt] = useState<string | null>(null)       // panel lateral: articulo
+  const [editandoRenglon, setEditandoRenglon] = useState<string | null>(null) // panel lateral: renglon
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -73,7 +75,7 @@ export default function PreciosPage() {
     })
 
     const map = new Map<string, ProdPrecio>()
-    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; producto_catalogo_id: string | null; catalogo_productos: { nombre: string; unidad_default: string | null } | null; registros_tickets: { id: string; comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ id: string; descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; producto_catalogo_id: string | null; catalogo_productos: { nombre: string; unidad_default: string | null } | null; registros_tickets: { id: string; comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }>) ?? []) {
       const monto = Number(row.monto); const cant = Number(row.cantidad)
       if (!Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
       const nombre = (row.catalogo_productos?.nombre ?? row.descripcion ?? '').trim()
@@ -84,7 +86,7 @@ export default function PreciosPage() {
       const t = row.registros_tickets
       map.get(key)!.puntos.push({
         precio: monto / cant, fecha: t?.fecha_ticket ?? null, created_at: t?.created_at ?? '',
-        ticketId: t?.id ?? '', descripcion: row.descripcion, cantidad: cant, unidad: row.unidad, monto, comercio: t?.comercio ?? null,
+        ticketId: t?.id ?? '', itemId: row.id, descripcion: row.descripcion, cantidad: cant, unidad: row.unidad, monto, comercio: t?.comercio ?? null,
         bucket: t?.storage_path_archivo ? 'archivo' : t?.storage_path_original ? 'por-revisar' : null,
         path: t?.storage_path_archivo ?? t?.storage_path_original ?? null,
       })
@@ -173,13 +175,13 @@ export default function PreciosPage() {
                               </button>
                             )}
                             {p.productoId && (
-                              <Link href={`/admin/catalogo?editar=${p.productoId}`} className="btn-secundario btn-sm"
-                                title="Abrir el artículo para corregir nombre, categoría, unidad o equivalencia (ej. 1 caja = 12 pz)">
+                              <button type="button" onClick={() => setEditandoArt(p.productoId)} className="btn-secundario btn-sm"
+                                title="Corregir nombre, categoría, unidad o lo que trae (ej. 1 caja = 12 pz) sin salir de aquí">
                                 Editar artículo
-                              </Link>
+                              </button>
                             )}
                           </div>
-                          {viendo === p.nombre && <CompararPrecios puntos={p.puntos} />}
+                          {viendo === p.nombre && <CompararPrecios puntos={p.puntos} onCorregir={setEditandoRenglon} />}
                           </div>
                         </td>
                       </tr>
@@ -191,6 +193,8 @@ export default function PreciosPage() {
           </table></div>
         </div>
       )}
+      {editandoArt && <EditorArticulo productoId={editandoArt} onCerrar={() => setEditandoArt(null)} onGuardado={fetchData} />}
+      {editandoRenglon && <EditorRenglon itemId={editandoRenglon} onCerrar={() => setEditandoRenglon(null)} onGuardado={fetchData} />}
     </div>
   )
 }
@@ -201,7 +205,7 @@ const aEjemplo = (pt: Punto): EjemploTicket => ({
 })
 
 /** Anterior vs ultimo, foto con foto: se ve si es el mismo articulo, otro tamano o un renglon mal ligado. */
-function CompararPrecios({ puntos }: { puntos: Punto[] }) {
+function CompararPrecios({ puntos, onCorregir }: { puntos: Punto[]; onCorregir: (itemId: string) => void }) {
   const n = puntos.length
   const lados = (n >= 2 ? [['Anterior', puntos[n - 2]], ['Último', puntos[n - 1]]] : [['Único', puntos[n - 1]]]) as [string, Punto][]
   return (
@@ -214,18 +218,16 @@ function CompararPrecios({ puntos }: { puntos: Punto[] }) {
               Dice &quot;{pt.descripcion ?? '—'}&quot; · {pt.cantidad} {pt.unidad ?? ''} · {fmt(pt.monto)}
             </p>
             <p className="text-xs text-zinc-500">{pt.comercio ?? 'sin comercio'} · {(pt.fecha ?? pt.created_at).slice(0, 10)}</p>
-            {pt.ticketId && (
-              <Link href={`/admin/tickets?abrir=${pt.ticketId}`} className="btn-texto btn-sm -ml-2"
-                title="Abre el ticket para corregir este renglón (cantidad, unidad o artículo ligado)">
-                Corregir en el ticket
-              </Link>
-            )}
+            <button type="button" onClick={() => onCorregir(pt.itemId)} className="btn-texto btn-sm -ml-2"
+              title="Corregir este renglón (cantidad, unidad o artículo ligado) sin salir de aquí">
+              Corregir renglón
+            </button>
           </div>
         ))}
       </div>
       <p className="nota">
         ¿Es el mismo artículo en otro tamaño (caja contra pieza)? Usa «Editar artículo» y pon la equivalencia.
-        ¿Un renglón quedó ligado al artículo equivocado? Usa «Corregir en el ticket».
+        ¿Un renglón tiene mal la cantidad o el artículo? Usa «Corregir renglón».
       </p>
     </div>
   )

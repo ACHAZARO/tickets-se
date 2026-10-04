@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react'
 
 // Sistema compartido de toasts + confirmacion modal para el admin.
 // Reemplaza alert()/confirm() nativos por UI consistente con el tema.
@@ -101,5 +101,35 @@ export function Consejo({ children }: { children: ReactNode }) {
       </svg>
       <span>{children}</span>
     </p>
+  )
+}
+
+/**
+ * Panel lateral para editar algo SIN salir de la pantalla (p.ej. desde Precios). Derecha en computadora, pantalla
+ * completa en celular. Se cierra con la X, con Esc o tocando fuera. `pie` = botones fijos abajo (Guardar / Atras).
+ */
+export function PanelLateral({ titulo, subtitulo, onCerrar, children, pie }: {
+  titulo: string; subtitulo?: string; onCerrar: () => void; children: ReactNode; pie?: ReactNode
+}) {
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
+    window.addEventListener('keydown', tecla)
+    return () => window.removeEventListener('keydown', tecla)
+  }, [onCerrar])
+  return (
+    <div className="fixed inset-0 z-50 !m-0 flex justify-end bg-zinc-950/50 backdrop-blur-[2px] animate-[fadeIn_.15s_ease]" onClick={onCerrar}>
+      <aside role="dialog" aria-modal="true" aria-label={titulo} onClick={e => e.stopPropagation()}
+        className="flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-900 shadow-2xl sm:max-w-md">
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4 safe-top">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-zinc-100 break-words">{titulo}</h3>
+            {subtitulo && <p className="nota mt-0.5">{subtitulo}</p>}
+          </div>
+          <button type="button" onClick={onCerrar} aria-label="Cerrar" className="btn-quieto btn-sm -mr-2 text-lg leading-none">×</button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
+        {pie && <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-5 py-3 safe-bottom">{pie}</div>}
+      </aside>
+    </div>
   )
 }

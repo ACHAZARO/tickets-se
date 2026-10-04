@@ -60,7 +60,7 @@ export function GaleriaTickets({ titulo, cargar, vacio, onCerrar }: {
   }, [ir, onCerrar])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-3 sm:p-6" onClick={onCerrar}>
+    <div className="fixed inset-0 z-50 !m-0 flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-3 sm:p-6" onClick={onCerrar}>
       <div role="dialog" aria-modal="true" aria-label={`Tickets con ${titulo}`}
         className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-xl"
         onClick={e => e.stopPropagation()}>
