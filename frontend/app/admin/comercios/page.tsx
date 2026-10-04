@@ -213,7 +213,7 @@ export default function ComerciosPage() {
       ) : filtrados.length === 0 ? (
         <p className="text-sm text-zinc-500 text-center py-12">{comercios.length === 0 ? 'Aún no hay comercios. Aparecen solos al procesar tickets.' : 'Sin coincidencias'}</p>
       ) : (
-        <div className="space-y-2">
+        <div className="grid items-start gap-2 xl:grid-cols-2">
           {filtrados.map(c => {
             const r = resumen[clave(c.nombre)]
             const arts = articulos[clave(c.nombre)] ?? []

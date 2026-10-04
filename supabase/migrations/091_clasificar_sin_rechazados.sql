@@ -1,0 +1,7 @@
+-- ============================================================
+-- MIGRACION: 091 - clasificar_renglones ignora tickets RECHAZADOS
+-- Hallazgo 04-oct: los 45 renglones "sin clasificar" eran todos de tickets rechazados (duplicados/ilegibles,
+-- 44 de Wings Palace) y por eso Cerebro mostraba basura ("Ticket", "Transaccion 2026..."). La funcion de la 090 se
+-- re-crea con el filtro r.estado <> 'rechazado' (el archivo 090 ya lo trae; esta migracion lo aplica en la base).
+-- ============================================================
+-- (cuerpo identico a 090_clasificar_renglones.sql con el filtro; ver ese archivo)

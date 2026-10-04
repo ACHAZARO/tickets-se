@@ -97,7 +97,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <AdminUIProvider>
     <div className="min-h-screen min-h-[100dvh] flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur safe-top">
-        <div className="mx-auto max-w-6xl px-4 pt-3 space-y-3 md:px-6">
+        <div className="mx-auto w-full max-w-[1920px] px-4 pt-3 space-y-3 sm:px-6 lg:px-8 2xl:px-12">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[15px] font-semibold tracking-tight text-zinc-100">Tickets</span>
             <div className="flex items-center gap-1">
@@ -144,7 +144,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
-      <main className="flex-1 px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto w-full">
+      <main id="contenido" className="mx-auto w-full max-w-[1920px] flex-1 px-4 py-5 sm:px-6 md:py-6 lg:px-8 2xl:px-12">
         {children}
       </main>
     </div>

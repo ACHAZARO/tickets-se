@@ -69,7 +69,7 @@ export default function FormasPago() {
   if (cargando) return null
 
   return (
-    <section className="space-y-4">
+    <section className="max-w-3xl space-y-4">
       <div>
         <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Formas de pago</h2>
         <p className="nota mt-1">

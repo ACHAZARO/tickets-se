@@ -92,7 +92,7 @@ export default function SucursalesPage() {
         >+ Agregar</button>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
         {sucursales.length === 0 ? (
           <p className="text-sm text-zinc-500 text-center py-12">Aún no hay sucursales. Agrega la primera con + Agregar.</p>
         ) : sucursales.map(s => (

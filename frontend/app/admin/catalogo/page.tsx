@@ -239,7 +239,7 @@ export default function CatalogoPage() {
         </p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex max-w-xl gap-2">
         <input value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') agregarCat() }}
           placeholder="Nueva categoría (ej. Mantenimiento)"
           className="campo flex-1 px-4 py-2.5" />

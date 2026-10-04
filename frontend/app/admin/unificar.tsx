@@ -477,13 +477,13 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
       {mismos.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-zinc-300">Parecen el mismo ({mismos.length})</h3>
-          {mismos.map(tarjeta)}
+          <div className="grid items-start gap-2 xl:grid-cols-2">{mismos.map(tarjeta)}</div>
         </div>
       )}
       {tamanos.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-zinc-300">Mismo nombre, distinto tamaño ({tamanos.length})</h3>
-          {tamanos.map(tarjeta)}
+          <div className="grid items-start gap-2 xl:grid-cols-2">{tamanos.map(tarjeta)}</div>
         </div>
       )}
       {quiza.length > 0 && (
@@ -491,7 +491,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
           <button type="button" onClick={() => setVerQuiza(v => !(v ?? abiertoPorDefecto))} className="text-sm font-semibold text-zinc-300 hover:text-zinc-100">
             {abiertos ? '▾' : '▸'} Menos seguros ({quiza.length})
           </button>
-          {abiertos && quiza.map(tarjeta)}
+          {abiertos && <div className="grid items-start gap-2 xl:grid-cols-2">{quiza.map(tarjeta)}</div>}
         </div>
       )}
     </section>

@@ -16,7 +16,7 @@ export default function OpcionesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-3xl space-y-6">
       <div className="space-y-1">
         <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Opciones</h2>
         <p className="nota max-w-2xl">Prende solo lo que vas a usar: lo apagado no aparece ni estorba.</p>
