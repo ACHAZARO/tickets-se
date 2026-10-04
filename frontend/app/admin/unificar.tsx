@@ -181,7 +181,7 @@ function elegirPar(as: EjemploTicket[], bs: EjemploTicket[]): { a: EjemploTicket
 }
 
 /** Una columna de "Ver tickets": nombre + foto. Toca la foto para verla completa. */
-function FotoTicket({ nombre, ej }: { nombre: string; ej: EjemploTicket | null | undefined }) {
+export function FotoTicket({ nombre, ej }: { nombre: string; ej: EjemploTicket | null | undefined }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     setUrl(null)
@@ -254,7 +254,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   useEffect(() => { cargar() }, [cargar])
 
   if (!sug) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
-  if (sug.length === 0) return <p className="tarjeta px-4 py-6 text-sm text-zinc-400">Todo en orden: no hay insumos por revisar.</p>
+  if (sug.length === 0) return <p className="tarjeta px-4 py-6 text-sm text-zinc-400">Todo en orden: no hay artículos por revisar.</p>
   const clave = (s: Sugerencia) => s.a.id + s.b.id
   const mismos = sug.filter(s => s.motivo === 'sinonimo' || s.motivo === 'igual')
   const tamanos = sug.filter(s => s.motivo === 'presentacion')

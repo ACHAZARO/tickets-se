@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -10,23 +10,24 @@ import { BotonTema } from '@/lib/tema'
 import { AdminUIProvider } from './ui'
 import { CerebroBadge } from './unificar'
 
-// Menu en 3 grupos para saber donde vive cada cosa: lo que hay que REVISAR, los NUMEROS y los AJUSTES.
+// Menu en 3 grupos: GENERAL (numeros del negocio), lo que hay que REVISAR y la CONFIGURACION.
 const GRUPOS = [
-  { nombre: 'Revisar', paginas: [
-    { href: '/admin/tickets', label: 'Tickets' },
-    { href: '/admin/cerebro', label: 'Cerebro' },
-    { href: '/admin/insumos', label: 'Insumos por revisar' },
-  ] },
-  { nombre: 'Números', paginas: [
+  { nombre: 'General', paginas: [
     { href: '/admin/dashboard', label: 'Gasto' },
     { href: '/admin/precios', label: 'Precios' },
     { href: '/admin/inventario', label: 'Entradas' },
     { href: '/admin/stock', label: 'Stock' },
   ] },
-  { nombre: 'Ajustes', paginas: [
-    { href: '/admin/catalogo', label: 'Catálogo' },
+  { nombre: 'Revisar', paginas: [
+    { href: '/admin/tickets', label: 'Tickets' },
+    { href: '/admin/insumos', label: 'Artículos por revisar' },
+  ] },
+  { nombre: 'Configuración', paginas: [
+    { href: '/admin/catalogo', label: 'Artículos' },
+    { href: '/admin/cerebro', label: 'Cerebro' },
     { href: '/admin/comercios', label: 'Comercios' },
     { href: '/admin/sucursales', label: 'Sucursales' },
+    { href: '/admin/formas-pago', label: 'Formas de pago' },
   ] },
 ]
 
@@ -35,6 +36,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  // En celular la fila de pantallas se desliza: que la pantalla activa siempre quede a la vista.
+  const filaPantallas = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    filaPantallas.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }, [pathname, loading])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -120,7 +126,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )
               })}
             </div>
-            <div className="flex gap-1 overflow-x-auto scrollbar-none -mx-1 px-1">
+            <div ref={filaPantallas} className="flex gap-1 overflow-x-auto scrollbar-none -mx-1 px-1">
               {grupoActivo.paginas.map(item => {
                 const activo = pathname.startsWith(item.href)
                 return (

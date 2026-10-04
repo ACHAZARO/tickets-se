@@ -175,7 +175,7 @@ export default function StockPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Stock</h2>
-        <p className="nota mt-1">{nombreSucursal} · existencias estimadas: lo comprado (confirmado) menos lo consumido. Para ver cajas en piezas, configura la equivalencia en el Catálogo (1 caja = 24 pz).</p>
+        <p className="nota mt-1">{nombreSucursal} · existencias estimadas: lo comprado (confirmado) menos lo consumido. Para ver cajas en piezas, configura la equivalencia en Configuración › Artículos (1 caja = 24 pz).</p>
       </div>
 
       <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"

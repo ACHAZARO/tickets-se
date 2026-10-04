@@ -3,10 +3,18 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
+import Link from 'next/link'
+import { FotoTicket, type EjemploTicket } from '../unificar'
 
-interface Punto { precio: number; fecha: string | null; created_at: string }
+// Cada punto guarda de que ticket salio, para poder ver la foto y abrir el ticket (Ver tickets).
+interface Punto {
+  precio: number; fecha: string | null; created_at: string
+  ticketId: string; descripcion: string | null; cantidad: number; unidad: string | null; monto: number
+  comercio: string | null; bucket: string | null; path: string | null
+}
 interface ProdPrecio {
   nombre: string
+  productoId: string | null // articulo del catalogo (para "Editar artículo")
   unidad: string | null
   puntos: Punto[]
   ultimo: number
@@ -49,27 +57,34 @@ export default function PreciosPage() {
   const [filtro, setFiltro] = useState('')
   const [soloCambios, setSoloCambios] = useState(false)
   const [abierto, setAbierto] = useState<string | null>(null)
+  const [viendo, setViendo] = useState<string | null>(null) // producto con "Ver tickets" abierto
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     // Fuente real: renglones CONFIRMADOS con cantidad y monto -> precio unitario.
     // (No dependemos de precio_historial, asi aparecen TODOS los productos comprados.)
     let q = supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(nombre, unidad_default), registros_tickets!inner(fecha_ticket, created_at, estado, sucursal_id)')
+      .select('descripcion, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default), registros_tickets!inner(id, comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)')
       .eq('registros_tickets.estado', 'confirmado').limit(8000)
     if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
     const { data } = await q
 
     const map = new Map<string, ProdPrecio>()
-    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; catalogo_productos: { nombre: string; unidad_default: string | null } | null; registros_tickets: { fecha_ticket: string | null; created_at: string } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; producto_catalogo_id: string | null; catalogo_productos: { nombre: string; unidad_default: string | null } | null; registros_tickets: { id: string; comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }>) ?? []) {
       const monto = Number(row.monto); const cant = Number(row.cantidad)
       if (!Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
       const nombre = (row.catalogo_productos?.nombre ?? row.descripcion ?? '').trim()
       if (!nombre) continue
       const key = nombre.toLowerCase()
       const unidad = row.catalogo_productos?.unidad_default ?? row.unidad ?? null
-      if (!map.has(key)) map.set(key, { nombre, unidad, puntos: [], ultimo: 0, anterior: null, variacion: null })
-      map.get(key)!.puntos.push({ precio: monto / cant, fecha: row.registros_tickets?.fecha_ticket ?? null, created_at: row.registros_tickets?.created_at ?? '' })
+      if (!map.has(key)) map.set(key, { nombre, productoId: row.producto_catalogo_id, unidad, puntos: [], ultimo: 0, anterior: null, variacion: null })
+      const t = row.registros_tickets
+      map.get(key)!.puntos.push({
+        precio: monto / cant, fecha: t?.fecha_ticket ?? null, created_at: t?.created_at ?? '',
+        ticketId: t?.id ?? '', descripcion: row.descripcion, cantidad: cant, unidad: row.unidad, monto, comercio: t?.comercio ?? null,
+        bucket: t?.storage_path_archivo ? 'archivo' : t?.storage_path_original ? 'por-revisar' : null,
+        path: t?.storage_path_archivo ?? t?.storage_path_original ?? null,
+      })
     }
     const list: ProdPrecio[] = []
     for (const p of map.values()) {
@@ -145,7 +160,24 @@ export default function PreciosPage() {
                     {exp && (
                       <tr className="border-b border-zinc-800/60 bg-zinc-800/30">
                         <td colSpan={5} className="px-4 py-3">
+                          {/* La tabla es mas ancha que el celular: este bloque se queda del ancho de la pantalla */}
+                          <div className="sticky left-4 w-[calc(100vw-4rem)] space-y-3 md:static md:w-auto">
                           <Sparkline puntos={p.puntos} />
+                          <div className="flex flex-wrap items-center gap-2">
+                            {p.puntos.length >= 1 && (
+                              <button type="button" onClick={() => setViendo(viendo === p.nombre ? null : p.nombre)} className="btn-texto btn-sm -ml-2">
+                                {viendo === p.nombre ? 'Ocultar tickets' : p.puntos.length >= 2 ? 'Ver tickets (anterior y último)' : 'Ver ticket'}
+                              </button>
+                            )}
+                            {p.productoId && (
+                              <Link href={`/admin/catalogo?editar=${p.productoId}`} className="btn-secundario btn-sm"
+                                title="Abrir el artículo para corregir nombre, categoría, unidad o equivalencia (ej. 1 caja = 12 pz)">
+                                Editar artículo
+                              </Link>
+                            )}
+                          </div>
+                          {viendo === p.nombre && <CompararPrecios puntos={p.puntos} />}
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -156,6 +188,42 @@ export default function PreciosPage() {
           </table></div>
         </div>
       )}
+    </div>
+  )
+}
+
+const aEjemplo = (pt: Punto): EjemploTicket => ({
+  descripcion: pt.descripcion, cantidad: pt.cantidad, unidad: pt.unidad, monto: pt.monto,
+  comercio: pt.comercio, fecha: (pt.fecha ?? pt.created_at).slice(0, 10), bucket: pt.bucket, path: pt.path,
+})
+
+/** Anterior vs ultimo, foto con foto: se ve si es el mismo articulo, otro tamano o un renglon mal ligado. */
+function CompararPrecios({ puntos }: { puntos: Punto[] }) {
+  const n = puntos.length
+  const lados = (n >= 2 ? [['Anterior', puntos[n - 2]], ['Último', puntos[n - 1]]] : [['Único', puntos[n - 1]]]) as [string, Punto][]
+  return (
+    <div className="space-y-2">
+      <div className={`grid gap-3 rounded-lg bg-zinc-800/50 p-2 ${lados.length === 2 ? 'grid-cols-2' : 'grid-cols-1 max-w-xs'}`}>
+        {lados.map(([titulo, pt]) => (
+          <div key={titulo} className="min-w-0 space-y-1.5">
+            <FotoTicket nombre={`${titulo} · ${fmt(pt.precio)} c/u`} ej={aEjemplo(pt)} />
+            <p className="text-xs text-zinc-400 break-words">
+              Dice &quot;{pt.descripcion ?? '—'}&quot; · {pt.cantidad} {pt.unidad ?? ''} · {fmt(pt.monto)}
+            </p>
+            <p className="text-xs text-zinc-500">{pt.comercio ?? 'sin comercio'} · {(pt.fecha ?? pt.created_at).slice(0, 10)}</p>
+            {pt.ticketId && (
+              <Link href={`/admin/tickets?abrir=${pt.ticketId}`} className="btn-texto btn-sm -ml-2"
+                title="Abre el ticket para corregir este renglón (cantidad, unidad o artículo ligado)">
+                Corregir en el ticket
+              </Link>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="nota">
+        ¿Es el mismo artículo en otro tamaño (caja contra pieza)? Usa «Editar artículo» y pon la equivalencia.
+        ¿Un renglón quedó ligado al artículo equivocado? Usa «Corregir en el ticket».
+      </p>
     </div>
   )
 }

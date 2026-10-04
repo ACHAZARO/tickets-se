@@ -32,7 +32,7 @@ la accion importante siempre se ve primero.
 2. **El color significa algo.** Verde = bien/accion, ambar = por revisar, terracota = rechazo/fraude/borrar. Nada decorativo.
 3. **Menos texto.** Titulos cortos; explicaciones solo cuando evitan un error.
 4. **Se lee al sol y de noche.** Contraste AA, minimo 13 px en datos, modo dia y noche.
-5. **Saber donde estas.** Menu en 3 grupos (Revisar, Numeros, Ajustes) con la pantalla activa marcada.
+5. **Saber donde estas.** Menu en 3 grupos (General, Revisar, Configuracion) con la pantalla activa marcada.
 
 ## Accessibility & Inclusion
 WCAG 2.1 AA de contraste en ambos modos (verificado por script). Toques de 36 px minimo en celular. Respeta

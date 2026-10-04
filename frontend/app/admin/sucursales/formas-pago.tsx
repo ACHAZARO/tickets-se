@@ -69,9 +69,9 @@ export default function FormasPago() {
   if (cargando) return null
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-zinc-100">Formas de pago</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Formas de pago</h2>
         <p className="nota mt-1">
           Opciones de &quot;¿Cómo se pagó?&quot; al subir un ticket. Una forma ya usada no se borra: se apaga.
         </p>

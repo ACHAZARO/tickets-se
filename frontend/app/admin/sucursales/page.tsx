@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useToast, useConfirm } from '../ui'
-import FormasPago from './formas-pago'
 
 interface Sucursal {
   id: string
@@ -122,8 +121,6 @@ export default function SucursalesPage() {
           </div>
         ))}
       </div>
-
-      <FormasPago />
 
       {sucForm && <SucursalModal form={sucForm} onClose={() => setSucForm(null)} onSaved={() => { setSucForm(null); setLoading(true); fetchData() }} />}
       {empPanel && <EmpleadosModal sucursal={empPanel} onClose={() => setEmpPanel(null)} onChanged={fetchData} />}

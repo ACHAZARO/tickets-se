@@ -213,6 +213,8 @@ function emptyItem(ticketId: string): Omit<Item, 'categorias_gasto'> {
   }
 }
 
+const SELECT_TICKET = 'id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)'
+
 export default function TicketsPage() {
   const { sucursalId, sucursales } = useSucursal()
   const toast = useToast()
@@ -315,7 +317,7 @@ export default function TicketsPage() {
     const vigente = () => seq === fetchSeq.current
     setLoading(true)
     let q = supabase.from('registros_tickets')
-      .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
+      .select(SELECT_TICKET)
       // Periodo por FECHA DEL TICKET (igual que el Dashboard). Antes filtraba por fecha
       // de subida y se colaban tickets de julio subidos en agosto. Los que aun no
       // tienen fecha (IA sin leer, duplicados) entran por su fecha de subida.
@@ -363,6 +365,20 @@ export default function TicketsPage() {
   }, [desde, hasta, sucursalId])
 
   useEffect(() => { fetchTickets() }, [fetchTickets])
+
+  // Enlace directo desde otras pantallas (p.ej. Precios > Ver tickets): /admin/tickets?abrir=<id> abre ese
+  // ticket aunque no caiga en el periodo elegido. Se limpia la URL para que recargar no lo vuelva a abrir.
+  const abrirDetalleRef = useRef<((t: Ticket) => Promise<void>) | null>(null)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('abrir')
+    if (!id) return
+    window.history.replaceState(null, '', window.location.pathname)
+    supabase.from('registros_tickets').select(SELECT_TICKET).eq('id', id).maybeSingle().then(({ data }) => {
+      if (data && abrirDetalleRef.current) abrirDetalleRef.current(data as unknown as Ticket)
+      else if (!data) toast('No se encontró ese ticket', 'error')
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const fetchRef = useRef(fetchTickets)
   fetchRef.current = fetchTickets
 
@@ -442,6 +458,7 @@ export default function TicketsPage() {
     setDetalle({ ticket: t, items, url: urlModalImg })
     setBusy(null)
   }
+  abrirDetalleRef.current = abrirDetalle
 
   // --- Revision de fraude ---
   async function marcarSospechoso(t: Ticket, motivo: string) {
@@ -825,7 +842,7 @@ export default function TicketsPage() {
       // Trae el ticket FRESCO de la BD (el estado en `tickets` aun no se actualizo en este
       // closure tras setTickets); abrirDetalle ademas re-consulta los renglones.
       const { data: fresh } = await supabase.from('registros_tickets')
-        .select('id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)')
+        .select(SELECT_TICKET)
         .eq('id', t.id).maybeSingle()
       await abrirDetalle((fresh as unknown as Ticket) ?? t)
       toast('Ticket releido con IA')
@@ -1047,18 +1064,27 @@ export default function TicketsPage() {
 
       <div className="flex flex-wrap gap-2">
         {([
-          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos, color: 'chip-neutro' },
-          { k: 'pendientes', label: ticketFilterLabel('pendientes'), n: cuenta.pendientes, color: 'chip-revisar' },
-          { k: 'alertas', label: ticketFilterLabel('alertas'), n: cuenta.alertas, color: 'chip-revisar' },
-          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados, color: 'chip-bien' },
-          { k: 'fraude', label: ticketFilterLabel('fraude'), n: cuenta.fraude, color: 'chip-mal' },
-        ] as const).map(c => (
-          <button key={c.k} onClick={() => setFiltroEstado(c.k)}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${filtroEstado === c.k ? 'border-zinc-600 bg-zinc-800 text-zinc-100' : 'border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'}`}>
-            {c.label}
-            <span className={filtroEstado === c.k ? c.color : 'chip-neutro'}>{c.n}</span>
-          </button>
-        ))}
+          // Cada filtro lleva el color de lo que significa: tenue cuando no esta elegido, lleno cuando si.
+          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos,
+            tenue: 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700', lleno: 'bg-zinc-100 text-zinc-900' },
+          { k: 'pendientes', label: ticketFilterLabel('pendientes'), n: cuenta.pendientes,
+            tenue: 'bg-blue-900 text-blue-300 hover:bg-blue-800', lleno: 'bg-blue-600 text-white' },
+          { k: 'alertas', label: ticketFilterLabel('alertas'), n: cuenta.alertas,
+            tenue: 'bg-amber-900 text-amber-300 hover:bg-amber-800', lleno: 'bg-amber-600 text-white' },
+          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados,
+            tenue: 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800', lleno: 'bg-emerald-600 text-white' },
+          { k: 'fraude', label: ticketFilterLabel('fraude'), n: cuenta.fraude,
+            tenue: 'bg-red-900 text-red-300 hover:bg-red-800', lleno: 'bg-red-600 text-white' },
+        ] as const).map(c => {
+          const elegido = filtroEstado === c.k
+          return (
+            <button key={c.k} onClick={() => setFiltroEstado(c.k)} aria-pressed={elegido}
+              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${elegido ? `${c.lleno} shadow-sm` : c.tenue}`}>
+              {c.label}
+              <span className={`rounded-md px-1.5 text-xs font-semibold ${elegido ? 'bg-white/25' : 'bg-zinc-950/40'}`}>{c.n}</span>
+            </button>
+          )
+        })}
         {(sinLeer.length > 0 || releyendo) && (
           <button onClick={() => releerSinLeer(sinLeer)} disabled={!!releyendo}
             className="btn-secundario btn-sm">

@@ -72,6 +72,28 @@ export default function CatalogoPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Enlace directo (p.ej. desde Precios): /admin/catalogo?editar=<id> abre ese articulo listo para editar.
+  const [pendienteEditar, setPendienteEditar] = useState<string | null>(null)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('editar')
+    if (!id) return
+    window.history.replaceState(null, '', window.location.pathname)
+    setPendienteEditar(id)
+  }, [])
+  useEffect(() => {
+    if (!pendienteEditar || loading) return
+    const p = productos.find(x => x.id === pendienteEditar)
+    setPendienteEditar(null)
+    if (!p) { toast('Ese artículo no está en esta sucursal; prueba con "Todas las sucursales"', 'error'); return }
+    abrirEdicion(p, p.categoria_id ?? '')
+    setTimeout(() => document.getElementById(`prod-${p.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendienteEditar, loading, productos])
+
+  function abrirEdicion(p: Producto, categoriaId: string) {
+    setEditProd({ id: p.id, nombre: p.nombre, nombreOriginal: p.nombre, categoria_id: p.categoria_id ?? categoriaId, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), ...splitEquivalenceFields(p) })
+  }
+
   async function agregarCat() {
     if (!nuevaCat.trim()) return
     // Lo que se crea es de UN negocio: nunca global (la app la usan varios negocios).
@@ -204,7 +226,7 @@ export default function CatalogoPage() {
     <div className="space-y-6">
       <datalist id="unidades-catalogo">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
       <div>
-        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Catálogo y categorías</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Artículos y categorías</h2>
         <p className="nota mt-1">
           {sucursalId ? 'Ves lo global + lo de esta sucursal; lo nuevo es de esta sucursal.' : 'Ves lo global; elige una sucursal arriba para algo específico.'}
         </p>
@@ -250,10 +272,10 @@ export default function CatalogoPage() {
                       ? 'Encendida: la IA puede poner tickets nuevos en esta categoría. Toca para apagarla.'
                       : 'Apagada: la IA ya no pone tickets nuevos aquí (lo anterior se conserva). Toca para encenderla.'} />
                   <Interruptor encendido={c.cuenta_operativo} onCambiar={() => toggleOperativo(c)}
-                    etiqueta="Cuenta en el gasto de operación"
+                    etiqueta="Cuenta como gasto operativo"
                     ayuda={c.cuenta_operativo
-                      ? 'Encendido: lo de esta categoría suma al gasto de operación en Números > Gasto. Toca si no debe contar (ej. equipo, inversiones).'
-                      : 'Apagado: NO suma al gasto de operación (se ve aparte en Números > Gasto). Toca para que cuente.'} />
+                      ? 'Encendido: suma a «Gasto operativo» en General › Gasto (tarjeta, reparto por categoría y tendencia). Apágalo para compras que no son de la operación diaria: equipo, inversiones, gastos personales.'
+                      : 'Apagado: no suma al gasto operativo. Se ve aparte como «Gasto no operativo» en General › Gasto. Toca para que cuente.'} />
                 </div>
 
                 {/* 3. Que puedo hacer */}
@@ -271,10 +293,10 @@ export default function CatalogoPage() {
                     className="campo w-full px-2 py-1.5" />
                   <input value={addProd.sinonimos} onChange={e => setAddProd({ ...addProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. barilla, espagueti)"
                     className="campo w-full px-2 py-1.5" />
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <input list="unidades-catalogo" value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
                       placeholder="Unidad (cono, caja, pz...)"
-                      className="campo px-2 py-1.5" />
+                      className="campo basis-full px-2 py-1.5 sm:basis-auto sm:flex-1" />
                     <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
                       className="btn-primario btn-sm flex-1">Guardar</button>
                     <button onClick={() => setAddProd(null)} className="btn-quieto btn-sm">Cancelar</button>
@@ -287,7 +309,7 @@ export default function CatalogoPage() {
               ) : (
                 <div className="divide-y divide-zinc-800/50">
                   {prods.map(p => (
-                    <div key={p.id} className={`px-4 py-2.5 ${!p.activo ? 'opacity-50' : ''}`}>
+                    <div key={p.id} id={`prod-${p.id}`} className={`px-4 py-2.5 scroll-mt-40 ${!p.activo ? 'opacity-50' : ''}`}>
                       <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -300,7 +322,7 @@ export default function CatalogoPage() {
                         </div>
                         <div className="flex flex-wrap items-center gap-1 -ml-2 sm:ml-0">
                         <button onClick={() => setVerTickets({ id: p.id, nombre: p.nombre })} className="btn-texto btn-sm">Ver tickets</button>
-                        <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, nombre: p.nombre, nombreOriginal: p.nombre, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), ...splitEquivalenceFields(p) })}
+                        <button onClick={() => editProd?.id === p.id ? setEditProd(null) : abrirEdicion(p, c.id)}
                           className="btn-secundario btn-sm">{editProd?.id === p.id ? 'Cerrar' : 'Editar'}</button>
                         <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
                           title="Es el mismo insumo que otro producto: unificarlos"
@@ -375,10 +397,11 @@ export default function CatalogoPage() {
                                 ` = ${Number(editProd.contiene_cantidad).toLocaleString('es-MX')} ${editProd.contiene_base_item}`}
                             </p>
                           )}
-                          <div className="flex gap-2">
-                            <input list="unidades-catalogo" value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
-                              placeholder="Unidad (cono, caja, pz...)"
-                              className="campo px-2 py-1.5" />
+                          <label className="etiqueta block">Se compra por (unidad)</label>
+                          <input list="unidades-catalogo" value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
+                            placeholder="Unidad (cono, caja, pz...)"
+                            className="campo w-full px-2 py-1.5" />
+                          <div className="flex gap-2 pt-1">
                             <button onClick={guardarEdicion} className="btn-primario btn-sm flex-1">Guardar</button>
                             <button onClick={() => setEditProd(null)} className="btn-quieto btn-sm">Cancelar</button>
                           </div>

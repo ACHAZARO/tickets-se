@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { PanelDuplicados } from '../unificar'
 
-// "Insumos por revisar": parejas del catalogo que parecen el mismo producto o el mismo insumo en otro tamano.
+// "Articulos por revisar": parejas del catalogo que parecen el mismo producto o el mismo insumo en otro tamano.
 // La base las detecta (sugerir_unificaciones) y aqui se PREGUNTA; nada se une solo.
 
 const AYUDA: { boton: string; estilo: string; texto: string }[] = [
@@ -30,7 +30,7 @@ export default function InsumosPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Insumos por revisar</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Artículos por revisar</h2>
         <p className="nota max-w-2xl">Productos que parecen repetidos. Nada cambia hasta que respondas.</p>
       </div>
 
