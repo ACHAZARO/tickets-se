@@ -72,7 +72,8 @@ export default function ConteoGerentePage({ params }: { params: { slug: string }
       })
       const d = await r.json().catch(() => ({}))
       if (r.status === 401) { setError('Tu sesión venció. Vuelve a entrar con tu PIN; lo capturado se perderá.'); return }
-      if (!r.ok) { setError(d.error ?? 'No se pudo guardar. Intenta de nuevo.'); return }
+      // Solo es 'guardado' si el servidor lo confirma (ok: true); cualquier otra respuesta es error.
+      if (!r.ok || d.ok !== true) { setError(d.error ?? 'No se pudo guardar. Intenta de nuevo.'); return }
       setGuardados(d.guardados ?? renglones.length)
       setEstado('guardado')
     } catch {

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aUnidadBase, unidadesCompatibles, existenciaEstimada, consumoReal, comprasEntre } from './stock.mjs'
+import { readFileSync } from 'node:fs'
+import { aUnidadBase, unidadesCompatibles, existenciaEstimada, consumoReal, comprasEntre, baseDeRenglon, unidadMasComun } from './stock.mjs'
 
 test('aUnidadBase convierte metricas y respeta unidades iguales', () => {
   assert.equal(aUnidadBase(2.5, 'kg', 'g'), 2500)
@@ -47,4 +48,26 @@ test('consumo real = inicial + compras entre conteos - final, con costo promedio
 
 test('comprasEntre excluye el dia del conteo inicial e incluye el final', () => {
   assert.equal(comprasEntre(compras, '2026-09-05', '2026-09-20').cantidad, 5000)
+})
+
+test('baseDeRenglon: misma regla para panel y celular', () => {
+  assert.deepEqual(baseDeRenglon({ nombre: 'Aguacate', unidad_default: 'kg' }, { cantidad: 2 }), { cantidad: 2000, unidad: 'g' })
+  assert.deepEqual(baseDeRenglon({ nombre: 'Leche', unidad_default: 'caja', contiene_cantidad: 12, contiene_unidad: 'lt' }, { cantidad: 1 }), { cantidad: 12000, unidad: 'ml' })
+  assert.deepEqual(baseDeRenglon({ nombre: 'Huevo', unidad_default: null }, { cantidad: 30, unidad: 'pz' }), { cantidad: 30, unidad: 'pz' })
+  assert.deepEqual(baseDeRenglon({ nombre: 'Moto envio', unidad_default: 'servicio' }, { cantidad: 1 }), { servicio: true })
+  assert.equal(baseDeRenglon({ nombre: 'X' }, { cantidad: 0 }), null)
+})
+
+test('unidadMasComun no depende del orden', () => {
+  assert.equal(unidadMasComun({ pz: 1, g: 12 }), 'g')
+  assert.equal(unidadMasComun({ g: 3, pz: 3 }), 'g')
+  assert.equal(unidadMasComun({}), null)
+})
+
+test('las copias para la edge function son identicas', () => {
+  for (const f of ['stock.mjs', 'units.mjs']) {
+    const aqui = readFileSync(new URL('./' + f, import.meta.url), 'utf8')
+    const alla = readFileSync(new URL('../../backend/supabase/functions/_shared/' + f, import.meta.url), 'utf8')
+    assert.equal(alla, aqui, f + ' cambio: copialo a backend/supabase/functions/_shared/')
+  }
 })

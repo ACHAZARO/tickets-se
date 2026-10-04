@@ -6,8 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useOpciones } from '@/lib/opciones'
-import { computeBaseUnits } from '@/lib/units.mjs'
-import { aUnidadBase, unidadesCompatibles, existenciaEstimada, consumoReal } from '@/lib/stock.mjs'
+import { aUnidadBase, unidadesCompatibles, existenciaEstimada, consumoReal, baseDeRenglon, unidadMasComun, fechaMexico } from '@/lib/stock.mjs'
 
 interface Conteo { fecha: string; cantidad: number }
 interface Compra { fecha: string; cantidad: number; monto: number }
@@ -28,11 +27,11 @@ interface Fila {
   unidadPreferida: string | null // unidad del insumo (para capturar)
   compras: Compra[]
   conteos: Conteo[]
+  descartados: number    // compras o conteos en una unidad que no se puede convertir (no se suman: se avisa)
 }
 
-const hoyISO = () => {
-  const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10)
-}
+// Hoy en Mexico (igual que la edge function del gerente), sin importar la zona del navegador.
+const hoyISO = () => fechaMexico()
 const num = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: 2 })
 const fmt = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigits: 0 })
 const fechaCorta = (f: string) => new Date(f + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -82,52 +81,63 @@ export default function StockPage() {
       catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; insumos: { id: string; nombre: string; unidad_base: string } | null } | null
       registros_tickets: { fecha_ticket: string | null; created_at: string } | null
     }
-    const map = new Map<string, Fila & { porProducto: Record<string, number> }>()
+    // 1) Cada renglon a su unidad base con la MISMA regla que usa el celular del gerente (lib/stock.mjs).
+    type Crudo = { fecha: string; cantidad: number; unidad: string | null; monto: number }
+    type Acum = Omit<Fila, 'compras' | 'conteos' | 'descartados' | 'baseUnidad'> & { crudas: Crudo[]; usos: Record<string, number>; porProducto: Record<string, number> }
+    const map = new Map<string, Acum>()
     for (const row of (data as unknown as Row[]) ?? []) {
       const prod = row.catalogo_productos
       if (!prod) continue
-      const compra = (prod.unidad_default ?? row.unidad)?.trim() || null
-      const base = computeBaseUnits({
-        productName: prod.nombre, quantity: Number(row.cantidad ?? 0), purchaseUnit: compra,
-        containsQuantity: prod.contiene_cantidad, containsUnit: prod.contiene_unidad,
-        subQuantity: prod.contiene_sub_cantidad, subUnit: prod.contiene_sub_unidad,
-      })
-      if (!base) continue
-      let unidad = base.source !== 'identity' ? base.unit : compra
-      if (unidad && unidad.toLowerCase() === prod.nombre.toLowerCase()) unidad = null
-      // Los servicios (envios, mantenimiento) no se guardan en bodega: no van al inventario.
-      if (unidad && /^servicios?$/i.test(unidad)) continue
+      const r = baseDeRenglon(prod, row)
+      if (!r || 'servicio' in r) continue   // sin medida, o servicio (envios): no va al inventario
       const insumo = prod.insumos ?? null
       const clave = insumo ? 'i:' + insumo.id : 'p:' + prod.id
-      const f: Fila & { porProducto: Record<string, number> } = map.get(clave) ?? {
+      const f: Acum = map.get(clave) ?? {
         clave, nombre: insumo?.nombre?.trim() || prod.nombre, productoId: prod.id, insumoId: insumo?.id ?? null,
-        presentaciones: [], baseUnidad: unidad, unidadPreferida: insumo?.unidad_base?.trim() || null,
-        compras: [], conteos: [], porProducto: {},
+        presentaciones: [], unidadPreferida: insumo?.unidad_base?.trim() || null, crudas: [], usos: {}, porProducto: {},
       }
       const t = row.registros_tickets
-      f.compras.push({ fecha: t?.fecha_ticket ?? t?.created_at.slice(0, 10) ?? '', cantidad: base.quantity, monto: Number(row.monto ?? 0) })
-      f.porProducto[prod.id] = (f.porProducto[prod.id] ?? 0) + base.quantity
+      const fecha = t?.fecha_ticket ?? (t?.created_at ? fechaMexico(new Date(t.created_at)) : '')
+      f.crudas.push({ fecha, cantidad: r.cantidad, unidad: r.unidad, monto: Number(row.monto ?? 0) })
+      if (r.unidad) f.usos[r.unidad] = (f.usos[r.unidad] ?? 0) + 1
+      f.porProducto[prod.id] = (f.porProducto[prod.id] ?? 0) + 1
       if (insumo && !f.presentaciones.includes(prod.nombre)) f.presentaciones.push(prod.nombre)
-      if (unidad && f.baseUnidad && f.baseUnidad !== unidad) f.baseUnidad = 'mixta'
-      else if (!f.baseUnidad) f.baseUnidad = unidad
       map.set(clave, f)
     }
-    // Conteos guardados (cada uno en la unidad en que se conto) -> unidad base del articulo.
+    // 2) Unidad del articulo = la mas usada (no depende del orden). Lo que no se pueda convertir no se suma: se avisa.
+    const filasMap = new Map<string, Fila>()
+    for (const f of map.values()) {
+      const baseUnidad = unidadMasComun(f.usos)
+      let descartados = 0
+      const compras: Compra[] = []
+      for (const c of f.crudas) {
+        const q = c.unidad ? aUnidadBase(c.cantidad, c.unidad, baseUnidad) : (baseUnidad ? null : c.cantidad)
+        if (q == null) { descartados++; continue }
+        compras.push({ fecha: c.fecha, cantidad: q, monto: c.monto })
+      }
+      filasMap.set(f.clave, {
+        clave: f.clave, nombre: f.nombre, insumoId: f.insumoId, presentaciones: f.presentaciones, unidadPreferida: f.unidadPreferida,
+        productoId: Object.entries(f.porProducto).sort((x, y) => y[1] - x[1])[0]?.[0] ?? f.productoId,
+        baseUnidad, compras, conteos: [], descartados,
+      })
+    }
+    // 3) Conteos guardados (en la unidad en que se contaron) -> unidad del articulo.
     for (const c of (cts as { clave: string; fecha: string; cantidad: number; unidad: string | null }[] | null) ?? []) {
-      const f = map.get(c.clave)
+      const f = filasMap.get(c.clave)
       if (!f) continue
       const q = aUnidadBase(c.cantidad, c.unidad, f.baseUnidad)
-      if (q != null) f.conteos.push({ fecha: c.fecha, cantidad: q })
+      if (q == null) { f.descartados++; continue }
+      f.conteos.push({ fecha: c.fecha, cantidad: q })
     }
-    const list: Fila[] = [...map.values()].map(f => ({
-      ...f, productoId: Object.entries(f.porProducto).sort((a, b) => b[1] - a[1])[0]?.[0] ?? f.productoId,
-    }))
+    const list = [...filasMap.values()]
     list.sort((a, b) => b.compras.length - a.compras.length)
     setFilas(list)
     setLoading(false)
   }, [sucursalId, toast])
 
   useEffect(() => { if (opciones?.usa_stock) fetchData() }, [fetchData, opciones?.usa_stock])
+  // Lo capturado es de UNA sucursal: si cambias de sucursal se descarta (las claves de insumo se repiten entre sucursales).
+  useEffect(() => { setCaptura({}); setVista('existencias'); setPeriodo(null) }, [sucursalId])
 
   // Fechas en que hubo conteo (para elegir el periodo de consumo real)
   const fechas = [...new Set(filas.flatMap(f => f.conteos.map(c => c.fecha)))].sort().reverse()
@@ -191,11 +201,11 @@ export default function StockPage() {
           </ol>
           <p className="nota">Más adelante: recetas y ventas de tu punto de venta, para saber cuánto debió consumirse y encontrar la merma.</p>
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button className="btn-primario" onClick={async () => {
+            {!sucursalId ? <p className="text-sm text-zinc-400">Elige una sucursal arriba para activarlo en su negocio.</p> : <button className="btn-primario" onClick={async () => {
               if (!opciones) return
               const err = await guardar(opciones.cuenta_id, { usa_stock: true })
               if (err) toast('No se pudo activar: ' + err, 'error'); else toast('Stock activado')
-            }}>Activar Stock</button>
+            }}>Activar Stock</button>}
             <Link href="/admin/opciones" className="btn-texto">Ver opciones</Link>
           </div>
         </section>
@@ -241,6 +251,11 @@ export default function StockPage() {
                         {f.nombre}
                         {f.presentaciones.length > 1 && <span className="chip-info ml-2" title={f.presentaciones.join(' · ')}>{f.presentaciones.length} tamaños</span>}
                       </p>
+                      {f.descartados > 0 && (
+                        <p className="text-xs text-amber-400" title="Hay compras o conteos en una unidad que no se puede convertir a la de este artículo. Revisa su unidad en Configuración › Artículos.">
+                          {f.descartados} {f.descartados === 1 ? 'registro' : 'registros'} en otra unidad no se sumaron
+                        </p>
+                      )}
                       <p className="text-xs text-zinc-500">
                         {e.ultimo
                           ? `Contado ${mostrar(e.ultimo.cantidad, f.baseUnidad)} el ${fechaCorta(e.ultimo.fecha)}${despues ? ` · + ${mostrar(despues, f.baseUnidad)} comprado después` : ''}`
@@ -258,7 +273,7 @@ export default function StockPage() {
             </div>
           ) : vista === 'contar' ? (
             <div className="space-y-4">
-              <Consejo>Cuenta lo que hay en físico en tu sucursal. Si algo ya no hay, pon 0. Lo que dejes vacío no se cuenta. Puedes guardar por partes: contar dos veces el mismo día actualiza.</Consejo>
+              <Consejo>Cuenta al cierre del día lo que hay en físico (lo comprado ese día ya debe estar). Si algo ya no hay, pon 0; lo que dejes vacío no se cuenta. Puedes guardar por partes: contar dos veces el mismo día actualiza.</Consejo>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="space-y-1">
                   <span className="etiqueta block">Fecha del conteo</span>
@@ -268,7 +283,7 @@ export default function StockPage() {
               </div>
               <div className="tarjeta divide-y divide-zinc-800/60">
                 {filtradas.map(f => {
-                  const unidades = unidadesCompatibles(f.baseUnidad === 'mixta' ? null : f.baseUnidad)
+                  const unidades = unidadesCompatibles(f.baseUnidad)
                   const pref = f.unidadPreferida && unidades.includes(f.unidadPreferida) ? f.unidadPreferida : unidades[0] ?? ''
                   const c = captura[f.clave] ?? { cantidad: '', unidad: pref }
                   const e = existenciaEstimada(f.conteos, f.compras)

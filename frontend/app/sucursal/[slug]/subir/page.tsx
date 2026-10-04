@@ -116,7 +116,7 @@ export default function SubirPage({ params }: PageProps) {
   const [puedeContar, setPuedeContar] = useState(false)
   useEffect(() => {
     if (!sessionToken) return
-    fetch(`${EDGE_FUNCTIONS_URL}/conteo-gerente`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+    fetch(`${EDGE_FUNCTIONS_URL}/conteo-gerente?estado=1`, { headers: { Authorization: `Bearer ${sessionToken}` } })
       .then(r => r.ok ? r.json() : null).then(d => setPuedeContar(!!d?.habilitado)).catch(() => {})
   }, [sessionToken])
 
