@@ -216,6 +216,7 @@ export async function leerTicketConGemini(opts: {
   prompt: string
   deadlineMs?: number
   modelos?: string[] // fuerza estos modelos (p.ej. para comparar); por defecto modelosCandidatos()
+  imagenesExtra?: { data: string; mimeType: string }[] // fotos adicionales (p.ej. revisar-precio compara 2 tickets)
 }): Promise<LecturaIA> {
   const apiKey = Deno.env.get('GEMINI_API_KEY') ?? ''
   const limite = Date.now() + (opts.deadlineMs ?? 110_000)
@@ -251,6 +252,7 @@ export async function leerTicketConGemini(opts: {
                 role: 'user',
                 parts: [
                   { inline_data: { mime_type: opts.mimeType, data: opts.imagenBase64 } },
+                  ...(opts.imagenesExtra ?? []).map(i => ({ inline_data: { mime_type: i.mimeType, data: i.data } })),
                   { text: opts.prompt },
                 ],
               }],

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
 import { EditorArticulo, EditorRenglon } from '../editores'
+import { useToast } from '../ui'
 import { FotoTicket, type EjemploTicket } from '../unificar'
 
 // Cada punto guarda de que ticket salio, para poder ver la foto y abrir el ticket (Ver tickets).
@@ -13,6 +14,24 @@ interface Punto {
   ticketId: string; itemId: string; descripcion: string | null; cantidad: number; unidad: string | null; monto: number
   comercio: string | null; bucket: string | null; path: string | null
 }
+// Revision de una alerta de precio (edge function revisar-precio). La IA propone; quien revisa aplica.
+interface Revision {
+  estado: 'cargando' | 'listo' | 'error'
+  error?: string
+  veredicto?: 'falsa_alarma' | 'subida_real' | 'otro_articulo' | 'no_se'
+  explicacion?: string
+  modelo?: string
+  correcciones?: { item_id: string; renglon: string; cantidad: number; unidad: string | null }[]
+  equivalencia?: { producto_id: string; contiene_cantidad: number; contiene_unidad: string } | null
+}
+const UMBRAL_IA = 100 // % de variacion a partir del cual vale la pena preguntarle a la IA
+const VEREDICTO: Record<string, { texto: string; chip: string }> = {
+  falsa_alarma: { texto: 'Falsa alarma', chip: 'chip-bien' },
+  subida_real: { texto: 'Subida real', chip: 'chip-mal' },
+  otro_articulo: { texto: 'Son artículos distintos', chip: 'chip-revisar' },
+  no_se: { texto: 'La IA no está segura', chip: 'chip-neutro' },
+}
+
 interface ProdPrecio {
   nombre: string
   productoId: string | null // articulo del catalogo (para "Editar artículo")
@@ -21,6 +40,7 @@ interface ProdPrecio {
   ultimo: number
   anterior: number | null
   variacion: number | null // % vs anterior
+  par: string | null        // 'itemAnterior|itemUltimo' (para recordar lo revisado)
 }
 
 const fmt = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigits: 2 })
@@ -61,6 +81,10 @@ export default function PreciosPage() {
   const [viendo, setViendo] = useState<string | null>(null) // producto con "Ver tickets" abierto
   const [editandoArt, setEditandoArt] = useState<string | null>(null)       // panel lateral: articulo
   const [editandoRenglon, setEditandoRenglon] = useState<string | null>(null) // panel lateral: renglon
+  const toast = useToast()
+  const [revisiones, setRevisiones] = useState<Record<string, Revision>>({})   // por nombre de articulo
+  const [revisados, setRevisados] = useState<Record<string, string>>({})       // par -> veredicto guardado
+  const [revisandoTodo, setRevisandoTodo] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -82,7 +106,7 @@ export default function PreciosPage() {
       if (!nombre) continue
       const key = nombre.toLowerCase()
       const unidad = row.catalogo_productos?.unidad_default ?? row.unidad ?? null
-      if (!map.has(key)) map.set(key, { nombre, productoId: row.producto_catalogo_id, unidad, puntos: [], ultimo: 0, anterior: null, variacion: null })
+      if (!map.has(key)) map.set(key, { nombre, productoId: row.producto_catalogo_id, unidad, puntos: [], ultimo: 0, anterior: null, variacion: null, par: null })
       const t = row.registros_tickets
       map.get(key)!.puntos.push({
         precio: monto / cant, fecha: t?.fecha_ticket ?? null, created_at: t?.created_at ?? '',
@@ -99,12 +123,106 @@ export default function PreciosPage() {
       p.ultimo = p.puntos[n - 1].precio
       p.anterior = n >= 2 ? p.puntos[n - 2].precio : null
       p.variacion = p.anterior && p.anterior > 0 ? ((p.ultimo - p.anterior) / p.anterior) * 100 : null
+      p.par = n >= 2 ? `${p.puntos[n - 2].itemId}|${p.puntos[n - 1].itemId}` : null
       list.push(p)
     }
     list.sort((a, b) => Math.abs(b.variacion ?? 0) - Math.abs(a.variacion ?? 0) || b.ultimo - a.ultimo)
     setProds(list)
+    // Pares (anterior, ultimo) que ya se revisaron: no vuelven a alarmar.
+    const { data: rev } = await supabase.from('precios_revisados').select('item_anterior, item_ultimo, veredicto')
+    setRevisados(Object.fromEntries(((rev as { item_anterior: string; item_ultimo: string; veredicto: string }[] | null) ?? [])
+      .map(r => [`${r.item_anterior}|${r.item_ultimo}`, r.veredicto])))
     setLoading(false)
   }, [sucursalId])
+
+  const pendienteIA = (p: ProdPrecio) => p.par != null && p.variacion != null && Math.abs(p.variacion) >= UMBRAL_IA && !revisados[p.par]
+
+  async function revisarConIA(p: ProdPrecio) {
+    if (!p.par) return
+    const [item_anterior, item_ultimo] = p.par.split('|')
+    setRevisiones(r => ({ ...r, [p.nombre]: { estado: 'cargando' } }))
+    const { data, error } = await supabase.functions.invoke('revisar-precio', { body: { item_anterior, item_ultimo } })
+    if (error || !data?.ok) {
+      let msg = data?.error ?? 'No se pudo revisar'
+      try { const ctx = (error as { context?: Response } | null)?.context; if (ctx) msg = (await ctx.json()).error ?? msg } catch { /* sin cuerpo */ }
+      setRevisiones(r => ({ ...r, [p.nombre]: { estado: 'error', error: msg } }))
+      return
+    }
+    setRevisiones(r => ({ ...r, [p.nombre]: { estado: 'listo', ...data } }))
+  }
+
+  async function revisarTodas() {
+    const lista = prods.filter(pendienteIA)
+    if (lista.length === 0) return
+    setRevisandoTodo(true)
+    // De 2 en 2 para no saturar la cuota de la IA.
+    for (let i = 0; i < lista.length; i += 2) await Promise.all(lista.slice(i, i + 2).map(revisarConIA))
+    setRevisandoTodo(false)
+  }
+
+  async function guardarVeredicto(p: ProdPrecio, veredicto: 'subida_real' | 'corregido' | 'otro_articulo', rv?: Revision) {
+    if (!p.par) return false
+    const [item_anterior, item_ultimo] = p.par.split('|')
+    const { data: { session } } = await supabase.auth.getSession()
+    const { error } = await supabase.from('precios_revisados').upsert({
+      item_anterior, item_ultimo, veredicto, explicacion: rv?.explicacion ?? null, modelo: rv?.modelo ?? null,
+      revisado_por: session?.user?.email ?? 'admin',
+    }, { onConflict: 'item_anterior,item_ultimo' })
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return false }
+    return true
+  }
+
+  async function aplicarCorreccion(p: ProdPrecio, rv: Revision) {
+    for (const c of rv.correcciones ?? []) {
+      const { error } = await supabase.from('ticket_items').update({ cantidad: c.cantidad, unidad: c.unidad }).eq('id', c.item_id)
+      if (error) { toast('No se pudo corregir el renglón: ' + error.message, 'error'); return }
+    }
+    if (rv.equivalencia) {
+      const { error } = await supabase.from('catalogo_productos')
+        .update({ contiene_cantidad: rv.equivalencia.contiene_cantidad, contiene_unidad: rv.equivalencia.contiene_unidad })
+        .eq('id', rv.equivalencia.producto_id).is('contiene_sub_cantidad', null)
+      if (error) { toast('No se pudo guardar la equivalencia: ' + error.message, 'error'); return }
+    }
+    // Si corregimos un renglon, el par cambia de precio: se guarda igual para no volver a alarmar por lo mismo.
+    if (!(await guardarVeredicto(p, 'corregido', rv))) return
+    toast(`«${p.nombre}» corregido`)
+    setRevisiones(r => { const n = { ...r }; delete n[p.nombre]; return n })
+    fetchData()
+  }
+
+  async function marcar(p: ProdPrecio, veredicto: 'subida_real' | 'otro_articulo', rv?: Revision) {
+    if (!(await guardarVeredicto(p, veredicto, rv))) return
+    toast(veredicto === 'subida_real' ? 'Marcada como subida real: ya no alarma' : 'Anotado: son artículos distintos')
+    setRevisiones(r => { const n = { ...r }; delete n[p.nombre]; return n })
+    setRevisados(x => ({ ...x, [p.par!]: veredicto }))
+  }
+
+  // Tarjeta con lo que dijo la IA y lo que se puede hacer.
+  const tarjetaRevision = (p: ProdPrecio, rv: Revision) => {
+    if (rv.estado === 'cargando') return <p className="flex items-center gap-2 text-sm text-zinc-400"><span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" />La IA está revisando las fotos…</p>
+    if (rv.estado === 'error') return <p className="text-sm text-red-400">{rv.error} <button onClick={() => revisarConIA(p)} className="btn-texto btn-sm">Reintentar</button></p>
+    const v = VEREDICTO[rv.veredicto ?? 'no_se']
+    const hayCorreccion = (rv.correcciones?.length ?? 0) > 0 || !!rv.equivalencia
+    return (
+      <div className="space-y-2.5">
+        <p className="text-sm text-zinc-200"><span className={`${v.chip} mr-2`}>{v.texto}</span>{rv.explicacion}</p>
+        {hayCorreccion && (
+          <ul className="space-y-0.5 text-[13px] text-zinc-400">
+            {rv.correcciones?.map(c => <li key={c.item_id}>Corregir el renglón {c.renglon}: {c.cantidad} {c.unidad ?? ''}</li>)}
+            {rv.equivalencia && <li>Guardar en el artículo: 1 {p.unidad ?? 'unidad'} trae {rv.equivalencia.contiene_cantidad} {rv.equivalencia.contiene_unidad}</li>}
+          </ul>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {hayCorreccion && <button onClick={() => aplicarCorreccion(p, rv)} className="btn-primario btn-sm">Aplicar corrección</button>}
+          {rv.veredicto === 'otro_articulo' && p.par && (
+            <button onClick={() => setEditandoRenglon(p.par!.split('|')[1])} className="btn-secundario btn-sm">Corregir renglón</button>
+          )}
+          <button onClick={() => marcar(p, 'subida_real', rv)} className={`${hayCorreccion ? 'btn-quieto' : 'btn-secundario'} btn-sm`}>Es subida real</button>
+          {!hayCorreccion && rv.veredicto !== 'subida_real' && <button onClick={() => setViendo(p.nombre)} className="btn-texto btn-sm">Ver tickets</button>}
+        </div>
+      </div>
+    )
+  }
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -123,11 +241,29 @@ export default function PreciosPage() {
       <div className="flex flex-wrap items-center gap-3">
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"
           className="campo flex-1 min-w-[180px]" />
+        {prods.some(pendienteIA) && (
+          <button onClick={revisarTodas} disabled={revisandoTodo} className="btn-secundario"
+            title="La IA mira las fotos de las variaciones de 100% o más y dice si es una medida mal tomada o una subida real">
+            {revisandoTodo ? 'Revisando…' : `Revisar alertas con IA (${prods.filter(pendienteIA).length})`}
+          </button>
+        )}
         <label className="flex items-center gap-2 text-sm text-zinc-400">
           <input type="checkbox" checked={soloCambios} onChange={e => setSoloCambios(e.target.checked)} className="accent-emerald-500" />
           Solo cambios ≥15%
         </label>
       </div>
+
+      {prods.some(p => revisiones[p.nombre] && p.nombre !== abierto) && (
+        <section className="tarjeta divide-y divide-zinc-800">
+          <h3 className="px-4 py-3 text-sm font-semibold text-zinc-100">Revisión de la IA</h3>
+          {prods.filter(p => revisiones[p.nombre] && p.nombre !== abierto).map(p => (
+            <div key={p.nombre} className="space-y-2 px-4 py-3">
+              <p className="text-sm font-medium text-zinc-100">{p.nombre} <span className="font-normal text-zinc-500">· {p.anterior != null ? fmt(p.anterior) : '—'} → {fmt(p.ultimo)}</span></p>
+              {tarjetaRevision(p, revisiones[p.nombre])}
+            </div>
+          ))}
+        </section>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
@@ -148,7 +284,8 @@ export default function PreciosPage() {
             <tbody>
               {filtrados.map(p => {
                 const sube = (p.variacion ?? 0) > 0
-                const fuerte = p.variacion != null && Math.abs(p.variacion) >= 40
+                const veredictoGuardado = p.par ? revisados[p.par] : undefined
+                const fuerte = p.variacion != null && Math.abs(p.variacion) >= 40 && !veredictoGuardado
                 const exp = abierto === p.nombre
                 return (
                   <Fragment key={p.nombre}>
@@ -159,6 +296,8 @@ export default function PreciosPage() {
                       <td className="px-4 py-2.5 text-right text-zinc-500">{p.anterior != null ? fmt(p.anterior) : '—'}</td>
                       <td className={`px-4 py-2.5 text-right ${p.variacion == null ? 'text-zinc-500' : fuerte ? (sube ? 'text-red-400 font-semibold' : 'text-emerald-400 font-semibold') : sube ? 'text-amber-400' : 'text-zinc-400'}`}>
                         {p.variacion == null ? '—' : `${sube ? '▲' : '▼'} ${Math.abs(p.variacion).toFixed(0)}%`}
+                        {veredictoGuardado && <span className="block text-xs font-normal text-zinc-500">{veredictoGuardado === 'subida_real' ? 'subida real' : veredictoGuardado === 'corregido' ? 'corregido' : 'otro artículo'}</span>}
+                        {!veredictoGuardado && pendienteIA(p) && <span className="block text-xs font-normal text-amber-400">¿falsa alarma?</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right text-zinc-500">{p.puntos.length}</td>
                     </tr>
@@ -168,6 +307,12 @@ export default function PreciosPage() {
                           {/* La tabla es mas ancha que el celular: este bloque se queda del ancho de la pantalla */}
                           <div className="sticky left-4 w-[calc(100vw-4rem)] space-y-3 md:static md:w-auto">
                           <Sparkline puntos={p.puntos} />
+                          {revisiones[p.nombre]
+                            ? <div className="rounded-lg bg-zinc-900 p-3">{tarjetaRevision(p, revisiones[p.nombre])}</div>
+                            : pendienteIA(p) && (
+                              <button type="button" onClick={() => revisarConIA(p)} className="btn-secundario btn-sm"
+                                title="La IA mira las dos fotos y dice si es una medida mal tomada o una subida real">Revisar con IA</button>
+                            )}
                           <div className="flex flex-wrap items-center gap-2">
                             {p.puntos.length >= 1 && (
                               <button type="button" onClick={() => setViendo(viendo === p.nombre ? null : p.nombre)} className="btn-texto btn-sm -ml-2">
