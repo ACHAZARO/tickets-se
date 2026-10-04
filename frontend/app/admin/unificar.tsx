@@ -105,8 +105,8 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
     const mio = ++seq.current
     const sug = await pedirSugerencias(sucursalId)
     if (mio !== seq.current) return
-    // TODO lo pendiente, incluidos los "menos seguros": el numero no debe esconder trabajo por revisar.
-    setN(sug.length)
+    // TODO lo pendiente, incluidos los "menos seguros"; se cuentan GRUPOS (un articulo en varias parejas = 1 revision).
+    setN(agrupar(sug).length)
   }, [sucursalId])
   useEffect(() => { cargar() }, [cargar, pathname])
   useEffect(() => {
@@ -115,7 +115,7 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
   }, [cargar])
   if (!n) return null
   return (
-    <span title={`${n} productos del catalogo por revisar`}
+    <span title={`${n} grupos de artículos por revisar`}
       className="ml-1.5 inline-flex min-w-[18px] justify-center rounded-full bg-amber-600 px-1.5 text-xs font-semibold leading-[18px] text-white">{n}</span>
   )
 }
@@ -179,14 +179,49 @@ export async function ejemplosDe(productoId: string, max = 40): Promise<EjemploT
   return aEjemplos(porTexto)
 }
 
-// Escoge un ticket para cada lado que NO sea la misma foto: el chiste es ver un ticket con cada nombre.
-function elegirPar(as: EjemploTicket[], bs: EjemploTicket[]): { a: EjemploTicket | null; b: EjemploTicket | null } {
-  for (const x of as) {
-    const y = bs.find(e => e.path !== x.path)
-    if (y) return { a: x, b: y }
-  }
-  if (as.length) return { a: as[0], b: null }
-  return { a: null, b: bs[0] ?? null }
+// --------------------------------------------------------------------------------------------------------------
+// GRUPOS: la base devuelve PAREJAS ("Sal fina"~"Sal 1 kg", "Sal fina"~"Sal La Fina 1.1 kg"). Si un articulo sale en
+// varias, se juntan en UN grupo (union de parejas conectadas) para revisarlo una sola vez.
+// --------------------------------------------------------------------------------------------------------------
+export interface Grupo {
+  clave: string
+  productos: ProdSug[]
+  pares: Sugerencia[]
+  motivo: Sugerencia['motivo']   // el mas seguro del grupo
+  categoria_id: string
+  sucursal_id: string | null
+  insumo_sugerido: string
+  unidad_base_sugerida: string
+}
+const RANGO: Record<Sugerencia['motivo'], number> = { sinonimo: 0, igual: 1, presentacion: 2, parecido: 3 }
+
+export function agrupar(sug: Sugerencia[]): Grupo[] {
+  const padre = new Map<string, string>()
+  const raiz = (x: string): string => { const p = padre.get(x) ?? x; if (p === x) return x; const r = raiz(p); padre.set(x, r); return r }
+  for (const s of sug) { padre.set(s.a.id, raiz(s.a.id)); padre.set(s.b.id, raiz(s.b.id)); padre.set(raiz(s.a.id), raiz(s.b.id)) }
+  const porRaiz = new Map<string, Sugerencia[]>()
+  for (const s of sug) { const r = raiz(s.a.id); porRaiz.set(r, [...(porRaiz.get(r) ?? []), s]) }
+  return [...porRaiz.values()].map(pares => {
+    const prods = new Map<string, ProdSug>()
+    for (const s of pares) { prods.set(s.a.id, s.a); prods.set(s.b.id, s.b) }
+    const mejor = [...pares].sort((x, y) => RANGO[x.motivo] - RANGO[y.motivo])[0]
+    const productos = [...prods.values()].sort((x, y) => y.usos - x.usos || x.nombre.localeCompare(y.nombre))
+    return {
+      clave: productos.map(p => p.id).sort().join('|'), productos, pares, motivo: mejor.motivo,
+      categoria_id: mejor.categoria_id, sucursal_id: mejor.sucursal_id,
+      insumo_sugerido: mejor.insumo_sugerido, unidad_base_sugerida: mejor.unidad_base_sugerida,
+    }
+  }).sort((a, b) => RANGO[a.motivo] - RANGO[b.motivo] || b.pares.reduce((s, p) => s + p.gasto_total, 0) - a.pares.reduce((s, p) => s + p.gasto_total, 0))
+}
+
+// Una foto por articulo, sin repetir la misma foto entre articulos (el chiste es ver un ticket con cada nombre).
+function elegirFotos(listas: EjemploTicket[][]): (EjemploTicket | null)[] {
+  const usadas = new Set<string>()
+  return listas.map(l => {
+    const e = l.find(x => x.path && !usadas.has(x.path)) ?? null
+    if (e?.path) usadas.add(e.path)
+    return e
+  })
 }
 
 /** Una columna de "Ver tickets": nombre + foto. Toca la foto para verla completa. */
@@ -221,17 +256,18 @@ export function FotoTicket({ nombre, ej }: { nombre: string; ej: EjemploTicket |
   )
 }
 
-function CompararTickets({ a, b }: { a: ProdSug; b: ProdSug }) {
-  const [par, setPar] = useState<{ a: EjemploTicket | null; b: EjemploTicket | null } | null>(null)
+function CompararTickets({ productos }: { productos: ProdSug[] }) {
+  const [fotos, setFotos] = useState<(EjemploTicket | null)[] | null>(null)
+  const ids = productos.map(p => p.id).join(',')
   useEffect(() => {
     let vivo = true
-    Promise.all([ejemplosDe(a.id), ejemplosDe(b.id)]).then(([ea, eb]) => { if (vivo) setPar(elegirPar(ea, eb)) })
+    Promise.all(productos.map(p => ejemplosDe(p.id))).then(l => { if (vivo) setFotos(elegirFotos(l)) })
     return () => { vivo = false }
-  }, [a.id, b.id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids])
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-lg bg-zinc-800/50 p-2">
-      <FotoTicket nombre={a.nombre} ej={par ? par.a : undefined} />
-      <FotoTicket nombre={b.nombre} ej={par ? par.b : undefined} />
+    <div className={`grid gap-3 rounded-lg bg-zinc-800/50 p-2 ${productos.length > 2 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
+      {productos.map((p, i) => <FotoTicket key={p.id} nombre={p.nombre} ej={fotos ? fotos[i] : undefined} />)}
     </div>
   )
 }
@@ -239,11 +275,10 @@ function CompararTickets({ a, b }: { a: ProdSug; b: ProdSug }) {
 interface FormInsumo {
   nombre: string
   unidadBase: string
-  a: { cantidad: string; unidad: string }
-  b: { cantidad: string; unidad: string }
+  trae: Record<string, { cantidad: string; unidad: string }>   // por articulo: cuanto trae cada uno
 }
 
-/** Panel de Cerebro: lo que el catalogo tiene repetido, con la pregunta de que hacer. */
+/** Panel de "Articulos por revisar": grupos de articulos que parecen repetidos, con la pregunta de que hacer. */
 export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: string; nombre: string }[]; onCambio: () => void }) {
   const { sucursalId, sucursales } = useSucursal()
   const toast = useToast()
@@ -252,8 +287,8 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const [verQuiza, setVerQuiza] = useState<boolean | null>(null)   // null = automatico (abierto si son pocos)
   const [busy, setBusy] = useState<string | null>(null)
   const [form, setForm] = useState<Record<string, FormInsumo>>({})
-  const [viendo, setViendo] = useState<Record<string, boolean>>({})   // tarjetas con "Ver tickets" abierto
-  const [eligiendo, setEligiendo] = useState<Record<string, boolean>>({}) // tarjetas con "Unificar" abierto
+  const [viendo, setViendo] = useState<Record<string, boolean>>({})   // grupos con "Ver tickets" abierto
+  const [eligiendo, setEligiendo] = useState<Record<string, boolean>>({}) // grupos con "Unificar" abierto
   // Insumos que ya existen: al nombrar uno se sugieren para no crear "Huevo" dos veces.
   const [insumos, setInsumos] = useState<{ id: string; nombre: string; unidad_base: string; sucursal_id: string | null }[]>([])
 
@@ -271,10 +306,10 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
 
   if (!sug) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
   if (sug.length === 0) return <p className="tarjeta px-4 py-6 text-sm text-zinc-400">Todo en orden: no hay artículos por revisar.</p>
-  const clave = (s: Sugerencia) => s.a.id + s.b.id
-  const mismos = sug.filter(s => s.motivo === 'sinonimo' || s.motivo === 'igual')
-  const tamanos = sug.filter(s => s.motivo === 'presentacion')
-  const quiza = sug.filter(s => s.motivo === 'parecido')
+  const grupos = agrupar(sug)
+  const mismos = grupos.filter(g => g.motivo === 'sinonimo' || g.motivo === 'igual')
+  const tamanos = grupos.filter(g => g.motivo === 'presentacion')
+  const quiza = grupos.filter(g => g.motivo === 'parecido')
 
   // Con pocos casos se muestran abiertos; con muchos (ej. 44 en Wings) se colapsan para no llenar la pantalla.
   const abiertoPorDefecto = quiza.length <= 10
@@ -282,197 +317,223 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   const nombreSuc = (id: string | null) => (id ? sucursales.find(x => x.id === id)?.nombre : null) ?? 'Todas las sucursales'
   const nombreCat = (id: string) => categorias.find(c => c.id === id)?.nombre ?? 'sin categoria'
 
-  async function unir(s: Sugerencia, origen: ProdSug, destino: ProdSug) {
-    const ok = await confirm(
-      `¿Unificar bajo "${destino.nombre}"?\n\nLas ${origen.usos} ${origen.usos === 1 ? 'compra' : 'compras'} de "${origen.nombre}" (${fmt(origen.gasto)}) pasan a "${destino.nombre}". ` +
-      `Cuando la IA lea "${origen.nombre}" en un ticket, lo guardará como "${destino.nombre}". Queda respaldo.`)
-    if (!ok) return
-    setBusy(clave(s))
-    const r = await unificarProductos(origen.id, destino.id)
-    setBusy(null)
-    if (!r.ok) { toast('No se pudo unificar: ' + r.error, 'error'); return }
-    toast(`Unificado: ${r.renglones} renglones ahora en "${destino.nombre}"`)
-    await cargar(); onCambio()
-  }
-
-  async function noSonIguales(s: Sugerencia) {
-    setBusy(clave(s))
-    const err = await descartarUnificacion(s.a.id, s.b.id)
-    setBusy(null)
-    if (err) { toast('No se pudo guardar: ' + err, 'error'); return }
-    toast(`Listo: "${s.a.nombre}" y "${s.b.nombre}" quedan separados`)
-    await cargar()
-  }
-
   const cerrarPaneles = (k: string) => {
     setEligiendo(e => ({ ...e, [k]: false }))
     setForm(f => { const n = { ...f }; delete n[k]; return n })
   }
 
-  function abrirForm(s: Sugerencia) {
-    const k = clave(s)
-    setEligiendo(e => ({ ...e, [k]: false }))
-    const base = baseInicial(s.unidad_base_sugerida)
-    const de = (p: ProdSug) => p.contiene && compatibles(base).includes(p.contiene.unidad)
-      ? { cantidad: String(p.contiene.cantidad), unidad: p.contiene.unidad }
-      : { cantidad: '', unidad: base }
-    setForm(f => ({ ...f, [k]: { nombre: s.insumo_sugerido, unidadBase: base, a: de(s.a), b: de(s.b) } }))
+  // Unificar el grupo: todos pasan al articulo elegido.
+  async function unir(g: Grupo, destino: ProdSug) {
+    const otros = g.productos.filter(p => p.id !== destino.id)
+    const compras = otros.reduce((s, p) => s + p.usos, 0)
+    const ok = await confirm(
+      `¿Unificar bajo "${destino.nombre}"?\n\nLas ${compras} ${compras === 1 ? 'compra' : 'compras'} de ${otros.map(p => `"${p.nombre}"`).join(', ')} pasan a "${destino.nombre}". ` +
+      `Cuando la IA lea esos nombres en un ticket, los guardará como "${destino.nombre}". Queda respaldo.`)
+    if (!ok) return
+    setBusy(g.clave)
+    let renglones = 0
+    for (const o of otros) {
+      const r = await unificarProductos(o.id, destino.id)
+      if (!r.ok) { setBusy(null); toast(`No se pudo unificar "${o.nombre}": ${r.error}`, 'error'); await cargar(); onCambio(); return }
+      renglones += r.renglones
+    }
+    setBusy(null)
+    toast(`Unificado: ${renglones} renglones ahora en "${destino.nombre}"`)
+    await cargar(); onCambio()
+  }
+
+  // "No son iguales": descarta las parejas del grupo (todas, o solo las de un articulo si se saca del grupo).
+  async function descartar(g: Grupo, soloProducto?: ProdSug) {
+    const pares = soloProducto ? g.pares.filter(s => s.a.id === soloProducto.id || s.b.id === soloProducto.id) : g.pares
+    setBusy(g.clave)
+    for (const s of pares) {
+      const err = await descartarUnificacion(s.a.id, s.b.id)
+      if (err) { setBusy(null); toast('No se pudo guardar: ' + err, 'error'); await cargar(); return }
+    }
+    setBusy(null)
+    toast(soloProducto ? `«${soloProducto.nombre}» salió del grupo` : 'Listo: quedan separados')
+    await cargar()
+  }
+
+  function abrirForm(g: Grupo) {
+    setEligiendo(e => ({ ...e, [g.clave]: false }))
+    const base = baseInicial(g.unidad_base_sugerida)
+    const trae: FormInsumo['trae'] = {}
+    for (const p of g.productos) {
+      trae[p.id] = p.contiene && compatibles(base).includes(p.contiene.unidad)
+        ? { cantidad: String(p.contiene.cantidad), unidad: p.contiene.unidad }
+        : { cantidad: '', unidad: base }
+    }
+    setForm(f => ({ ...f, [g.clave]: { nombre: g.insumo_sugerido, unidadBase: base, trae } }))
   }
 
   // Al cambiar la unidad del insumo, lo que traiga cada presentacion se pasa a una unidad compatible.
   function cambiarBase(k: string, base: string) {
     setForm(fs => {
       const f = fs[k]
-      const ajusta = (l: { cantidad: string; unidad: string }) => compatibles(base).includes(l.unidad) ? l : { cantidad: '', unidad: base }
-      return { ...fs, [k]: { ...f, unidadBase: base, a: ajusta(f.a), b: ajusta(f.b) } }
+      const trae = Object.fromEntries(Object.entries(f.trae).map(([id, l]) => [id, compatibles(base).includes(l.unidad) ? l : { cantidad: '', unidad: base }]))
+      return { ...fs, [k]: { ...f, unidadBase: base, trae } }
     })
   }
 
-  async function guardarInsumo(s: Sugerencia) {
-    const k = clave(s)
-    const f = form[k]
+  async function guardarInsumo(g: Grupo) {
+    const f = form[g.clave]
     if (!f || !f.nombre.trim()) { toast('Escribe el nombre del insumo', 'error'); return }
     // contenidos: cantidad en la unidad elegida; el inventario la convierte a la unidad del insumo
     const contenidos: { producto_id: string; cantidad: number; unidad: string }[] = []
-    for (const [prod, campo] of [[s.a, f.a], [s.b, f.b]] as const) {
-      const c = Number(campo.cantidad)
-      if (campo.cantidad.trim() && (!Number.isFinite(c) || c <= 0)) { toast(`Cantidad invalida en "${prod.nombre}"`, 'error'); return }
-      if (Number.isFinite(c) && c > 0 && campo.unidad.trim()) contenidos.push({ producto_id: prod.id, cantidad: c, unidad: campo.unidad.trim() })
+    for (const p of g.productos) {
+      const campo = f.trae[p.id]
+      const c = Number(campo?.cantidad)
+      if (campo?.cantidad.trim() && (!Number.isFinite(c) || c <= 0)) { toast(`Cantidad inválida en "${p.nombre}"`, 'error'); return }
+      if (campo && Number.isFinite(c) && c > 0 && campo.unidad.trim()) contenidos.push({ producto_id: p.id, cantidad: c, unidad: campo.unidad.trim() })
     }
-    setBusy(k)
-    const r = await agruparInsumo([s.a.id, s.b.id], f.nombre.trim(), f.unidadBase, contenidos)
+    setBusy(g.clave)
+    const r = await agruparInsumo(g.productos.map(p => p.id), f.nombre.trim(), f.unidadBase, contenidos)
     setBusy(null)
     if (!r.ok) { toast('No se pudo guardar: ' + r.error, 'error'); return }
-    toast(`"${f.nombre.trim()}" quedo como un solo insumo (${f.unidadBase})`)
-    setForm(fs => { const n = { ...fs }; delete n[k]; return n })
+    toast(`"${f.nombre.trim()}" quedó como un solo insumo (${f.unidadBase})`)
+    cerrarPaneles(g.clave)
     await cargar(); onCambio()
   }
 
-  const tarjeta = (s: Sugerencia) => {
-    const k = clave(s)
+  const tarjeta = (g: Grupo) => {
+    const k = g.clave
     const f = form[k]
     const unificando = !!eligiendo[k]
     const ocupado = busy === k
+    const varios = g.productos.length > 2
     const toggleTickets = (
       <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))} className="btn-texto btn-sm sm:ml-auto">
         {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
       </button>
     )
-    const atras = (
-      <button type="button" onClick={() => cerrarPaneles(k)} className="btn-quieto btn-sm">Atrás</button>
-    )
-
-    const prod = (p: ProdSug) => (
-      <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-medium text-zinc-100 break-words">{p.nombre}</p>
-        <p className="text-[13px] text-zinc-500">
-          {p.unidad ?? 'sin unidad'} · {p.usos} {p.usos === 1 ? 'compra' : 'compras'} · {fmt(p.gasto)}
-          {p.contiene ? ` · trae ${p.contiene.cantidad} ${p.contiene.unidad}` : ''}
-        </p>
-      </div>
-    )
-
-    const campos = (lado: 'a' | 'b', p: ProdSug) => (
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-        <span className="text-sm text-zinc-200 break-words sm:min-w-0 sm:flex-1">{p.nombre} trae</span>
-        <div className="flex items-center gap-2">
-          <input value={f[lado].cantidad} inputMode="decimal" placeholder="cantidad" aria-label={`Cuánto trae ${p.nombre}`}
-            onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], cantidad: e.target.value } } }))}
-            className="campo w-28 py-1.5" />
-          <select value={f[lado].unidad} aria-label={`Unidad de ${p.nombre}`}
-            onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], unidad: e.target.value } } }))}
-            className="campo py-1.5">
-            {compatibles(f.unidadBase).map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
-      </div>
-    )
+    const atras = <button type="button" onClick={() => cerrarPaneles(k)} className="btn-quieto btn-sm">Atrás</button>
 
     return (
-      <div key={k} className="tarjeta p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">{prod(s.a)}<span className="hidden sm:block text-[13px] text-zinc-500 self-center" aria-hidden>vs</span>{prod(s.b)}</div>
-        <p className="nota">
-          <span className="font-medium text-zinc-400">Por qué aparece: </span>{MOTIVO_TEXTO[s.motivo]}. · {nombreCat(s.categoria_id)} · {nombreSuc(s.sucursal_id)}
-        </p>
+      <div key={k} className="tarjeta overflow-hidden">
+        {/* Barra de titulo: los articulos del grupo. Con las fotos abiertas, aqui mismo se cierran (▲). */}
+        <div className="flex items-start gap-3 px-4 pt-4">
+          <ul className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-x-6">
+            {g.productos.map((p, i) => (
+              <li key={p.id} className="flex min-w-0 items-start gap-1.5 sm:max-w-[22rem]">
+                {i > 0 && <span className="hidden pt-0.5 text-[13px] text-zinc-500 sm:inline" aria-hidden>vs</span>}
+                <div className="min-w-0">
+                  <p className="text-[15px] font-medium text-zinc-100 break-words">{p.nombre}</p>
+                  <p className="text-[13px] text-zinc-500">
+                    {p.unidad ?? 'sin unidad'} · {p.usos} {p.usos === 1 ? 'compra' : 'compras'} · {fmt(p.gasto)}
+                    {p.contiene ? ` · trae ${p.contiene.cantidad} ${p.contiene.unidad}` : ''}
+                  </p>
+                </div>
+                {varios && (
+                  <button type="button" disabled={ocupado} onClick={() => descartar(g, p)} title={`«${p.nombre}» no es igual a los demás: sacarlo del grupo`}
+                    aria-label={`Sacar ${p.nombre} del grupo`} className="btn-quieto btn-sm -mt-1 px-2 text-base leading-none">×</button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {viendo[k] && (
+            <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: false }))} aria-expanded="true"
+              className="btn-secundario btn-sm shrink-0" title="Ocultar las fotos">
+              <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 15 6-6 6 6" /></svg>
+              Ocultar
+            </button>
+          )}
+        </div>
 
-        {viendo[k] && (
-          <div className="space-y-2">
-            <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: false }))} className="btn-texto btn-sm -ml-2">Ocultar tickets</button>
-            <CompararTickets a={s.a} b={s.b} />
-          </div>
-        )}
+        <div className="space-y-3 px-4 pb-4 pt-2">
+          <p className="nota">
+            <span className="font-medium text-zinc-400">Por qué aparece: </span>{MOTIVO_TEXTO[g.motivo]}. · {nombreCat(g.categoria_id)} · {nombreSuc(g.sucursal_id)}
+          </p>
 
-        {unificando ? (
-          <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-100">Elige el nombre con el que quieres identificar ambos artículos</p>
-              <p className="nota">Cuando la IA lea el otro nombre en un ticket, lo guardará bajo el que elijas. Sus compras pasan a ese nombre.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {([[s.a, s.b], [s.b, s.a]] as const).map(([destino, origen]) => (
-                <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
-                  className="btn-opcion btn-sm whitespace-normal text-left">
-                  Unificar bajo «{destino.nombre}»
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">{atras}{toggleTickets}</div>
-          </div>
-        ) : f ? (
-          <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
-            <p className="nota">Quedan los dos artículos, cada uno con su precio. El inventario los suma bajo un mismo insumo.</p>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
+          {viendo[k] && <CompararTickets productos={g.productos} />}
+
+          {unificando ? (
+            <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
               <div className="space-y-1">
-                <span className="etiqueta block">Nombre del insumo</span>
-                <ElegirArticulo key={`ins-${k}`} valorInicial={f.nombre} ariaLabel="Nombre del insumo" placeholder="ej. Huevo"
-                  opciones={insumos.filter(i => i.sucursal_id === s.sucursal_id).map(i => ({ id: i.id, nombre: i.nombre, detalle: `se mide en ${i.unidad_base}` }))}
-                  onCambio={(texto, elegida) => {
-                    setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: texto } }))
-                    // Si es un insumo que ya existe, se usa su misma unidad.
-                    const ex = elegida && insumos.find(i => i.id === elegida.id)
-                    if (ex && ex.unidad_base !== form[k]?.unidadBase) cambiarBase(k, ex.unidad_base)
-                  }}
-                  notaNuevo={t => <>«{t}» es un insumo nuevo: se creará al guardar.</>}
-                  notaExistente={o => <>Estos dos se agregan a «{o.nombre}», que ya existe.</>} />
+                <p className="text-sm font-medium text-zinc-100">Elige el nombre con el que quieres identificar {varios ? 'todos' : 'ambos'}</p>
+                <p className="nota">Cuando la IA lea los otros nombres en un ticket, los guardará bajo el que elijas. Sus compras pasan a ese nombre.</p>
               </div>
-              <label className="space-y-1">
-                <span className="etiqueta block">Se mide en</span>
-                <select value={f.unidadBase} onChange={e => cambiarBase(k, e.target.value)} className="campo w-full py-1.5">
-                  {[...UNIDADES_BASE, ...(UNIDADES_BASE.some(u => u.valor === f.unidadBase) ? [] : [{ valor: f.unidadBase, texto: f.unidadBase }])]
-                    .map(u => <option key={u.valor} value={u.valor}>{u.texto}</option>)}
-                </select>
-              </label>
+              <div className="flex flex-wrap gap-2">
+                {g.productos.map(destino => (
+                  <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(g, destino)}
+                    className="btn-opcion btn-sm whitespace-normal text-left">
+                    Unificar bajo «{destino.nombre}»
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">{atras}{toggleTickets}</div>
             </div>
-            <Consejo>Mídelo en la misma unidad que usan tus recetas: si la receta pide gramos, elige gramos. Así el inventario y el costo de cada platillo cuadran.</Consejo>
-            <div className="space-y-2">
-              <p className="etiqueta">¿Cuánto trae cada uno?</p>
-              {campos('a', s.a)}
-              {campos('b', s.b)}
+          ) : f ? (
+            <div className="rounded-lg bg-zinc-800/50 p-3 space-y-3">
+              <p className="nota">Quedan {varios ? 'todos' : 'los dos'}, cada uno con su precio. El inventario los suma bajo un mismo insumo.</p>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
+                <div className="space-y-1">
+                  <span className="etiqueta block">Nombre del insumo</span>
+                  <ElegirArticulo key={`ins-${k}`} valorInicial={f.nombre} ariaLabel="Nombre del insumo" placeholder="ej. Huevo"
+                    opciones={insumos.filter(i => i.sucursal_id === g.sucursal_id).map(i => ({ id: i.id, nombre: i.nombre, detalle: `se mide en ${i.unidad_base}` }))}
+                    onCambio={(texto, elegida) => {
+                      setForm(fs => ({ ...fs, [k]: { ...fs[k], nombre: texto } }))
+                      // Si es un insumo que ya existe, se usa su misma unidad.
+                      const ex = elegida && insumos.find(i => i.id === elegida.id)
+                      if (ex && ex.unidad_base !== form[k]?.unidadBase) cambiarBase(k, ex.unidad_base)
+                    }}
+                    notaNuevo={t => <>«{t}» es un insumo nuevo: se creará al guardar.</>}
+                    notaExistente={o => <>Se agregan a «{o.nombre}», que ya existe.</>} />
+                </div>
+                <label className="space-y-1">
+                  <span className="etiqueta block">Se mide en</span>
+                  <select value={f.unidadBase} onChange={e => cambiarBase(k, e.target.value)} className="campo w-full py-1.5">
+                    {[...UNIDADES_BASE, ...(UNIDADES_BASE.some(u => u.valor === f.unidadBase) ? [] : [{ valor: f.unidadBase, texto: f.unidadBase }])]
+                      .map(u => <option key={u.valor} value={u.valor}>{u.texto}</option>)}
+                  </select>
+                </label>
+              </div>
+              <Consejo>Mídelo en la misma unidad que usan tus recetas: si la receta pide gramos, elige gramos. Así el inventario y el costo de cada platillo cuadran.</Consejo>
+              <div className="space-y-2">
+                <p className="etiqueta">¿Cuánto trae cada uno?</p>
+                {g.productos.map(p => {
+                  const l = f.trae[p.id] ?? { cantidad: '', unidad: f.unidadBase }
+                  const poner = (cambio: Partial<{ cantidad: string; unidad: string }>) =>
+                    setForm(fs => ({ ...fs, [k]: { ...fs[k], trae: { ...fs[k].trae, [p.id]: { ...l, ...cambio } } } }))
+                  return (
+                    <div key={p.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                      <span className="text-sm text-zinc-200 break-words sm:min-w-0 sm:flex-1">{p.nombre} trae</span>
+                      <div className="flex items-center gap-2">
+                        <input value={l.cantidad} inputMode="decimal" placeholder="cantidad" aria-label={`Cuánto trae ${p.nombre}`}
+                          onChange={e => poner({ cantidad: e.target.value })} className="campo w-28 py-1.5" />
+                        <select value={l.unidad} aria-label={`Unidad de ${p.nombre}`} onChange={e => poner({ unidad: e.target.value })} className="campo py-1.5">
+                          {compatibles(f.unidadBase).map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button type="button" disabled={ocupado} onClick={() => guardarInsumo(g)} className="btn-primario btn-sm">
+                  {ocupado ? 'Guardando…' : 'Guardar insumo'}
+                </button>
+                {atras}
+                {toggleTickets}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button type="button" disabled={ocupado} onClick={() => guardarInsumo(s)} className="btn-primario btn-sm">
-                {ocupado ? 'Guardando…' : 'Guardar insumo'}
-              </button>
-              {atras}
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" disabled={ocupado} onClick={() => { cerrarPaneles(k); setEligiendo(e => ({ ...e, [k]: true })) }}
+                className="btn-opcion btn-sm">Unificar</button>
+              <button type="button" disabled={ocupado} onClick={() => abrirForm(g)} className="btn-opcion btn-sm">Mismo insumo, distinto tamaño</button>
+              <button type="button" disabled={ocupado} onClick={() => descartar(g)} className="btn-opcion btn-sm">No son iguales</button>
               {toggleTickets}
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" disabled={ocupado} onClick={() => { cerrarPaneles(k); setEligiendo(e => ({ ...e, [k]: true })) }}
-              className="btn-opcion btn-sm">Unificar</button>
-            <button type="button" disabled={ocupado} onClick={() => abrirForm(s)} className="btn-opcion btn-sm">Mismo insumo, distinto tamaño</button>
-            <button type="button" disabled={ocupado} onClick={() => noSonIguales(s)} className="btn-opcion btn-sm">No son iguales</button>
-            {toggleTickets}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     )
   }
 
   return (
     <section className="space-y-5">
-      <p className="text-sm text-zinc-400"><span className="chip-revisar mr-1.5">{sug.length}</span>parejas por revisar</p>
+      <p className="text-sm text-zinc-400"><span className="chip-revisar mr-1.5">{grupos.length}</span>{grupos.length === 1 ? 'grupo por revisar' : 'grupos por revisar'}</p>
 
       {mismos.length > 0 && (
         <div className="space-y-2">

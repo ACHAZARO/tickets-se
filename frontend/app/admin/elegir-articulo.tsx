@@ -88,7 +88,7 @@ export function ElegirArticulo({
             if (e.key === 'ArrowDown') { e.preventDefault(); setActiva(a => Math.min(a + 1, sugerencias.length - 1)) }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setActiva(a => Math.max(a - 1, 0)) }
             else if (e.key === 'Enter') { e.preventDefault(); elegir(sugerencias[activa]) }
-            else if (e.key === 'Escape') setAbierta(false)
+            else if (e.key === 'Escape') { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setAbierta(false) }
           }}
           role="combobox"
           aria-label={ariaLabel}

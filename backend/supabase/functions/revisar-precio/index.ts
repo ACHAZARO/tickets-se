@@ -69,7 +69,8 @@ serve(async (req) => {
         if (blob) { fotos.push({ data: encodeBase64(await blob.arrayBuffer()), mimeType: blob.type || 'image/jpeg' }); break }
       }
     }
-    if (fotos.length === 0) return json({ error: 'No hay fotos de esos tickets (se guardan 12 meses).' }, 422)
+    // Sin las dos fotos la IA confundiria cual es cual: mejor no adivinar.
+    if (fotos.length < (mismoTicket ? 1 : 2)) return json({ error: 'Falta la foto de uno de los tickets (se guardan 12 meses).' }, 422)
 
     const prod = a.catalogo_productos ?? b.catalogo_productos
     const equiv = prod?.contiene_cantidad ? `1 ${prod.unidad_default ?? 'unidad'} = ${prod.contiene_cantidad} ${prod.contiene_unidad ?? ''}` : 'ninguna'
@@ -113,7 +114,8 @@ foto lo deja claro: cuantas piezas/gramos/ml trae 1 ${prod?.unidad_default ?? 'u
         cantidad: Number(c.cantidad), unidad: UNIDADES.includes(String(c.unidad ?? '').trim().toLowerCase()) ? String(c.unidad).trim().toLowerCase() : (c.renglon === 'anterior' ? a.unidad : b.unidad),
       }))
     const eq = d.equivalencia as Record<string, unknown> | null
-    const equivalencia = eq && Number(eq.contiene_cantidad) > 0 && String(eq.contiene_unidad ?? '').trim()
+    const UNIDADES_CONTENIDO = ['g', 'kg', 'ml', 'lt', 'pz']
+    const equivalencia = eq && Number(eq.contiene_cantidad) > 0 && UNIDADES_CONTENIDO.includes(String(eq.contiene_unidad ?? '').trim().toLowerCase())
       ? { producto_id: prod?.id ?? null, contiene_cantidad: Number(eq.contiene_cantidad), contiene_unidad: String(eq.contiene_unidad).trim().toLowerCase() }
       : null
 

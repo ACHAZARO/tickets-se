@@ -168,10 +168,11 @@ export function EditorRenglon({ itemId, onCerrar, onGuardado }: { itemId: string
   async function guardar() {
     if (!r) return
     if (!Number.isFinite(cant) || cant <= 0) { toast('La cantidad debe ser mayor a 0', 'error'); return }
-    if (!Number.isFinite(monto) || monto < 0) { toast('Revisa el importe', 'error'); return }
+    if (!f.monto.trim() || !Number.isFinite(monto) || monto < 0) { toast('Escribe el importe del renglón', 'error'); return }
     if (f.texto.trim() && !f.producto) { toast('Elige un artículo de la lista (o déjalo como estaba)', 'error'); return }
     const cambios: Record<string, unknown> = { cantidad: cant, unidad: f.unidad.trim() || null, monto }
-    if (f.producto) {
+    // Solo si CAMBIO el articulo: si no, se respeta la categoria que tenga el renglon (pudo ponerse a mano).
+    if (f.producto && f.producto.id !== r.producto_catalogo_id) {
       cambios.producto_catalogo_id = f.producto.id
       const cat = opciones.find(o => o.id === f.producto!.id)?.categoria_id
       if (cat) cambios.categoria_id = cat
@@ -180,6 +181,8 @@ export function EditorRenglon({ itemId, onCerrar, onGuardado }: { itemId: string
     const { error } = await supabase.from('ticket_items').update(cambios).eq('id', r.id)
     setGuardando(false)
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    // El historial de precios del ticket se recalcula (si no, las alertas nuevas comparan contra el error).
+    await supabase.rpc('recalcular_precios_ticket', { p_registro: r.registros_tickets.id })
     toast('Renglón corregido')
     onGuardado(); onCerrar()
   }
