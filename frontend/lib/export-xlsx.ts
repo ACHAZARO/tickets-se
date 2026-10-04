@@ -59,16 +59,17 @@ export interface TicketReporte {
   ticket_id: string; folio: string | null; comercio: string | null; sucursal_nombre: string
   fecha_ticket: string | null; fecha_captura: string; estado: string; estado_texto: string; total: number
   notas: string | null // nota del gerente al subir (solo para humanos)
-  forma_pago_texto?: string // como se pago segun el gerente; 'No registrado' antes del 03-oct-2026
+  forma_pago_texto?: string // como se pago segun el gerente ("Efectivo $60.00 + Tarjeta $10.00"); 'No registrado' antes del 03-oct-2026
+  importe_caja?: number | null // lo que salio de la Caja segun lo declarado; null = no registrado
   articulos: { producto: string; cantidad: number | null; unidad: string | null; monto: number }[]
 }
 const pesos = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2)
 function hojaTickets(tickets: TicketReporte[]) {
   return XLSX.utils.aoa_to_sheet([
-    ['Ticket', 'Estado', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Total del ticket', 'Forma de pago', 'Artículos', 'Notas', 'Desglose'],
+    ['Ticket', 'Estado', 'Folio', 'Comercio', 'Sucursal', 'Fecha del ticket', 'Fecha de captura', 'Total del ticket', 'Forma de pago', 'Salió de Caja', 'Artículos', 'Notas', 'Desglose'],
     ...tickets.map(t => [
       t.ticket_id.slice(0, 8), t.estado_texto, t.folio ?? '', t.comercio ?? '', t.sucursal_nombre, t.fecha_ticket ?? '', t.fecha_captura, t.total,
-      t.forma_pago_texto ?? 'No registrado', t.articulos.length, t.notas ?? '',
+      t.forma_pago_texto ?? 'No registrado', t.importe_caja ?? '', t.articulos.length, t.notas ?? '',
       t.articulos.map(a => [a.producto, a.cantidad !== null ? `${a.cantidad}${a.unidad ? ' ' + a.unidad : ''}` : '', pesos(a.monto)]
         .filter(Boolean).join(' ')).join(' | '),
     ]),

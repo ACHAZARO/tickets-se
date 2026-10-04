@@ -10,6 +10,7 @@ import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
+import { revisarPagos } from '../_shared/pagos.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
 // lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
@@ -260,6 +261,8 @@ serve(async (req: Request) => {
     if (envioAlto) { await createAlert(supabase, registro_id, 'envio_alto', undefined, { motivo: envioAlto }); alertas.push('envio_alto') }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
+    // Pago mixto declarado por el gerente que no suma el total releido.
+    if (await revisarPagos(supabase, registro_id, montoTotal)) { await createAlert(supabase, registro_id, 'pagos_no_cuadran'); alertas.push('pagos_no_cuadran') }
     // Texto en el papel dirigido a la IA: a la revision de Fraude (no se quita solo al releer).
     if (paraIA) {
       const { error: sospErr } = await supabase.from('registros_tickets').update({

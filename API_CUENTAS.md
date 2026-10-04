@@ -109,7 +109,7 @@ cada ticket trae su total y los articulos que lo forman. Mismo periodo que `/res
   aunque en `/resumen` cuente $0, asi que `total.monto` aqui NO es lo oficial) o `confirmado` (solo lo autorizado: el total
   coincide con `oficiales` del `/resumen`).
 - `formato`: `json` (default) o `csv` (una fila por ticket; columnas Ticket, Estado (Aprobado / Rechazado / Por revisar), Folio,
-  Comercio, Sucursal, Fecha del ticket, Fecha de captura, Total del ticket, **Forma de pago**, Articulos, **Notas** y Desglose `Producto cantidad unidad $monto | ...`). Se abre directo en Excel.
+  Comercio, Sucursal, Fecha del ticket, Fecha de captura, Total del ticket, **Forma de pago**, **Salio de Caja**, Articulos, **Notas** y Desglose `Producto cantidad unidad $monto | ...`). Se abre directo en Excel.
 - JSON: `total` (`tickets`, `monto`), `truncado` (maximo 5000 tickets por consulta; si es `true`, pide un rango mas corto) y `tickets`, de la fecha mas vieja a la mas nueva.
 - Paginacion opcional: `limite` (1-500) y `saltar` (desde 0). Con cualquiera de los dos la respuesta trae solo esa pagina y
   `pagina` (`saltar`, `limite`, `devueltos`, `hay_mas`); `total` sigue siendo el del periodo completo. Sin ellos, todo (hasta 5000).
@@ -118,11 +118,16 @@ cada ticket trae su total y los articulos que lo forman. Mismo periodo que `/res
   `fecha_captura` (cuando se subio, hora de Mexico `AAAA-MM-DD HH:MM`), `estado` (`confirmado`/`rechazado`/`pendiente`),
   `estado_texto` (Aprobado / Rechazado / Por revisar), `total`, `notas`, `suma_articulos` y `articulos`
   (`producto` del catalogo o lo escrito, `descripcion` tal cual el papel, `cantidad`, `unidad`, `monto`, `categoria`), en el orden del papel.
-- `forma_pago`: como se pago segun el gerente al subir la foto: `efectivo`, `tarjeta`, `transferencia` (directa) o `mixto`
-  (parte y parte; la `notas` dice que parte se pago con que), y `forma_pago_texto` (Efectivo / Tarjeta / Transferencia directa /
-  Mixto (ver nota) / **No registrado**). Es obligatoria en la app desde el **03-oct-2026**; todo lo subido antes es `null` /
-  "No registrado": nunca se capturo y **no se infiere** (ni que fue efectivo por haberse subido). Es lo que el gerente
-  declaro, no una verificacion del banco. No hay importes por forma de pago: el detalle de un pago mixto vive en la nota.
+- **Pagos** (lo que declaro el gerente al subir la foto; obligatorio en la app desde el **03-oct-2026**):
+  - `pagos`: lista de `{ forma, sale_de_caja, monto, todo_el_ticket }`. Con UNA forma, `todo_el_ticket: true` y `monto` = total
+    del ticket. Con VARIAS (pago mixto), el gerente escribio el monto de cada una (`todo_el_ticket: false`). `[]` = **No
+    registrado** (todo lo subido antes del 03-oct-2026): nunca se capturo y **no se infiere** (ni que fue efectivo por haberse subido).
+  - `forma_pago_texto`: "Efectivo", "Efectivo $60.00 + Transferencia directa $7,290.04" o "No registrado".
+  - `importe_caja` / `importe_otros`: suma de lo pagado con formas que salen / no salen de la Caja de la sucursal; `null` si no registrado.
+  - `pagos_no_cuadran`: `true` si los montos de un pago mixto no suman el total (diferencia de $1 o mas). Esos tickets no se
+    aprueban solos (alerta "Pagos no cuadran"); el admin corrige los pagos o el total.
+  - Las formas (nombre y si salen de la Caja) las crea cada negocio en el panel (Sucursales -> Formas de pago). Es lo que
+    declaro el gerente, no una verificacion del banco.
 - `motivo_rechazo`: solo en rechazados: `fraude`, `duplicado` u `otro` (la misma regla que `por_motivo` del `/resumen`); `null` en los demas.
 - `moneda`: siempre `MXN`. `actualizado`: ultima modificacion del ticket (hora de Mexico `AAAA-MM-DD HH:MM`); si cambia
   entre dos consultas, el ticket se corrigio despues (monto, renglones o estado).
@@ -162,8 +167,8 @@ Si el papel traia texto dirigido a una IA, el ticket trae `alerta_manipulacion`;
 ### `GET /ticket?id=<uuid>`
 
 Un ticket completo, sin la foto: encabezado (`comercio`, `folio`, `tipo_documento`, `fecha_ticket`, `subido`, `subido_por`,
-`aprobado_en`, `estado`, `motivo_rechazo`, `total`, `moneda`, `es_duplicado`, `actualizado`), `forma_pago` y `forma_pago_texto`
-(igual que en `/tickets`), `notas` (la nota del gerente o `null`; `nota_alerta` si parece una orden
+`aprobado_en`, `estado`, `motivo_rechazo`, `total`, `moneda`, `es_duplicado`, `actualizado`), `pagos`, `forma_pago_texto`,
+`importe_caja` e `importe_otros` (igual que en `/tickets`), `notas` (la nota del gerente o `null`; `nota_alerta` si parece una orden
 para una IA), `renglones` (producto del catalogo, descripcion tal cual el papel, cantidad, unidad, monto, categoria y `falta`
 si le falta algo), `alertas_abiertas` y `fraude` (estado y motivo). Un ticket de otra cuenta o de la sucursal de prueba da
 `404` igual que uno inexistente. El `id` sale en `/tickets` (`ticket_id`) o en `/bandeja`.

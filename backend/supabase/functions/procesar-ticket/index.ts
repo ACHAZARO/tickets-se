@@ -15,6 +15,7 @@ import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, si
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
+import { formasDeCuenta, guardarPagos, leerPagos, revisarPagos } from '../_shared/pagos.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
@@ -40,10 +41,6 @@ function limpiarNota(valor: FormDataEntryValue | null): string | null {
   const limpia = valor.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\n{3,}/g, '\n\n').trim()
   return limpia ? Array.from(limpia).slice(0, 500).join('').trim() : null
 }
-
-// Forma de pago que elige el gerente al subir (obligatoria en la app). Sin valor = null ("no registrado"), para no
-// tumbar envios de una pantalla vieja abierta antes del cambio; un valor que no esta en la lista se rechaza.
-const FORMAS_PAGO = ['efectivo', 'tarjeta', 'transferencia', 'mixto']
 
 async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
@@ -285,6 +282,8 @@ async function procesarEnSegundoPlano(opts: {
     if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (montoNoCuadra) { await createAlert(supabase, registroId, 'monto_anomalo'); hayAlerta = true }
+    // Pago mixto declarado por el gerente que no suma el total leido: no se aprueba solo.
+    if (await revisarPagos(supabase, registroId, montoTotal)) { await createAlert(supabase, registroId, 'pagos_no_cuadran'); hayAlerta = true }
     if (precioAnomalo) {
       await createAlert(supabase, registroId, 'precio_anomalo')
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
@@ -427,7 +426,7 @@ serve(async (req: Request) => {
     new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
   try {
-    if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+    if (req.method !== 'POST' && req.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader?.startsWith('Bearer ')) return json({ error: 'Token de sesion requerido' }, 401)
@@ -437,25 +436,27 @@ serve(async (req: Request) => {
     const empleadoId = session.sub
     const slug = session.slug
 
-    const formData = await req.formData()
-    const imagenFile = formData.get('imagen') as File | null
-    if (!imagenFile) return json({ error: 'imagen es requerida' }, 400)
-    // Nota opcional del gerente: SOLO para humanos. Se guarda en su columna y NUNCA se pasa a la lectura con IA
-    // (procesarEnSegundoPlano no la recibe), para que no se tome como instruccion.
-    const nota = limpiarNota(formData.get('nota'))
-    const fpCruda = formData.get('forma_pago')
-    const formaPago = typeof fpCruda === 'string' && fpCruda.trim() ? fpCruda.trim().toLowerCase() : null
-    if (formaPago && !FORMAS_PAGO.includes(formaPago)) return json({ error: 'forma_pago no valida' }, 400)
-    // Mixto = parte y parte: la nota debe decir que parte se pago con que.
-    if (formaPago === 'mixto' && !nota) return json({ error: 'Con pago mixto escribe en la nota que parte se pago con que' }, 400)
-    const datosNota = { nota, nota_para_ia: nota ? notaPareceOrdenParaIA(nota) : false, forma_pago: formaPago }
-
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
     const { data: suc } = await supabase.from('sucursales')
       .select('id, cuenta_id').eq('slug', slug).eq('activa', true).maybeSingle()
     if (!suc) return json({ error: 'Sucursal no encontrada o inactiva' }, 404)
     const sucursalId = suc.id as string
+    // Formas de pago del negocio (las crea el admin). GET = la pantalla de subir las pide para pintar los botones.
+    const formas = await formasDeCuenta(supabase, suc.cuenta_id)
+    if (req.method === 'GET') return json({ formas_pago: formas })
+
+    const formData = await req.formData()
+    const imagenFile = formData.get('imagen') as File | null
+    if (!imagenFile) return json({ error: 'imagen es requerida' }, 400)
+    // Nota opcional del gerente: SOLO para humanos. Se guarda en su columna y NUNCA se pasa a la lectura con IA
+    // (procesarEnSegundoPlano no la recibe), para que no se tome como instruccion.
+    const nota = limpiarNota(formData.get('nota'))
+    const datosNota = { nota, nota_para_ia: nota ? notaPareceOrdenParaIA(nota) : false }
+    // Como se pago (lo declara el gerente). Tampoco llega a la IA.
+    const lectura = leerPagos(formData.get('pagos'), formas)
+    if ('error' in lectura) return json({ error: lectura.error }, 400)
+    const pagos = lectura.pagos
     // Sucursales del MISMO negocio (cuenta): una foto repetida solo se compara contra ellas, nunca contra otro negocio.
     const { data: hermanas } = await supabase.from('sucursales').select('id').eq('cuenta_id', suc.cuenta_id)
     const sucursalesDelNegocio = [...new Set([sucursalId, ...((hermanas ?? []) as { id: string }[]).map(s => s.id)])]
@@ -494,6 +495,7 @@ serve(async (req: Request) => {
         return json({ error: 'Error al guardar el registro' }, 500)
       }
       if (dupReg?.id) {
+        await guardarPagos(supabase, dupReg.id, pagos)
         const { error: alertaError } = await supabase.from('alertas_tickets').insert({
           registro_ticket_id: dupReg.id, tipo: 'duplicado', duplicado_de_id: existing.id, resuelta: true,
           correccion: { nota: 'foto identica a otra ya subida: se rechazo sola' },
@@ -521,6 +523,8 @@ serve(async (req: Request) => {
       return json({ error: 'Error al guardar el registro' }, 500)
     }
     const registroId = registro.id as string
+    // Antes de la lectura en segundo plano: ahi se revisa si el pago mixto cuadra con el total.
+    await guardarPagos(supabase, registroId, pagos)
 
     // Responde YA al gerente; el procesamiento corre en segundo plano.
     EdgeRuntime.waitUntil(procesarEnSegundoPlano({
