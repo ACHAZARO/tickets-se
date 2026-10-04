@@ -15,6 +15,7 @@ const GRUPOS = [
   { nombre: 'Revisar', paginas: [
     { href: '/admin/tickets', label: 'Tickets' },
     { href: '/admin/cerebro', label: 'Cerebro' },
+    { href: '/admin/insumos', label: 'Insumos por revisar' },
   ] },
   { nombre: 'Números', paginas: [
     { href: '/admin/dashboard', label: 'Gasto' },
@@ -127,7 +128,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     className={`relative shrink-0 whitespace-nowrap px-3 pb-2.5 pt-1.5 text-sm font-medium transition-colors ${
                       activo ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'}`}>
                     {item.label}
-                    {item.href === '/admin/cerebro' && <CerebroBadge pathname={pathname} />}
+                    {item.href === '/admin/insumos' && <CerebroBadge pathname={pathname} />}
                     {activo && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-emerald-500" />}
                   </Link>
                 )

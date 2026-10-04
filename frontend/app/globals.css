@@ -230,6 +230,8 @@
   .btn-quieto { @apply btn px-2 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800; }
   .btn-peligro { @apply btn px-2 text-red-400 hover:bg-red-900/50; }
   .btn-peligro-lleno { @apply btn bg-red-600 text-white hover:bg-red-700; }
+  /* Opciones del mismo peso (p.ej. elegir el nombre que se queda): claras y se pintan al pasar el cursor */
+  .btn-opcion { @apply btn bg-emerald-900 text-emerald-200 hover:bg-emerald-600 hover:text-white; }
   /* Despues de las variantes: si va antes, el padding de la variante le gana */
   .btn-sm { @apply px-3 py-1.5 text-[13px]; }
 

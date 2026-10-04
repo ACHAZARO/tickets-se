@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { useToast, useConfirm } from '../ui'
-import { PanelDuplicados } from '../unificar'
 
 interface Categoria { id: string; nombre: string }
 interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null }
@@ -186,12 +185,10 @@ export default function CerebroPage() {
           <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Cerebro</h2>
           {sel && <button onClick={() => setSel(null)} className="btn-quieto btn-sm">Limpiar selección</button>}
         </div>
-        <p className="nota">
-          Toca un comercio o una categoría para ver qué se conecta. Los <span className="text-amber-400">huérfanos</span> se ligan arriba en Productos.
+        <p className="nota max-w-2xl">
+          Lo que la IA ya aprendió: dónde compras, en qué categorías y qué productos. Toca un comercio o una categoría para ver solo lo suyo.
         </p>
       </div>
-
-      <PanelDuplicados categorias={categorias} onCambio={fetchData} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* COMERCIOS */}
@@ -259,7 +256,7 @@ export default function CerebroPage() {
         <div className="tarjeta overflow-hidden flex flex-col">
           <h3 className="flex items-center gap-2 flex-wrap px-4 py-2.5 border-b border-zinc-800 text-sm font-semibold text-zinc-300">
             Productos <span className="font-normal text-zinc-500">{sel ? '(filtrados)' : `(${productos.length})`}</span>
-            {huerfanos.length > 0 && <span className="chip-revisar">{huerfanos.length} huérfanos</span>}
+            {huerfanos.length > 0 && <span className="chip-revisar">{huerfanos.length} sin clasificar</span>}
           </h3>
           <div className="p-2 border-b border-zinc-800/60">
             <input value={bProd} onChange={e => setBProd(e.target.value)} placeholder="Buscar producto…" aria-label="Buscar producto"
@@ -284,8 +281,8 @@ export default function CerebroPage() {
             {huerfanosFiltrados.filter(h => !bProd || h.nombre.toLowerCase().includes(bProd.toLowerCase())).length > 0 && (
               <div className="border-b border-zinc-800 bg-amber-900/10">
                 <div className="px-4 pt-3 pb-2">
-                  <h4 className="text-sm font-semibold text-amber-400">Huérfanos</h4>
-                  <p className="nota">Marca varios y asigna en lote, o liga uno por uno.</p>
+                  <h4 className="text-sm font-semibold text-amber-400">Sin clasificar</h4>
+                  <p className="nota">La IA los leyó en un ticket pero no sabe qué son. Elige su categoría y toca Ligar: desde ahí los reconoce sola. Puedes marcar varios y ligarlos juntos.</p>
                 </div>
                 {huerfanosFiltrados.filter(h => !bProd || h.nombre.toLowerCase().includes(bProd.toLowerCase())).slice(0, 80).map(h => (
                   <div key={h.nombre} className="px-4 py-2.5 space-y-2 border-t border-zinc-800/60">

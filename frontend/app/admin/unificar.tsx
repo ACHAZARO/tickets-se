@@ -76,10 +76,10 @@ async function pedirSugerencias(sucursalId: string): Promise<Sugerencia[]> {
 }
 
 const MOTIVO_TEXTO: Record<Sugerencia['motivo'], string> = {
-  sinonimo: 'Ya se habian registrado como el mismo (uno es sinonimo del otro)',
-  igual: 'Mismo nombre, sin contar tamanos ni plurales',
+  sinonimo: 'Ya se habían registrado como el mismo (uno es sinónimo del otro)',
+  igual: 'Mismo nombre, sin contar tamaños ni plurales',
   parecido: 'Uno es solo una palabra del otro (menos seguro)',
-  presentacion: 'Mismo nombre, distinto tamano',
+  presentacion: 'Mismo nombre, distinto tamaño',
 }
 const UNIDADES_BASE = ['kg', 'lt', 'pz']
 const UNIDADES_CONTENIDO = ['kg', 'g', 'lt', 'ml', 'pz', 'oz']
@@ -253,7 +253,8 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
   }, [sucursalId])
   useEffect(() => { cargar() }, [cargar])
 
-  if (!sug || sug.length === 0) return null
+  if (!sug) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
+  if (sug.length === 0) return <p className="tarjeta px-4 py-6 text-sm text-zinc-400">Todo en orden: no hay insumos por revisar.</p>
   const clave = (s: Sugerencia) => s.a.id + s.b.id
   const mismos = sug.filter(s => s.motivo === 'sinonimo' || s.motivo === 'igual')
   const tamanos = sug.filter(s => s.motivo === 'presentacion')
@@ -319,7 +320,6 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     const k = clave(s)
     const f = form[k]
     const esTamano = s.motivo === 'presentacion'
-    const aGana = s.a.usos >= s.b.usos
     const ocupado = busy === k
 
     const prod = (p: ProdSug) => (
@@ -331,22 +331,24 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
         </p>
       </div>
     )
-    const btnUnificar = (destino: ProdSug, origen: ProdSug, principal: boolean) => (
+    const btnUnificar = (destino: ProdSug, origen: ProdSug) => (
       <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
-        className={`${principal ? 'btn-primario' : 'btn-secundario'} btn-sm whitespace-normal text-left`}>
-        Unificar en &quot;{destino.nombre}&quot;
+        title={`Unificar: se queda "${destino.nombre}"`}
+        className="btn-opcion btn-sm whitespace-normal text-left">
+        {destino.nombre}
       </button>
     )
     const btnInsumo = (
       <button type="button" disabled={ocupado} onClick={() => abrirForm(s)}
-        className={`${f ? 'btn-quieto' : esTamano ? 'btn-primario' : 'btn-secundario'} btn-sm`}>
+        className={`${f ? 'btn-quieto' : 'btn-secundario'} btn-sm`}>
         {f ? 'Cancelar' : 'Mismo insumo, distinto tamaño'}
       </button>
     )
 
     const campos = (lado: 'a' | 'b', p: ProdSug) => (
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[13px] text-zinc-400 min-w-0 flex-1 truncate">1 {p.unidad ?? 'unidad'} de &quot;{p.nombre}&quot; =</span>
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+        <span className="text-sm text-zinc-200 break-words sm:min-w-0 sm:flex-1">{p.nombre} =</span>
+        <div className="flex items-center gap-2">
         <input value={f[lado].cantidad} inputMode="decimal" placeholder="cantidad"
           onChange={e => setForm(fs => ({ ...fs, [k]: { ...fs[k], [lado]: { ...fs[k][lado], cantidad: e.target.value } } }))}
           className="campo w-24 py-1.5" />
@@ -355,6 +357,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
           className="campo py-1.5">
           {[...new Set([...UNIDADES_CONTENIDO, f[lado].unidad].filter(Boolean))].map(u => <option key={u} value={u}>{u}</option>)}
         </select>
+        </div>
       </div>
     )
 
@@ -388,25 +391,20 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
             </div>
           </div>
         ) : (
+          <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            {esTamano ? (
-              <>
-                {btnInsumo}
-                {btnUnificar(s.a, s.b, false)}
-                {btnUnificar(s.b, s.a, false)}
-              </>
-            ) : (
-              <>
-                {btnUnificar(s.a, s.b, aGana)}
-                {btnUnificar(s.b, s.a, !aGana)}
-                {btnInsumo}
-              </>
-            )}
+            <span className="text-[13px] text-zinc-400">Unificar, se queda:</span>
+            {btnUnificar(s.a, s.b)}
+            {btnUnificar(s.b, s.a)}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {btnInsumo}
             <button type="button" onClick={() => setViendo(v => ({ ...v, [k]: !v[k] }))} className="btn-texto btn-sm">
               {viendo[k] ? 'Ocultar tickets' : 'Ver tickets'}
             </button>
             <button type="button" disabled={ocupado} onClick={() => noSonIguales(s)}
               className="btn-quieto btn-sm sm:ml-auto">No son iguales</button>
+          </div>
           </div>
         )}
       </div>
@@ -415,12 +413,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
 
   return (
     <section className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
-          Catálogo por revisar <span className="chip-revisar">{sug.length}</span>
-        </h2>
-        <p className="nota max-w-2xl"><b className="font-medium text-zinc-400">Unificar</b>: mismo producto, queda uno. <b className="font-medium text-zinc-400">Distinto tamaño</b>: quedan los dos y el inventario los suma. Nada cambia hasta que respondas.</p>
-      </div>
+      <p className="text-sm text-zinc-400"><span className="chip-revisar mr-1.5">{sug.length}</span>parejas por revisar</p>
 
       {mismos.length > 0 && (
         <div className="space-y-2">
