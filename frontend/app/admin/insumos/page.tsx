@@ -10,7 +10,7 @@ import { PanelDuplicados } from '../unificar'
 
 const AYUDA: { boton: string; estilo: string; texto: string }[] = [
   { boton: 'Nombre', estilo: 'btn-opcion', texto: 'Si son el mismo producto con distinto nombre, toca el nombre que quieres conservar. Las compras del otro pasan a ese.' },
-  { boton: 'Mismo insumo, distinto tamaño', estilo: 'btn-secundario', texto: 'Quedan los dos productos, cada uno con su precio, bajo un mismo insumo. Solo pon cuánto trae cada uno y el inventario los suma.' },
+  { boton: 'Mismo insumo, distinto tamaño', estilo: 'btn-secundario', texto: 'Elige el nombre que quieras usar para identificar ambas cosas. Quedan las dos, cada una con su precio, y el inventario las suma.' },
   { boton: 'Ver tickets', estilo: 'btn-texto !px-0', texto: 'Muestra una foto de cada uno para compararlos.' },
   { boton: 'No son iguales', estilo: 'btn-quieto !px-0', texto: 'Cada uno se queda con su nombre, separados. La IA los seguirá clasificando por separado.' },
 ]
