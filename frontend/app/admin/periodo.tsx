@@ -33,8 +33,8 @@ function mesCompleto(desde: string, hasta: string): string | null {
   return desde === r.inicio && hasta === r.fin ? ym : null
 }
 
-const controlCls = 'rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100'
-const flechaCls = 'rounded-lg bg-zinc-900 border border-zinc-800 w-9 h-9 flex items-center justify-center text-zinc-300 hover:text-zinc-100 disabled:opacity-30 disabled:hover:text-zinc-300'
+const controlCls = 'campo'
+const flechaCls = 'btn-secundario h-9 w-9 px-0'
 // Flechas dibujadas: los caracteres ◀ ▶ salen como emoji azul en Windows.
 const Chevron = ({ dir }: { dir: 'izq' | 'der' }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -62,10 +62,10 @@ export function SelectorPeriodo({ desde, hasta, onChange }: {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="inline-flex rounded-lg bg-zinc-900 p-1">
+      <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
         {(['mes', 'rango'] as const).map(m => (
           <button key={m} type="button" onClick={() => cambiarModo(m)}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium ${modo === m ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500'}`}>
+            className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-colors ${modo === m ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-100'}`}>
             {m === 'mes' ? 'Por mes' : 'Rango'}
           </button>
         ))}
@@ -81,7 +81,7 @@ export function SelectorPeriodo({ desde, hasta, onChange }: {
       ) : (
         <div className="flex items-center gap-2">
           <input type="date" aria-label="Desde" value={desde} onChange={e => e.target.value && onChange(e.target.value, hasta)} className={controlCls} />
-          <span className="text-zinc-600">→</span>
+          <span className="text-zinc-500" aria-hidden="true">→</span>
           <input type="date" aria-label="Hasta" value={hasta} onChange={e => e.target.value && onChange(desde, e.target.value)} className={controlCls} />
         </div>
       )}

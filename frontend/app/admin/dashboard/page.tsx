@@ -21,7 +21,9 @@ interface ItemRow {
 interface CatAgg { id: string; nombre: string; gasto: number; operativo: boolean }
 interface ProductoAgg { nombre: string; reconocido: boolean; gasto: number; veces: number; cantidad: number; unidad: string | null; unidadMixta: boolean; base: number; baseUnidad: string | null }
 
-const COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635', '#f472b6', '#94a3b8']
+// Colores de la paleta (variables CSS): cambian solos con el modo dia/noche. Rojo al final: en esta app significa "mal".
+const COLORS = ['emerald-500', 'blue-500', 'amber-500', 'emerald-300', 'blue-300', 'amber-300', 'zinc-500', 'emerald-700', 'blue-700', 'red-400']
+  .map(t => `rgb(var(--c-${t}))`)
 
 function mesesRecientes(n: number): string[] {
   const out: string[] = []
@@ -238,54 +240,54 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-xl font-semibold text-zinc-100">Gasto · {sucursalLabel}</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Gasto · {sucursalLabel}</h2>
         <button onClick={exportar} disabled={cats.length === 0}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">
+          className="btn-secundario">
           Reporte (Excel)
         </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-lg bg-zinc-900 p-1">
+        <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
           {(['mes', 'rango'] as Modo[]).map(m => (
             <button key={m} onClick={() => setModo(m)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium ${modo === m ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500'}`}>
+              className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-colors ${modo === m ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-100'}`}>
               {m === 'mes' ? 'Por mes' : 'Rango'}
             </button>
           ))}
         </div>
         {modo === 'mes' ? (
           <select value={mesSel} onChange={e => onModoMes(e.target.value)}
-            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 capitalize">
+            className="campo capitalize">
             {MESES_SEL.map(m => <option key={m} value={m}>{nombreMesLargo(m)}</option>)}
           </select>
         ) : (
           <div className="flex items-center gap-2">
-            <input type="date" value={rangoIni} onChange={e => setRangoIni(e.target.value)} className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100" />
-            <span className="text-zinc-600">→</span>
-            <input type="date" value={rangoFin} onChange={e => setRangoFin(e.target.value)} className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100" />
+            <input type="date" aria-label="Desde" value={rangoIni} onChange={e => setRangoIni(e.target.value)} className="campo" />
+            <span className="text-zinc-500" aria-hidden="true">→</span>
+            <input type="date" aria-label="Hasta" value={rangoFin} onChange={e => setRangoFin(e.target.value)} className="campo" />
           </div>
         )}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Card label="Gasto operativo" value={fmt(gastoOperativo)} color="text-blue-400" />
+            <Card label="Gasto operativo" value={fmt(gastoOperativo)} />
             <Card label="Tickets" value={String(nTickets)} />
-            {ahorro > 0 && <Card label="Ahorro (descuentos)" value={fmt(ahorro)} color="text-emerald-400" hint="dinero que se ahorró" />}
-            {gastoNoOperativo > 0 && <Card label="Gasto no operativo" value={fmt(gastoNoOperativo)} color="text-zinc-400" hint="no entra a la distribución" />}
-            <Card label="Auto-clasificado" value={`${autoPct}%`} color={autoPct >= 70 ? 'text-emerald-400' : 'text-amber-400'} hint="renglones reconocidos por catálogo" />
+            {ahorro > 0 && <Card label="Ahorro (descuentos)" value={fmt(ahorro)} color="text-emerald-400" />}
+            {gastoNoOperativo > 0 && <Card label="Gasto no operativo" value={fmt(gastoNoOperativo)} color="text-zinc-400" hint="fuera de la distribución" />}
+            <Card label="Auto-clasificado" value={`${autoPct}%`} color={autoPct >= 70 ? 'text-emerald-400' : 'text-amber-400'} hint="renglones del catálogo" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Tabla por categoria */}
-            <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+            <div className="tarjeta overflow-hidden">
               <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500">
+                  <tr className="border-b border-zinc-800 text-[13px] font-medium text-zinc-500">
                     <th className="text-left font-medium px-4 py-3">Categoría</th>
                     <th className="text-right font-medium px-4 py-3">Gasto</th>
                     <th className="text-right font-medium px-4 py-3">% gasto</th>
@@ -295,21 +297,21 @@ export default function DashboardPage() {
                   {operativas.length === 0 ? (
                     <tr><td colSpan={3} className="px-4 py-8 text-center text-zinc-500">Sin gastos confirmados en el periodo</td></tr>
                   ) : operativas.map((c, i) => (
-                    <tr key={c.id} className={`border-b border-zinc-800/50 last:border-0 ${hover === i ? 'bg-zinc-800/40' : ''}`}
+                    <tr key={c.id} className={`border-b border-zinc-800/60 last:border-0 ${hover === i ? 'bg-zinc-800/40' : ''}`}
                       onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-                      <td className="px-4 py-2.5 text-zinc-200">
+                      <td className="px-4 py-2.5 text-zinc-100">
                         <span className="inline-block h-2 w-2 rounded-full mr-2" style={{ background: COLORS[i % COLORS.length] }} />
                         {c.nombre}
                       </td>
-                      <td className={`px-4 py-2.5 text-right ${c.gasto < 0 ? 'text-emerald-400' : 'text-zinc-300'}`}>{fmt2(c.gasto)}</td>
+                      <td className={`px-4 py-2.5 text-right ${c.gasto < 0 ? 'text-emerald-400' : 'text-zinc-100'} font-medium`}>{fmt2(c.gasto)}</td>
                       <td className="px-4 py-2.5 text-right text-zinc-400">{c.gasto < 0 ? 'ahorro' : gastoPositivo > 0 ? ((c.gasto / gastoPositivo) * 100).toFixed(1) + '%' : '—'}</td>
                     </tr>
                   ))}
                   {noOperativas.map(c => (
-                    <tr key={c.id} className="border-t border-zinc-800/50 opacity-60">
-                      <td className="px-4 py-2.5 text-zinc-400">{c.nombre} <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">no operativo</span></td>
+                    <tr key={c.id} className="border-b border-zinc-800/60 last:border-0">
+                      <td className="px-4 py-2.5 text-zinc-400">{c.nombre} <span className="chip-neutro ml-1">no operativo</span></td>
                       <td className="px-4 py-2.5 text-right text-zinc-400">{fmt2(c.gasto)}</td>
-                      <td className="px-4 py-2.5 text-right text-zinc-600">—</td>
+                      <td className="px-4 py-2.5 text-right text-zinc-500">—</td>
                     </tr>
                   ))}
                 </tbody>
@@ -317,16 +319,16 @@ export default function DashboardPage() {
             </div>
 
             {/* Dona interactiva */}
-            <div className="rounded-2xl bg-zinc-900 p-5 flex flex-col items-center justify-center gap-4">
-              <p className="text-xs font-medium uppercase tracking-widest text-zinc-500 self-start">Distribución del gasto</p>
+            <div className="tarjeta p-5 flex flex-col items-center justify-center gap-4">
+              <h3 className="text-sm font-semibold text-zinc-300 self-start">Distribución del gasto</h3>
               <div className="relative h-48 w-48">
                 <svg viewBox="0 0 100 100" className="h-full w-full -rotate-0">
-                  {segs.length === 0 && <circle cx="50" cy="50" r="38" fill="none" stroke="#27272a" strokeWidth="16" />}
+                  {segs.length === 0 && <circle cx="50" cy="50" r="38" fill="none" className="stroke-zinc-800" strokeWidth="16" />}
                   {segs.map((s, i) => (
-                    <path key={i} d={s.d} fill={s.color} stroke="#18181b" strokeWidth="0.5"
+                    <path key={i} d={s.d} className="stroke-zinc-900" strokeWidth="0.5"
                       opacity={hover === null || hover === i ? 1 : 0.35}
                       onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
-                      style={{ cursor: 'pointer', transition: 'opacity .15s' }} />
+                      style={{ fill: s.color, cursor: 'pointer', transition: 'opacity .15s' }} />
                   ))}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -339,7 +341,7 @@ export default function DashboardPage() {
                   ) : (
                     <>
                       <span className="text-sm font-semibold text-zinc-100">{fmt(gastoOperativo)}</span>
-                      <span className="text-[10px] text-zinc-500">operativo</span>
+                      <span className="text-xs text-zinc-500">operativo</span>
                     </>
                   )}
                 </div>
@@ -358,16 +360,16 @@ export default function DashboardPage() {
           </div>
 
           {/* Tendencia (solo gasto operativo) */}
-          <div className="rounded-2xl bg-zinc-900 p-5">
-            <p className="text-xs font-medium uppercase tracking-widest text-zinc-500 mb-4">Tendencia del gasto operativo (6 meses)</p>
+          <div className="tarjeta p-5">
+            <h3 className="text-sm font-semibold text-zinc-300 mb-4">Gasto operativo, últimos 6 meses</h3>
             <div className="flex items-end justify-between gap-2 h-40">
               {trend.map(t => (
                 <div key={t.mes} className="flex-1 flex flex-col items-center gap-1.5">
-                  <span className="text-[10px] text-zinc-500">{t.gasto > 0 ? fmt(t.gasto) : ''}</span>
+                  <span className="text-xs text-zinc-400">{t.gasto > 0 ? fmt(t.gasto) : ''}</span>
                   <div className="w-full flex items-end justify-center h-28">
                     <div className="w-5 rounded-t bg-blue-500" style={{ height: `${(t.gasto / maxTrend) * 100}%` }} title={fmt(t.gasto)} />
                   </div>
-                  <span className="text-[10px] text-zinc-500 capitalize">{nombreMesCorto(t.mes)}</span>
+                  <span className="text-xs text-zinc-500 capitalize">{nombreMesCorto(t.mes)}</span>
                 </div>
               ))}
             </div>
@@ -375,20 +377,20 @@ export default function DashboardPage() {
 
           {/* Top comercios */}
           {comerciosAgg.length > 0 && (
-            <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+            <div className="tarjeta overflow-hidden">
               <div className="px-4 py-3 border-b border-zinc-800">
-                <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">En dónde se gasta (comercios)</p>
+                <h3 className="text-sm font-semibold text-zinc-300">Dónde se gasta</h3>
               </div>
               <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
-                <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Comercio</th><th className="text-right font-medium px-4 py-2">Tickets</th><th className="text-right font-medium px-4 py-2">Gasto</th><th className="text-right font-medium px-4 py-2">% del total</th></tr></thead>
+                <thead><tr className="border-b border-zinc-800 text-[13px] font-medium text-zinc-500"><th className="text-left font-medium px-4 py-2">Comercio</th><th className="text-right font-medium px-4 py-2">Tickets</th><th className="text-right font-medium px-4 py-2">Gasto</th><th className="text-right font-medium px-4 py-2">% del total</th></tr></thead>
                 <tbody>
                   {comerciosAgg.slice(0, 15).map(c => {
                     const tot = gastoOperativo + gastoNoOperativo
                     return (
-                      <tr key={c.nombre} className="border-t border-zinc-800/50">
-                        <td className="px-4 py-2 text-zinc-200">{c.nombre}</td>
+                      <tr key={c.nombre} className="border-b border-zinc-800/60 last:border-0 hover:bg-zinc-800/40">
+                        <td className="px-4 py-2 text-zinc-100">{c.nombre}</td>
                         <td className="px-4 py-2 text-right text-zinc-400">{c.tickets}</td>
-                        <td className="px-4 py-2 text-right text-zinc-300">{fmt2(c.gasto)}</td>
+                        <td className="px-4 py-2 text-right font-medium text-zinc-100">{fmt2(c.gasto)}</td>
                         <td className="px-4 py-2 text-right text-zinc-500">{tot > 0 ? ((c.gasto / tot) * 100).toFixed(0) + '%' : '—'}</td>
                       </tr>
                     )
@@ -399,31 +401,31 @@ export default function DashboardPage() {
           )}
 
           {/* Productos mas comprados */}
-          <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+          <div className="tarjeta overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800 flex-wrap">
-              <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Productos más comprados</p>
+              <h3 className="text-sm font-semibold text-zinc-300">Productos más comprados</h3>
               <input value={prodFiltro} onChange={e => setProdFiltro(e.target.value)} placeholder="Filtrar artículo…"
-                className="rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 w-48" />
+                className="campo py-1.5 w-48" />
             </div>
             {prodsFiltrados.length === 0 ? (
-              <p className="px-4 py-6 text-center text-zinc-500 text-sm">{productosTop.length === 0 ? 'Sin productos en el periodo' : 'Sin coincidencias'}</p>
+              <p className="px-4 py-6 text-center nota">{productosTop.length === 0 ? 'Sin productos en el periodo' : 'Sin coincidencias'}</p>
             ) : (
               <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
-                <thead><tr className="text-zinc-500"><th className="text-left font-medium px-4 py-2">Producto</th><th className="text-right font-medium px-4 py-2">Cantidad</th><th className="text-right font-medium px-4 py-2">Veces</th><th className="text-right font-medium px-4 py-2">Gasto</th></tr></thead>
+                <thead><tr className="border-b border-zinc-800 text-[13px] font-medium text-zinc-500"><th className="text-left font-medium px-4 py-2">Producto</th><th className="text-right font-medium px-4 py-2">Cantidad</th><th className="text-right font-medium px-4 py-2">Veces</th><th className="text-right font-medium px-4 py-2">Gasto</th></tr></thead>
                 <tbody>
                   {prodsFiltrados.slice(0, 60).map(p => (
-                    <tr key={p.nombre} className="border-t border-zinc-800/50">
-                      <td className="px-4 py-2 text-zinc-200">{p.nombre}
+                    <tr key={p.nombre} className="border-b border-zinc-800/60 last:border-0 hover:bg-zinc-800/40">
+                      <td className="px-4 py-2 text-zinc-100">{p.nombre}
                         {p.reconocido
-                          ? <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400">catálogo</span>
-                          : <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">sin catálogo</span>}
+                          ? <span className="chip-bien ml-2">catálogo</span>
+                          : <span className="chip-neutro ml-2">sin catálogo</span>}
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">
                         {p.cantidad > 0 ? `${p.cantidad.toLocaleString('es-MX', { maximumFractionDigits: 2 })}${p.unidadMixta ? '' : p.unidad ? ' ' + p.unidad : ''}` : '—'}
-                        {p.base > 0 && p.baseUnidad && (() => { const pr = pretty(p.base, p.baseUnidad); return <span className="block text-[10px] text-zinc-600">= {pr.quantity.toLocaleString('es-MX', { maximumFractionDigits: 2 })} {pr.unit}</span> })()}
+                        {p.base > 0 && p.baseUnidad && (() => { const pr = pretty(p.base, p.baseUnidad); return <span className="block text-xs text-zinc-500">= {pr.quantity.toLocaleString('es-MX', { maximumFractionDigits: 2 })} {pr.unit}</span> })()}
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400">{p.veces}</td>
-                      <td className="px-4 py-2 text-right text-zinc-300">{fmt2(p.gasto)}</td>
+                      <td className="px-4 py-2 text-right font-medium text-zinc-100">{fmt2(p.gasto)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -438,9 +440,9 @@ export default function DashboardPage() {
 
 function Card({ label, value, color, hint }: { label: string; value: string; color?: string; hint?: string }) {
   return (
-    <div className="rounded-xl bg-zinc-900 p-4">
-      <p className="text-xs text-zinc-500 mb-1">{label}{hint && <span className="text-zinc-600"> · {hint}</span>}</p>
-      <p className={`text-2xl font-bold ${color ?? 'text-zinc-100'}`}>{value}</p>
+    <div className="tarjeta p-4">
+      <p className="text-[13px] text-zinc-400 mb-1">{label}{hint && <span className="text-zinc-500"> · {hint}</span>}</p>
+      <p className={`text-2xl font-semibold tracking-tight ${color ?? 'text-zinc-100'}`}>{value}</p>
     </div>
   )
 }

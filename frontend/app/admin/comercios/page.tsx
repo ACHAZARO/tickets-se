@@ -80,20 +80,20 @@ export default function ComerciosPage() {
 
   const filtrados = comercios.filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()))
 
-  if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+  if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-zinc-100">Comercios</h2>
-        <p className="text-sm text-zinc-500 mt-1">La IA aprende qué productos compras en cada comercio. Un comercio puede tener varias categorías (ej. Costco). Sólo si SIEMPRE es lo mismo (ej. gasolinera) conviene <span className="text-zinc-300">forzar una categoría</span>.</p>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Comercios</h2>
+        <p className="nota mt-1">Fuerza una categoría solo si el comercio SIEMPRE vende lo mismo (ej. gasolinera).</p>
       </div>
 
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar comercio..."
-        className="w-full rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600" />
+        className="campo w-full px-4 py-2.5" />
 
       {filtrados.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">{comercios.length === 0 ? 'Aún no hay comercios aprendidos. Se llenan al procesar tickets.' : 'Sin coincidencias'}</p>
+        <p className="text-sm text-zinc-500 text-center py-12">{comercios.length === 0 ? 'Aún no hay comercios aprendidos. Se llenan al procesar tickets.' : 'Sin coincidencias'}</p>
       ) : (
         <div className="space-y-2">
           {filtrados.map(c => {
@@ -101,35 +101,35 @@ export default function ComerciosPage() {
             const cats = r?.categorias ?? []
             const expandido = abierto === c.id
             return (
-              <div key={c.id} className="rounded-2xl bg-zinc-900 overflow-hidden">
+              <div key={c.id} className="tarjeta overflow-hidden">
                 <div className="flex items-center gap-3 px-4 py-3">
                   <button onClick={() => setAbierto(expandido ? null : c.id)} className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-2">
                       <p className="text-sm text-zinc-100 truncate">{c.nombre}</p>
-                      {c.sucursal_id === null && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">global</span>}
+                      {c.sucursal_id === null && <span className="chip-neutro">global</span>}
                     </div>
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-zinc-500">
                       {c.veces} ticket(s){r ? ` · ${r.productos.length} producto(s)` : ''}
                       {cats.length > 0 && <> · {cats.length === 1 ? cats[0] : `${cats.length} categorías`}</>}
                     </p>
                   </button>
                   <select value={c.categoria_id ?? ''} onChange={e => setCategoria(c, e.target.value)} title="Forzar categoría (opcional)"
-                    className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 max-w-[150px]">
+                    className="campo px-2 py-1.5 max-w-[150px]">
                     <option value="">No forzar</option>
                     {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                   </select>
-                  <button onClick={() => setAbierto(expandido ? null : c.id)} className="text-xs text-zinc-500 hover:text-zinc-300 w-4">{expandido ? '▾' : '▸'}</button>
+                  <button onClick={() => setAbierto(expandido ? null : c.id)} aria-label={expandido ? 'Cerrar' : 'Abrir'} className="btn-quieto btn-sm">{expandido ? '▾' : '▸'}</button>
                 </div>
 
                 {expandido && (
                   <div className="px-4 pb-3 space-y-3 border-t border-zinc-800 pt-3">
                     {cats.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
-                        {cats.map(cat => <span key={cat} className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300">{cat}</span>)}
+                        {cats.map(cat => <span key={cat} className="chip-neutro">{cat}</span>)}
                       </div>
                     )}
                     {r && r.productos.length > 0 ? (
-                      <div className="rounded-xl bg-zinc-800/40 divide-y divide-zinc-800/60">
+                      <div className="rounded-lg bg-zinc-800/50 divide-y divide-zinc-800/60">
                         {r.productos.slice(0, 50).map((p, i) => (
                           <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                             <span className="text-zinc-200 truncate">{p.descripcion}</span>
@@ -138,12 +138,12 @@ export default function ComerciosPage() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-zinc-600">Aún no hay productos clasificados de este comercio.</p>
+                      <p className="nota">Aún no hay productos clasificados de este comercio.</p>
                     )}
                     <div className="flex items-center gap-3">
                       <Link href={`/admin/tickets?comercio=${encodeURIComponent(c.nombre)}`}
-                        className="text-xs text-blue-400 hover:text-blue-300">Ver tickets de este comercio →</Link>
-                      <button onClick={() => eliminar(c)} className="text-xs text-red-400 hover:text-red-300 ml-auto">olvidar comercio</button>
+                        className="btn-texto btn-sm">Ver tickets →</Link>
+                      <button onClick={() => eliminar(c)} className="btn-peligro btn-sm ml-auto">Olvidar comercio</button>
                     </div>
                   </div>
                 )}

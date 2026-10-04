@@ -31,7 +31,10 @@ export default function AdminLoginPage() {
   return (
     <main className="flex min-h-screen min-h-[100dvh] items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-zinc-100 text-center mb-8">Admin Panel</h1>
+        <div className="mb-8 text-center">
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Tickets</h1>
+          <p className="nota mt-1">Panel de revisión</p>
+        </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <input
@@ -39,7 +42,7 @@ export default function AdminLoginPage() {
             placeholder="Email"
             value={email}
             onChange={e => setEmail(e.target.value)}
-            className="rounded-xl bg-zinc-800 border border-zinc-700 px-4 py-3 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+            className="campo w-full px-4 py-3"
             required
             autoComplete="email"
           />
@@ -49,7 +52,7 @@ export default function AdminLoginPage() {
               placeholder="Contraseña"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-xl bg-zinc-800 border border-zinc-700 px-4 py-3 pr-12 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+              className="campo w-full px-4 py-3 pr-12"
               required
               autoComplete="current-password"
             />
@@ -58,6 +61,7 @@ export default function AdminLoginPage() {
               onClick={() => setShowPassword(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
               tabIndex={-1}
+              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {showPassword ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -79,7 +83,7 @@ export default function AdminLoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="rounded-xl bg-zinc-100 py-3 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98] disabled:opacity-60"
+            className="btn-primario w-full py-3 text-base"
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>

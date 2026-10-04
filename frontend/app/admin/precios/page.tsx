@@ -17,7 +17,7 @@ interface ProdPrecio {
 const fmt = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigits: 2 })
 
 function Sparkline({ puntos }: { puntos: Punto[] }) {
-  if (puntos.length < 2) return <p className="text-xs text-zinc-600">Solo hay un registro; aún no hay historia para graficar.</p>
+  if (puntos.length < 2) return <p className="nota">Solo hay un registro; aún no hay historial.</p>
   const W = 320, H = 60, pad = 6
   const precios = puntos.map(p => p.precio)
   const min = Math.min(...precios), max = Math.max(...precios)
@@ -29,13 +29,13 @@ function Sparkline({ puntos }: { puntos: Punto[] }) {
   return (
     <div className="flex items-center gap-4">
       <svg viewBox={`0 0 ${W} ${H}`} className="h-16 flex-1" preserveAspectRatio="none">
-        <path d={d} fill="none" stroke="#60a5fa" strokeWidth="1.5" />
-        {puntos.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.precio)} r="1.8" fill="#60a5fa" />)}
+        <path d={d} fill="none" className="stroke-blue-400" strokeWidth="1.5" />
+        {puntos.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.precio)} r="1.8" className="fill-blue-400" />)}
       </svg>
       <div className="text-xs text-zinc-500 whitespace-nowrap">
         <div>min {fmt(min)}</div>
         <div>max {fmt(max)}</div>
-        <div className="text-zinc-300">últ {fmt(ult.precio)}</div>
+        <div className="font-medium text-zinc-100">últ {fmt(ult.precio)}</div>
       </div>
     </div>
   )
@@ -96,28 +96,28 @@ export default function PreciosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-zinc-100">Precios</h2>
-        <p className="text-sm text-zinc-500 mt-1">{nombreSucursal} · precio unitario por producto y su variación. Los cambios fuertes (&gt;40%) además generan alerta al procesar.</p>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Precios</h2>
+        <p className="nota mt-1">{nombreSucursal} · precio unitario y su variación. Un cambio de más de 40% genera alerta al procesar.</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"
-          className="flex-1 min-w-[180px] rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600" />
+          className="campo flex-1 min-w-[180px]" />
         <label className="flex items-center gap-2 text-sm text-zinc-400">
-          <input type="checkbox" checked={soloCambios} onChange={e => setSoloCambios(e.target.checked)} className="accent-blue-500" />
+          <input type="checkbox" checked={soloCambios} onChange={e => setSoloCambios(e.target.checked)} className="accent-emerald-500" />
           Solo cambios ≥15%
         </label>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
       ) : filtrados.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">{prods.length === 0 ? 'Aún no hay precios: aparecen cuando hay tickets confirmados con cantidad y monto por renglón.' : 'Sin coincidencias'}</p>
+        <p className="text-sm text-zinc-500 text-center py-12">{prods.length === 0 ? 'Aún no hay precios: aparecen cuando hay tickets confirmados con cantidad y monto por renglón.' : 'Sin coincidencias'}</p>
       ) : (
-        <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+        <div className="tarjeta overflow-hidden">
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500">
+              <tr className="border-b border-zinc-800 text-[13px] font-medium text-zinc-500">
                 <th className="text-left font-medium px-4 py-3">Producto</th>
                 <th className="text-right font-medium px-4 py-3">Último</th>
                 <th className="text-right font-medium px-4 py-3">Anterior</th>
@@ -133,17 +133,17 @@ export default function PreciosPage() {
                 return (
                   <Fragment key={p.nombre}>
                     <tr onClick={() => setAbierto(exp ? null : p.nombre)}
-                      className="border-t border-zinc-800/50 cursor-pointer hover:bg-zinc-800/40">
-                      <td className="px-4 py-2.5 text-zinc-200">{exp ? '▾ ' : '▸ '}{p.nombre}{p.unidad ? <span className="text-zinc-600"> /{p.unidad}</span> : ''}</td>
-                      <td className="px-4 py-2.5 text-right text-zinc-200">{fmt(p.ultimo)}</td>
+                      className="border-b border-zinc-800/60 cursor-pointer hover:bg-zinc-800/40">
+                      <td className="px-4 py-2.5 text-zinc-100"><span className="text-zinc-500" aria-hidden="true">{exp ? '▾ ' : '▸ '}</span>{p.nombre}{p.unidad ? <span className="text-zinc-500"> /{p.unidad}</span> : ''}</td>
+                      <td className="px-4 py-2.5 text-right font-medium text-zinc-100">{fmt(p.ultimo)}</td>
                       <td className="px-4 py-2.5 text-right text-zinc-500">{p.anterior != null ? fmt(p.anterior) : '—'}</td>
-                      <td className={`px-4 py-2.5 text-right ${p.variacion == null ? 'text-zinc-600' : fuerte ? (sube ? 'text-red-400 font-semibold' : 'text-emerald-400 font-semibold') : sube ? 'text-amber-400' : 'text-zinc-400'}`}>
+                      <td className={`px-4 py-2.5 text-right ${p.variacion == null ? 'text-zinc-500' : fuerte ? (sube ? 'text-red-400 font-semibold' : 'text-emerald-400 font-semibold') : sube ? 'text-amber-400' : 'text-zinc-400'}`}>
                         {p.variacion == null ? '—' : `${sube ? '▲' : '▼'} ${Math.abs(p.variacion).toFixed(0)}%`}
                       </td>
                       <td className="px-4 py-2.5 text-right text-zinc-500">{p.puntos.length}</td>
                     </tr>
                     {exp && (
-                      <tr className="bg-zinc-950/40">
+                      <tr className="border-b border-zinc-800/60 bg-zinc-800/30">
                         <td colSpan={5} className="px-4 py-3">
                           <Sparkline puntos={p.puntos} />
                         </td>

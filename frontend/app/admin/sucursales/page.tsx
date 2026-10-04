@@ -80,44 +80,44 @@ export default function SucursalesPage() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+    return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-zinc-100">Sucursales</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Sucursales</h2>
         <button
           onClick={() => setSucForm({ nombre: '', slug: '', direccion: '', activa: true })}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300"
+          className="btn-primario"
         >+ Agregar</button>
       </div>
 
       <div className="space-y-3">
         {sucursales.length === 0 ? (
-          <p className="text-zinc-500 text-center py-12">Aún no hay sucursales</p>
+          <p className="text-sm text-zinc-500 text-center py-12">Aún no hay sucursales. Agrega la primera con + Agregar.</p>
         ) : sucursales.map(s => (
-          <div key={s.id} className={`rounded-2xl bg-zinc-900 p-4 ${!s.activa ? 'opacity-50' : ''}`}>
+          <div key={s.id} className={`tarjeta p-4 ${!s.activa ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-semibold text-zinc-100">{s.nombre}</h3>
-                  {!s.activa && <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500">Inactiva</span>}
+                  {!s.activa && <span className="chip-mal">Inactiva</span>}
                 </div>
                 {s.direccion && <p className="text-xs text-zinc-500 mt-0.5">{s.direccion}</p>}
                 <div className="flex items-center gap-2 mt-2">
-                  <code className="text-xs text-zinc-400 bg-zinc-800 rounded px-2 py-1 truncate max-w-[260px]">{enlace(s.slug)}</code>
-                  <button onClick={() => navigator.clipboard?.writeText(enlace(s.slug))} className="text-xs text-blue-400 hover:text-blue-300">copiar</button>
+                  <code className="text-xs text-zinc-400 bg-zinc-800/50 rounded-lg px-2 py-1 truncate max-w-[260px]">{enlace(s.slug)}</code>
+                  <button onClick={() => navigator.clipboard?.writeText(enlace(s.slug))} className="btn-texto btn-sm">Copiar</button>
                 </div>
-                <p className="text-xs text-zinc-600 mt-2">{counts[s.id] ?? 0} empleado(s)</p>
+                <p className="text-xs text-zinc-500 mt-2">{counts[s.id] ?? 0} empleado(s)</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
               <BtnSec onClick={() => setEmpPanel(s)}>Empleados</BtnSec>
               <BtnSec onClick={() => setQrSuc(s)}>QR</BtnSec>
               <BtnSec onClick={() => setSucForm({ id: s.id, nombre: s.nombre, slug: s.slug, direccion: s.direccion ?? '', activa: s.activa })}>Editar</BtnSec>
-              <BtnSec onClick={() => toggleActiva(s)}>{s.activa ? 'Desactivar' : 'Activar'}</BtnSec>
-              <button onClick={() => eliminarSucursal(s)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-zinc-700">Eliminar</button>
+              <button onClick={() => toggleActiva(s)} className={`${s.activa ? 'btn-peligro' : 'btn-secundario'} btn-sm`}>{s.activa ? 'Desactivar' : 'Activar'}</button>
+              <button onClick={() => eliminarSucursal(s)} className="btn-peligro btn-sm">Eliminar</button>
             </div>
           </div>
         ))}
@@ -133,12 +133,12 @@ export default function SucursalesPage() {
 }
 
 function BtnSec({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  return <button onClick={onClick} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700">{children}</button>
+  return <button onClick={onClick} className="btn-secundario btn-sm">{children}</button>
 }
 
 function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-0 md:p-4" onClick={onClose}>
       <div className="w-full md:max-w-md rounded-t-2xl md:rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4 max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {children}
       </div>
@@ -149,9 +149,9 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
 function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
   return (
     <div>
-      <label className="text-xs text-zinc-500 block mb-1">{label}</label>
+      <label className="etiqueta block mb-1">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 outline-none" />
+        className="campo w-full" />
     </div>
   )
 }
@@ -188,16 +188,16 @@ function SucursalModal({ form, onClose, onSaved }: {
     <Overlay onClose={onClose}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-zinc-100">{form.id ? 'Editar sucursal' : 'Nueva sucursal'}</h3>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">×</button>
+        <button onClick={onClose} aria-label="Cerrar" className="btn-quieto text-xl leading-none">×</button>
       </div>
       <Field label="Nombre" value={nombre} onChange={onNombre} placeholder="Sucursal Centro" />
       <div>
         <Field label="Slug (URL)" value={slug} onChange={v => { setSlug(slugify(v)); setSlugTouched(true) }} placeholder="sucursal-centro" />
-        <p className="text-xs text-zinc-600 mt-1">Aparece en el enlace y el QR. Solo letras, números y guiones.</p>
+        <p className="nota mt-1">Aparece en el enlace y el QR. Solo letras, números y guiones.</p>
       </div>
       <Field label="Dirección (opcional)" value={direccion} onChange={setDireccion} />
       {error && <p className="text-sm text-red-400">{error}</p>}
-      <button onClick={guardar} disabled={saving} className="w-full rounded-xl bg-zinc-100 py-3 text-base font-semibold text-zinc-900 disabled:opacity-60">
+      <button onClick={guardar} disabled={saving} className="btn-primario w-full py-3 text-base">
         {saving ? 'Guardando...' : 'Guardar'}
       </button>
     </Overlay>
@@ -258,7 +258,7 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
     <Overlay onClose={onClose}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-zinc-100">Empleados · {sucursal.nombre}</h3>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">×</button>
+        <button onClick={onClose} aria-label="Cerrar" className="btn-quieto text-xl leading-none">×</button>
       </div>
 
       {editing ? (
@@ -266,35 +266,35 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
           <Field label="Nombre" value={editing.nombre} onChange={v => setEditing({ ...editing, nombre: v })} />
           <Field label={editing.id ? 'Nuevo PIN (dejar vacío para no cambiar)' : 'PIN (4+ dígitos)'} type="number" value={editing.pin} onChange={v => setEditing({ ...editing, pin: v })} placeholder="••••" />
           <label className="flex items-center gap-2 text-sm text-zinc-300">
-            <input type="checkbox" checked={editing.activo} onChange={e => setEditing({ ...editing, activo: e.target.checked })} className="h-4 w-4 rounded border-zinc-700 bg-zinc-800" />
+            <input type="checkbox" checked={editing.activo} onChange={e => setEditing({ ...editing, activo: e.target.checked })} className="h-4 w-4 rounded border-zinc-700 bg-zinc-800 accent-emerald-500" />
             Activo
           </label>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <div className="flex gap-2">
-            <button onClick={guardar} disabled={saving} className="flex-1 rounded-xl bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 disabled:opacity-60">{saving ? 'Guardando...' : 'Guardar'}</button>
-            <button onClick={() => { setEditing(null); setError('') }} className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300">Cancelar</button>
+            <button onClick={guardar} disabled={saving} className="btn-primario flex-1 py-2.5">{saving ? 'Guardando...' : 'Guardar'}</button>
+            <button onClick={() => { setEditing(null); setError('') }} className="btn-quieto py-2.5">Cancelar</button>
           </div>
         </div>
       ) : (
         <>
           {loading ? (
-            <div className="flex justify-center py-6"><div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+            <div className="flex justify-center py-6"><div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
           ) : empleados.length === 0 ? (
-            <p className="text-sm text-zinc-500 py-4 text-center">Sin empleados en esta sucursal</p>
+            <p className="text-sm text-zinc-500 py-4 text-center">Sin empleados. Agrega uno abajo.</p>
           ) : (
             <div className="space-y-1">
               {empleados.map(e => (
                 <div key={e.id} className={`flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 ${!e.activo ? 'opacity-50' : ''}`}>
                   <span className="text-sm text-zinc-200">{e.nombre}{!e.activo && <span className="text-xs text-zinc-500"> · inactivo</span>}</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setEditing({ id: e.id, nombre: e.nombre, pin: '', activo: e.activo })} className="text-xs text-zinc-400 hover:text-zinc-200">editar</button>
-                    <button onClick={() => eliminar(e)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setEditing({ id: e.id, nombre: e.nombre, pin: '', activo: e.activo })} className="btn-texto btn-sm">Editar</button>
+                    <button onClick={() => eliminar(e)} className="btn-peligro btn-sm">Eliminar</button>
                   </div>
                 </div>
               ))}
             </div>
           )}
-          <button onClick={() => { setEditing({ nombre: '', pin: '', activo: true }); setError('') }} className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700">+ Agregar empleado</button>
+          <button onClick={() => { setEditing({ nombre: '', pin: '', activo: true }); setError('') }} className="btn-primario w-full py-2.5">+ Agregar empleado</button>
         </>
       )}
     </Overlay>
@@ -321,17 +321,17 @@ function QRModal({ sucursal, url, onClose }: { sucursal: Sucursal; url: string; 
     <Overlay onClose={onClose}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-zinc-100">QR · {sucursal.nombre}</h3>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">×</button>
+        <button onClick={onClose} aria-label="Cerrar" className="btn-quieto text-xl leading-none">×</button>
       </div>
       <div className="flex flex-col items-center gap-4">
         {dataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={dataUrl} alt={`QR ${sucursal.nombre}`} className="w-56 h-56 rounded-xl bg-white p-2" />
         ) : (
-          <div className="w-56 h-56 flex items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+          <div className="w-56 h-56 flex items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
         )}
         <code className="text-xs text-zinc-400 break-all text-center">{url}</code>
-        <button onClick={descargar} disabled={!dataUrl} className="w-full rounded-xl bg-zinc-100 py-3 text-base font-semibold text-zinc-900 disabled:opacity-60">Descargar PNG</button>
+        <button onClick={descargar} disabled={!dataUrl} className="btn-primario w-full py-3 text-base">Descargar PNG</button>
       </div>
     </Overlay>
   )

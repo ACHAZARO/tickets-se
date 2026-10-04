@@ -94,12 +94,12 @@ export default function PagosTicket({ ticketId, total, pagos, onGuardado }: {
 
   if (!editando) {
     return (
-      <div className="mt-1 text-xs text-zinc-400">
+      <div className="mt-1 text-[13px] text-zinc-400">
         Pagado con:{' '}
         {texto ? <span className="font-medium text-zinc-100">{texto}</span> : <span className="text-zinc-500">No registrado</span>}
         {caja !== null && <span className="text-zinc-500"> · salió de Caja {pesos(caja)}</span>}
-        <button onClick={() => setEditando(true)} className="ml-2 text-blue-400 hover:text-blue-300">corregir</button>
-        {noCuadra && <p className="mt-0.5 text-red-300">Los pagos no suman el total del ticket ({total != null ? pesos(Number(total)) : 'sin total'}).</p>}
+        <button onClick={() => setEditando(true)} className="btn-texto btn-sm ml-1 px-1.5 py-0.5">Corregir</button>
+        {noCuadra && <p className="mt-0.5 text-red-400">Los pagos no suman el total del ticket ({total != null ? pesos(Number(total)) : 'sin total'}).</p>}
       </div>
     )
   }
@@ -107,15 +107,15 @@ export default function PagosTicket({ ticketId, total, pagos, onGuardado }: {
   // Formas activas + las apagadas que este ticket ya usa (para no perderlas al corregir).
   const visibles = formas.filter(f => f.activa || elegidas.includes(f.id))
   return (
-    <div className="mt-2 max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
-      <p className="text-xs font-medium text-zinc-300">¿Cómo se pagó? {esMixto && <span className="font-normal text-zinc-500">(monto de cada una)</span>}</p>
+    <div className="mt-2 max-w-md rounded-lg bg-zinc-800/50 p-3 space-y-2">
+      <p className="text-sm font-medium text-zinc-200">¿Cómo se pagó? {esMixto && <span className="font-normal text-zinc-500">(monto de cada una)</span>}</p>
       {visibles.map(f => {
         const activo = elegidas.includes(f.id)
         return (
           <div key={f.id} className="flex items-center gap-2">
             <button
               onClick={() => setElegidas(prev => (prev.includes(f.id) ? prev.filter(x => x !== f.id) : [...prev, f.id]))}
-              className={`flex-1 rounded-lg border px-3 py-1.5 text-left text-xs ${activo ? 'border-zinc-100 bg-zinc-100 text-zinc-900' : 'border-zinc-800 bg-zinc-900 text-zinc-300'}`}
+              className={`flex-1 rounded-lg border px-3 py-1.5 text-left text-[13px] transition-colors ${activo ? 'border-emerald-500 bg-emerald-900 font-medium text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800'}`}
             >{f.nombre}{!f.activa && ' (apagada)'}</button>
             {activo && esMixto && (
               <input
@@ -123,7 +123,7 @@ export default function PagosTicket({ ticketId, total, pagos, onGuardado }: {
                 value={montos[f.id] ?? ''}
                 placeholder="$ monto"
                 onChange={e => setMontos(m => ({ ...m, [f.id]: e.target.value }))}
-                className="w-28 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-right text-xs text-zinc-100"
+                className="campo w-28 px-2 py-1.5 text-right"
               />
             )}
           </div>
@@ -135,8 +135,8 @@ export default function PagosTicket({ ticketId, total, pagos, onGuardado }: {
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <button onClick={() => setEditando(false)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300">Cancelar</button>
-        <button onClick={guardar} disabled={guardando || faltaMonto} className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 disabled:opacity-40">
+        <button onClick={() => setEditando(false)} className="btn-quieto btn-sm">Cancelar</button>
+        <button onClick={guardar} disabled={guardando || faltaMonto} className="btn-primario btn-sm">
           {elegidas.length ? 'Guardar' : 'Dejar como No registrado'}
         </button>
       </div>

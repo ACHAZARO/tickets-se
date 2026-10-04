@@ -112,7 +112,7 @@ export default function PinPage({ params }: PageProps) {
       }
     } catch {
       // abort (timeout) o red caida
-      showError('Sin conexion. Revisa tu internet e intenta de nuevo.')
+      showError('Sin conexión. Revisa tu internet e intenta de nuevo.')
     } finally {
       clearTimeout(timer)
     }
@@ -124,9 +124,9 @@ export default function PinPage({ params }: PageProps) {
     return (
       <main className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center px-6">
         <div className="text-center">
-          <p className="text-4xl">404</p>
+          <p className="text-4xl font-semibold text-zinc-100">404</p>
           <p className="mt-2 text-zinc-400">Sucursal no encontrada</p>
-          <p className="mt-1 font-mono text-sm text-zinc-600">{slug}</p>
+          <p className="mt-1 font-mono text-sm text-zinc-500">{slug}</p>
         </div>
       </main>
     )
@@ -137,8 +137,8 @@ export default function PinPage({ params }: PageProps) {
       <div className="flex w-full max-w-[20rem] flex-col items-center">
         {/* Header */}
         <div className="text-center">
-          <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Sucursal</p>
-          <h1 className="mt-1 text-2xl font-semibold text-zinc-100">
+          <p className="nota">Sucursal</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-100">
             {sucursalNombre ?? (
               <span className="inline-block h-6 w-36 animate-pulse rounded bg-zinc-800" />
             )}
@@ -147,7 +147,7 @@ export default function PinPage({ params }: PageProps) {
 
         {/* PIN dots + status */}
         <div className="mt-10 flex flex-col items-center gap-5">
-          <p className="text-sm text-zinc-400">Ingresa tu PIN</p>
+          <p className="text-base font-medium text-zinc-300">Ingresa tu PIN</p>
 
           {/* Dots */}
           <div
@@ -160,9 +160,9 @@ export default function PinPage({ params }: PageProps) {
                 className={`h-3.5 w-3.5 rounded-full border-2 transition-all duration-150 ${
                   i < pin.length
                     ? state === 'error'
-                      ? 'border-red-500 bg-red-500'
-                      : 'border-zinc-100 bg-zinc-100'
-                    : 'border-zinc-700 bg-transparent'
+                      ? 'border-red-400 bg-red-400'
+                      : 'border-emerald-500 bg-emerald-500'
+                    : 'border-zinc-600 bg-transparent'
                 }`}
               />
             ))}
@@ -198,14 +198,14 @@ export default function PinPage({ params }: PageProps) {
                   disabled={isDisabled}
                   aria-label={isDel ? 'Borrar' : isOk ? 'Confirmar' : key}
                   className={`
-                    flex aspect-square items-center justify-center rounded-2xl text-2xl font-medium
-                    transition-all duration-100 active:scale-95 select-none
+                    flex aspect-square min-h-[44px] items-center justify-center rounded-xl text-2xl font-medium
+                    transition-[background-color,transform] duration-100 ease-out active:scale-95 select-none
                     ${
                       isOk
-                        ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-300 disabled:bg-zinc-800 disabled:text-zinc-600'
+                        ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-300 disabled:bg-zinc-800 disabled:text-zinc-500'
                         : isDel
-                        ? 'bg-zinc-800/60 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30'
-                        : 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700 active:bg-zinc-600'
+                        ? 'text-zinc-400 hover:bg-zinc-800 active:bg-zinc-800 disabled:opacity-30'
+                        : 'border border-zinc-800 bg-zinc-900 text-zinc-100 hover:bg-zinc-800 active:bg-zinc-800'
                     }
                     disabled:cursor-not-allowed
                   `}

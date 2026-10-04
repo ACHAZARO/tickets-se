@@ -177,16 +177,17 @@ export default function CerebroPage() {
     return huerfanos
   }, [sel, huerfanos, comercioActivoKey, comercios])
 
-  if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+  if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold text-zinc-100">Cerebro</h2>
-        <p className="text-sm text-zinc-500 mt-1">
-          Comercios, categorías y productos ligados. Toca un comercio o una categoría para ver qué se conecta.
-          Los <span className="text-amber-400">huérfanos</span> (arriba en Productos) los ligas y se acomodan solos.
-          {sel && <button onClick={() => setSel(null)} className="ml-2 text-blue-400 hover:text-blue-300">limpiar selección</button>}
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Cerebro</h2>
+          {sel && <button onClick={() => setSel(null)} className="btn-quieto btn-sm">Limpiar selección</button>}
+        </div>
+        <p className="nota">
+          Toca un comercio o una categoría para ver qué se conecta. Los <span className="text-amber-400">huérfanos</span> se ligan arriba en Productos.
         </p>
       </div>
 
@@ -194,14 +195,14 @@ export default function CerebroPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* COMERCIOS */}
-        <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
-          <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">Comercios ({comercios.length})</div>
-          <div className="p-2 border-b border-zinc-800/50">
-            <input value={bCom} onChange={e => setBCom(e.target.value)} placeholder="Buscar comercio…"
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600" />
+        <div className="tarjeta overflow-hidden flex flex-col">
+          <h3 className="px-4 py-2.5 border-b border-zinc-800 text-sm font-semibold text-zinc-300">Comercios <span className="font-normal text-zinc-500">({comercios.length})</span></h3>
+          <div className="p-2 border-b border-zinc-800/60">
+            <input value={bCom} onChange={e => setBCom(e.target.value)} placeholder="Buscar comercio…" aria-label="Buscar comercio"
+              className="campo w-full py-1.5" />
           </div>
-          <div className="divide-y divide-zinc-800/50 max-h-[60vh] overflow-y-auto">
-            {comercios.length === 0 && <p className="px-4 py-4 text-xs text-zinc-600">Aún no hay comercios.</p>}
+          <div className="divide-y divide-zinc-800/60 max-h-[60vh] overflow-y-auto">
+            {comercios.length === 0 && <p className="px-4 py-4 nota">Aún no hay comercios.</p>}
             {comercios.filter(c => !bCom || c.nombre.toLowerCase().includes(bCom.toLowerCase())).map(c => {
               const activo = sel?.tipo === 'comercio' && sel.id === c.id
               const resaltado = comerciosResaltados?.has(c.nombre.toLowerCase())
@@ -209,15 +210,15 @@ export default function CerebroPage() {
               return (
                 <div key={c.id} className={`transition-colors ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : ''} ${apagado ? 'opacity-40' : ''}`}>
                   <button onClick={() => toggleSel('comercio', c.id)}
-                    className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-zinc-800/30">
-                    <span className="text-sm text-zinc-100 truncate">{c.nombre}{c.categoria_id ? <span className="ml-1 text-[10px] text-blue-400">●</span> : ''}</span>
-                    <span className="text-[10px] text-zinc-600 flex-shrink-0">{c.veces}×</span>
+                    className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-zinc-800/40">
+                    <span className="text-sm text-zinc-100 truncate">{c.nombre}{c.categoria_id ? <span className="ml-1 text-xs text-blue-400" title="Categoría forzada">●</span> : ''}</span>
+                    <span className="text-xs text-zinc-500 flex-shrink-0">{c.veces}×</span>
                   </button>
                   {activo && (
                     <div className="px-4 pb-2.5 -mt-1">
-                      <label className="block text-[10px] text-zinc-500 mb-1">Forzar categoría (cuando siempre es lo mismo, ej. gasolinera)</label>
+                      <label className="etiqueta block mb-1">Forzar categoría (si siempre vende lo mismo, ej. gasolinera)</label>
                       <select value={c.categoria_id ?? ''} onChange={e => forzarCategoriaComercio(c, e.target.value)}
-                        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                        className="campo w-full py-1.5">
                         <option value="">No forzar (vende de varias)</option>
                         {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                       </select>
@@ -230,13 +231,13 @@ export default function CerebroPage() {
         </div>
 
         {/* CATEGORIAS */}
-        <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
-          <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">Categorías ({categorias.length})</div>
-          <div className="p-2 border-b border-zinc-800/50">
-            <input value={bCat} onChange={e => setBCat(e.target.value)} placeholder="Buscar categoría…"
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600" />
+        <div className="tarjeta overflow-hidden flex flex-col">
+          <h3 className="px-4 py-2.5 border-b border-zinc-800 text-sm font-semibold text-zinc-300">Categorías <span className="font-normal text-zinc-500">({categorias.length})</span></h3>
+          <div className="p-2 border-b border-zinc-800/60">
+            <input value={bCat} onChange={e => setBCat(e.target.value)} placeholder="Buscar categoría…" aria-label="Buscar categoría"
+              className="campo w-full py-1.5" />
           </div>
-          <div className="divide-y divide-zinc-800/50 max-h-[60vh] overflow-y-auto">
+          <div className="divide-y divide-zinc-800/60 max-h-[60vh] overflow-y-auto">
             {categorias.filter(c => !bCat || c.nombre.toLowerCase().includes(bCat.toLowerCase())).map(c => {
               const activo = sel?.tipo === 'categoria' && sel.id === c.id
               const resaltado = catsResaltadas?.has(c.id)
@@ -245,9 +246,9 @@ export default function CerebroPage() {
               return (
                 <button key={c.id} onClick={() => toggleSel('categoria', c.id)}
                   className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 transition-colors
-                    ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : 'hover:bg-zinc-800/50'} ${apagado ? 'opacity-40' : ''}`}>
+                    ${activo ? 'bg-blue-900/30' : resaltado ? 'bg-emerald-900/15' : 'hover:bg-zinc-800/40'} ${apagado ? 'opacity-40' : ''}`}>
                   <span className="text-sm text-zinc-100 truncate">{c.nombre}</span>
-                  <span className="text-[10px] text-zinc-600 flex-shrink-0">{nProd} prod.</span>
+                  <span className="text-xs text-zinc-500 flex-shrink-0">{nProd} prod.</span>
                 </button>
               )
             })}
@@ -255,24 +256,25 @@ export default function CerebroPage() {
         </div>
 
         {/* PRODUCTOS */}
-        <div className="rounded-2xl bg-zinc-900 overflow-hidden flex flex-col">
-          <div className="px-4 py-2.5 border-b border-zinc-800 text-xs font-medium uppercase tracking-widest text-zinc-500">
-            Productos {sel ? '(filtrados)' : `(${productos.length})`}
-          </div>
-          <div className="p-2 border-b border-zinc-800/50">
-            <input value={bProd} onChange={e => setBProd(e.target.value)} placeholder="Buscar producto…"
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600" />
+        <div className="tarjeta overflow-hidden flex flex-col">
+          <h3 className="flex items-center gap-2 flex-wrap px-4 py-2.5 border-b border-zinc-800 text-sm font-semibold text-zinc-300">
+            Productos <span className="font-normal text-zinc-500">{sel ? '(filtrados)' : `(${productos.length})`}</span>
+            {huerfanos.length > 0 && <span className="chip-revisar">{huerfanos.length} huérfanos</span>}
+          </h3>
+          <div className="p-2 border-b border-zinc-800/60">
+            <input value={bProd} onChange={e => setBProd(e.target.value)} placeholder="Buscar producto…" aria-label="Buscar producto"
+              className="campo w-full py-1.5" />
           </div>
           {marcados.size > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-amber-950/20 border-b border-amber-800/30">
-              <span className="text-xs text-amber-300">{marcados.size} marcados →</span>
-              <select value={catMasiva} onChange={e => setCatMasiva(e.target.value)}
-                className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/40 border-b border-zinc-800">
+              <span className="text-[13px] font-medium text-amber-300 whitespace-nowrap">{marcados.size} marcados →</span>
+              <select value={catMasiva} onChange={e => setCatMasiva(e.target.value)} aria-label="Categoría para los marcados"
+                className="campo flex-1 min-w-0 py-1.5">
                 <option value="">Categoría para todos…</option>
                 {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
               <button onClick={ligarMarcados} disabled={!catMasiva || guardando === '__masivo__'}
-                className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-900 disabled:opacity-50">
+                className="btn-primario btn-sm">
                 {guardando === '__masivo__' ? '…' : 'Ligar'}
               </button>
             </div>
@@ -280,37 +282,40 @@ export default function CerebroPage() {
           <div className="max-h-[60vh] overflow-y-auto">
             {/* Huérfanos */}
             {huerfanosFiltrados.filter(h => !bProd || h.nombre.toLowerCase().includes(bProd.toLowerCase())).length > 0 && (
-              <div className="border-b border-amber-800/30">
-                <p className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wider text-amber-400">Huérfanos — marca varios y asigna en lote, o liga uno por uno</p>
+              <div className="border-b border-zinc-800 bg-amber-900/10">
+                <div className="px-4 pt-3 pb-2">
+                  <h4 className="text-sm font-semibold text-amber-400">Huérfanos</h4>
+                  <p className="nota">Marca varios y asigna en lote, o liga uno por uno.</p>
+                </div>
                 {huerfanosFiltrados.filter(h => !bProd || h.nombre.toLowerCase().includes(bProd.toLowerCase())).slice(0, 80).map(h => (
-                  <div key={h.nombre} className="px-4 py-2.5 space-y-2 border-t border-zinc-800/40">
+                  <div key={h.nombre} className="px-4 py-2.5 space-y-2 border-t border-zinc-800/60">
                     <label className="flex items-center gap-2 text-sm text-zinc-100">
                       <input type="checkbox" checked={marcados.has(h.nombre)} onChange={() => toggleMarcado(h.nombre)} className="accent-amber-500" />
-                      {h.nombre} <span className="text-[10px] text-zinc-600">{h.veces}×</span>
+                      {h.nombre} <span className="text-xs text-zinc-500">{h.veces}×</span>
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      <select value={h.categoria_id} onChange={e => setHuerfanoCampo(h.nombre, 'categoria_id', e.target.value)}
-                        className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                      <select value={h.categoria_id} onChange={e => setHuerfanoCampo(h.nombre, 'categoria_id', e.target.value)} aria-label="Categoría"
+                        className="campo py-1.5">
                         <option value="">Categoría…</option>
                         {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
-                      <select value={h.unidad} onChange={e => setHuerfanoCampo(h.nombre, 'unidad', e.target.value)}
-                        className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100">
+                      <select value={h.unidad} onChange={e => setHuerfanoCampo(h.nombre, 'unidad', e.target.value)} aria-label="Unidad"
+                        className="campo py-1.5">
                         <option value="">Unidad</option>
                         {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
                       <button onClick={() => ligarHuerfano(h)} disabled={!h.categoria_id || guardando === h.nombre}
-                        className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">
+                        className="btn-secundario btn-sm">
                         {guardando === h.nombre ? '…' : 'Ligar'}
                       </button>
                     </div>
                     {CONTENEDORES.includes(h.unidad) && (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] text-zinc-500">1 {h.unidad} =</span>
+                        <span className="text-[13px] text-zinc-400">1 {h.unidad} =</span>
                         <input type="number" inputMode="decimal" value={h.contieneCant} onChange={e => setHuerfanoCampo(h.nombre, 'contieneCant', e.target.value)}
-                          placeholder="cuántas" className="w-20 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600" />
+                          placeholder="cuántas" aria-label="Cuántas contiene" className="campo w-20 py-1.5" />
                         <input value={h.contieneUnidad} onChange={e => setHuerfanoCampo(h.nombre, 'contieneUnidad', e.target.value)}
-                          placeholder="de qué (ej. huevos)" className="flex-1 min-w-[100px] rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600" />
+                          placeholder="de qué (ej. huevos)" aria-label="De qué" className="campo flex-1 min-w-[100px] py-1.5" />
                       </div>
                     )}
                   </div>
@@ -320,15 +325,15 @@ export default function CerebroPage() {
 
             {/* Productos del catálogo */}
             {productosFiltrados.filter(p => !bProd || p.nombre.toLowerCase().includes(bProd.toLowerCase())).length === 0 && huerfanosFiltrados.length === 0 ? (
-              <p className="px-4 py-4 text-xs text-zinc-600">Sin productos {sel ? 'para esta selección' : ''}.</p>
+              <p className="px-4 py-4 nota">Sin productos {sel ? 'para esta selección' : ''}.</p>
             ) : productosFiltrados.filter(p => !bProd || p.nombre.toLowerCase().includes(bProd.toLowerCase())).map(p => (
-              <div key={p.id} className="px-4 py-2.5 border-t border-zinc-800/40 flex items-center gap-2">
+              <div key={p.id} className="px-4 py-2.5 border-t border-zinc-800/60 flex items-center gap-2 hover:bg-zinc-800/40">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-100 truncate">{p.nombre}</p>
-                  <p className="text-[11px] text-zinc-600">{catNombre(p.categoria_id)}{p.unidad_default ? ` · ${p.unidad_default}` : ''}</p>
+                  <p className="text-xs text-zinc-500">{catNombre(p.categoria_id)}{p.unidad_default ? ` · ${p.unidad_default}` : ''}</p>
                 </div>
-                <select value={p.categoria_id ?? ''} onChange={e => moverProducto(p, e.target.value)} title="Mover de categoría"
-                  className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs text-zinc-100 max-w-[120px]">
+                <select value={p.categoria_id ?? ''} onChange={e => moverProducto(p, e.target.value)} title="Mover de categoría" aria-label="Mover de categoría"
+                  className="campo py-1 px-2 text-[13px] max-w-[120px]">
                   {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </div>

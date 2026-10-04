@@ -104,35 +104,35 @@ export default function EntradasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-100">Entradas</h2>
-          <p className="text-sm text-zinc-500 mt-0.5">{nombreSucursal} · qué y cuánto se compró (por fecha del ticket). Las unidades base salen de las equivalencias del catálogo (ej. 1 caja = 24 pz). Los insumos con varios tamaños suman juntos.</p>
+          <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Entradas</h2>
+          <p className="nota mt-0.5">{nombreSucursal} · qué y cuánto se compró, por fecha del ticket. Las unidades base salen de las equivalencias del catálogo (1 caja = 24 pz).</p>
         </div>
         <button onClick={exportarCSV} disabled={filtradas.length === 0}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">Descargar CSV</button>
+          className="btn-secundario">Descargar CSV</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div><label className="text-xs text-zinc-500 block mb-1">Periodo</label>
+        <div><label className="etiqueta block mb-1">Periodo</label>
           <SelectorPeriodo desde={desde} hasta={hasta} onChange={(d, h) => { setDesde(d); setHasta(h) }} /></div>
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"
-          className="flex-1 min-w-[160px] rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
+          aria-label="Buscar producto" className="campo flex-1 min-w-[160px]" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div className="rounded-xl bg-zinc-900 p-4"><p className="text-xs text-zinc-500 mb-1">Gasto del periodo</p><p className="text-2xl font-bold text-blue-400">{money(totGasto)}</p></div>
-        <div className="rounded-xl bg-zinc-900 p-4"><p className="text-xs text-zinc-500 mb-1">Productos distintos</p><p className="text-2xl font-bold text-zinc-100">{filtradas.length}</p></div>
-        <div className="rounded-xl bg-zinc-900 p-4"><p className="text-xs text-zinc-500 mb-1">Renglones</p><p className="text-2xl font-bold text-zinc-100">{totVeces}</p></div>
+        <div className="tarjeta p-4"><p className="text-[13px] text-zinc-400 mb-1">Gasto del periodo</p><p className="text-2xl font-semibold tracking-tight text-zinc-100">{money(totGasto)}</p></div>
+        <div className="tarjeta p-4"><p className="text-[13px] text-zinc-400 mb-1">Productos distintos</p><p className="text-xl font-semibold text-zinc-200">{filtradas.length}</p></div>
+        <div className="tarjeta p-4"><p className="text-[13px] text-zinc-400 mb-1">Renglones</p><p className="text-xl font-semibold text-zinc-200">{totVeces}</p></div>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
       ) : filtradas.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">Sin compras confirmadas en el periodo</p>
+        <p className="text-sm text-zinc-500 text-center py-12">Sin compras confirmadas en el periodo. Prueba otro mes o sucursal.</p>
       ) : (
-        <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+        <div className="tarjeta overflow-hidden">
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500">
+              <tr className="border-b border-zinc-800 text-[13px] font-medium text-zinc-500">
                 <th className="text-left font-medium px-4 py-3">Producto</th>
                 <th className="text-left font-medium px-4 py-3">Categoría</th>
                 <th className="text-right font-medium px-4 py-3">Veces</th>
@@ -143,22 +143,22 @@ export default function EntradasPage() {
             </thead>
             <tbody>
               {filtradas.map(f => (
-                <tr key={f.nombre} className="border-t border-zinc-800/50">
-                  <td className="px-4 py-2.5 text-zinc-200">
+                <tr key={f.nombre} className="border-b border-zinc-800/60 hover:bg-zinc-800/40">
+                  <td className="px-4 py-2.5 text-zinc-100">
                     {f.nombre}
                     {f.esInsumo && f.presentaciones.length > 1 && (
-                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300"
+                      <span className="chip-info ml-2"
                         title={f.presentaciones.join(' · ')}>{f.presentaciones.length} tamaños</span>
                     )}
                     {f.esInsumo && f.presentaciones.length > 1 && (
-                      <p className="text-[11px] text-zinc-600 truncate max-w-[360px]">{f.presentaciones.join(' · ')}</p>
+                      <p className="text-xs text-zinc-500 truncate max-w-[360px]">{f.presentaciones.join(' · ')}</p>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-zinc-500">{f.categoria ?? '—'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.veces}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-400">{f.cantidad > 0 ? `${num(f.cantidad)}${f.unidadMixta ? '' : f.unidad ? ' ' + f.unidad : ''}` : '—'}</td>
                   <td className="px-4 py-2.5 text-right text-zinc-300">{f.base > 0 && f.baseUnidad ? formatBaseUnits({ ...pretty(f.base, f.baseUnidad), source: 'identity' }) : 'Revisar'}</td>
-                  <td className="px-4 py-2.5 text-right text-zinc-300">{money(f.gasto)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-zinc-100">{money(f.gasto)}</td>
                 </tr>
               ))}
             </tbody>

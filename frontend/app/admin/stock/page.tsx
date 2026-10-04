@@ -174,29 +174,29 @@ export default function StockPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-zinc-100">Stock</h2>
-        <p className="text-sm text-zinc-500 mt-1">{nombreSucursal} · existencias estimadas: lo comprado (confirmado) menos lo consumido. Las cajas/bultos se convierten a su unidad contenida si configuras la equivalencia en el Catalogo (ej. 1 caja = 24 pz).</p>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Stock</h2>
+        <p className="nota mt-1">{nombreSucursal} · existencias estimadas: lo comprado (confirmado) menos lo consumido. Para ver cajas en piezas, configura la equivalencia en el Catálogo (1 caja = 24 pz).</p>
       </div>
 
       <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"
-        className="w-full rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600" />
+        aria-label="Buscar producto" className="campo w-full" />
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
       ) : filtradas.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">
-          {filas.length === 0 ? 'Aun no hay stock: confirma tickets con productos ligados al catalogo.' : 'Sin coincidencias'}
+        <p className="text-sm text-zinc-500 text-center py-12">
+          {filas.length === 0 ? 'Aún no hay stock: confirma tickets con productos ligados al catálogo.' : 'Sin coincidencias'}
         </p>
       ) : (
-        <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+        <div className="tarjeta overflow-hidden">
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[560px] md:min-w-0">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500">
+              <tr className="border-b border-zinc-800 text-[13px] font-medium text-zinc-500">
                 <th className="text-left font-medium px-4 py-3">Producto</th>
                 <th className="text-right font-medium px-4 py-3">Entradas</th>
                 <th className="text-right font-medium px-4 py-3">Consumo</th>
                 <th className="text-right font-medium px-4 py-3">Disponible</th>
-                <th className="px-4 py-3"></th>
+                <th className="px-4 py-3"><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -206,20 +206,20 @@ export default function StockPage() {
                 const dUnit = big ? (f.baseUnidad === 'ml' ? 'lt' : 'kg') : f.baseUnidad
                 const dFac = big ? 1 / 1000 : 1
                 return (
-                <tr key={f.id} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
-                  <td className="px-4 py-2.5 text-zinc-200">
+                <tr key={f.id} className="border-b border-zinc-800/60 hover:bg-zinc-800/40">
+                  <td className="px-4 py-2.5 text-zinc-100">
                     <div>
-                      {f.nombre}{dUnit ? <span className="text-zinc-600"> /{dUnit}</span> : ''}
+                      {f.nombre}{dUnit ? <span className="text-zinc-500"> /{dUnit}</span> : ''}
                       {f.esInsumo && f.presentaciones.length > 1 && (
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300"
+                        <span className="chip-info ml-2"
                           title={f.presentaciones.join(' · ')}>{f.presentaciones.length} tamaños</span>
                       )}
                     </div>
                     {f.esInsumo && f.presentaciones.length > 1 && (
-                      <div className="text-[11px] text-zinc-600 truncate max-w-[320px]">{f.presentaciones.join(' · ')}</div>
+                      <div className="text-xs text-zinc-500 truncate max-w-[320px]">{f.presentaciones.join(' · ')}</div>
                     )}
                     {f.cadena.c1 && f.cadena.u1 && (
-                      <div className="text-[11px] text-zinc-500">Disponible: {vistasCadena(f.disponible, f.cadena).map(v => `${num(v.q)} ${v.u}`).join(' · ')}</div>
+                      <div className="text-xs text-zinc-500">Disponible: {vistasCadena(f.disponible, f.cadena).map(v => `${num(v.q)} ${v.u}`).join(' · ')}</div>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-zinc-300">{num(f.entradas * dFac)}</td>
@@ -227,7 +227,7 @@ export default function StockPage() {
                   <td className={`px-4 py-2.5 text-right font-semibold ${f.disponible <= 0 ? 'text-red-400' : f.disponible < f.entradas * 0.2 ? 'text-amber-400' : 'text-emerald-400'}`}>{num(f.disponible * dFac)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <button onClick={() => setReg({ id: f.id, nombre: f.nombre, baseUnidad: f.baseUnidad, cantidad: '', unidad: f.unidadPreferida ?? dUnit ?? f.baseUnidad ?? '', fecha: hoyISO(), nota: '' })}
-                      className="text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1.5 whitespace-nowrap cursor-pointer">Registrar consumo</button>
+                      className="btn-secundario btn-sm">Registrar consumo</button>
                   </td>
                 </tr>
                 )
@@ -238,44 +238,44 @@ export default function StockPage() {
       )}
 
       {reg && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onClick={() => setReg(null)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-4" onClick={() => setReg(null)}>
           <div className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <div>
               <h3 className="text-base font-semibold text-zinc-100">Registrar consumo</h3>
-              <p className="text-xs text-zinc-500 mt-0.5">{reg.nombre}{reg.baseUnidad ? ` · en ${reg.baseUnidad}` : ''}</p>
+              <p className="nota mt-0.5">{reg.nombre}{reg.baseUnidad ? ` · en ${reg.baseUnidad}` : ''}</p>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">Cantidad consumida</label>
+                <label className="etiqueta block mb-1">Cantidad consumida</label>
                 <div className="flex gap-2">
                   <input type="number" inputMode="decimal" autoFocus value={reg.cantidad} onChange={e => setReg({ ...reg, cantidad: e.target.value })}
-                    placeholder="ej. 2.5" className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
+                    placeholder="ej. 2.5" className="campo flex-1 min-w-0" />
                   <input list="unidades-consumo" value={reg.unidad} onChange={e => setReg({ ...reg, unidad: e.target.value })}
-                    placeholder="unidad" className="w-24 rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
+                    placeholder="unidad" aria-label="Unidad" className="campo w-24" />
                 </div>
                 <datalist id="unidades-consumo">
                   {(reg.baseUnidad === 'ml' ? ['ml', 'lt', 'galon'] : reg.baseUnidad === 'g' ? ['g', 'kg'] : [reg.baseUnidad ?? ''])
                     .filter(Boolean).map(u => <option key={u} value={u as string} />)}
                 </datalist>
                 {reg.baseUnidad && (reg.baseUnidad === 'ml' || reg.baseUnidad === 'g') && (
-                  <p className="text-[11px] text-zinc-500 mt-1">Se guarda en {reg.baseUnidad}. Puedes escribir lt/kg/galon y se convierte solo.</p>
+                  <p className="nota mt-1">Se guarda en {reg.baseUnidad}; si escribes lt, kg o galón se convierte solo.</p>
                 )}
               </div>
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">Fecha</label>
+                <label className="etiqueta block mb-1">Fecha</label>
                 <input type="date" value={reg.fecha} onChange={e => setReg({ ...reg, fecha: e.target.value })}
-                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100" />
+                  className="campo w-full" />
               </div>
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">Nota (opcional)</label>
+                <label className="etiqueta block mb-1">Nota (opcional)</label>
                 <input value={reg.nota} onChange={e => setReg({ ...reg, nota: e.target.value })} placeholder="ej. merma, traspaso..."
-                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600" />
+                  className="campo w-full" />
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setReg(null)} className="rounded-xl bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700">Cancelar</button>
+              <button onClick={() => setReg(null)} className="btn-quieto">Cancelar</button>
               <button onClick={guardarConsumo} disabled={guardando}
-                className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">{guardando ? 'Guardando...' : 'Registrar'}</button>
+                className="btn-primario">{guardando ? 'Guardando…' : 'Registrar'}</button>
             </div>
           </div>
         </div>

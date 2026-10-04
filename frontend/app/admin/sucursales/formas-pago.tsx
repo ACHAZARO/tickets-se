@@ -71,12 +71,12 @@ export default function FormasPago() {
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-xl font-semibold text-zinc-100">Formas de pago</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          Los botones de &quot;¿Cómo se pagó?&quot; que ven los gerentes al subir un ticket. Una forma usada no se borra: se apaga.
+        <h2 className="text-base font-semibold text-zinc-100">Formas de pago</h2>
+        <p className="nota mt-1">
+          Opciones de &quot;¿Cómo se pagó?&quot; al subir un ticket. Una forma ya usada no se borra: se apaga.
         </p>
       </div>
-      <div className="rounded-2xl bg-zinc-900 divide-y divide-zinc-800">
+      <div className="tarjeta divide-y divide-zinc-800">
         {formas.length === 0 && <p className="p-4 text-sm text-zinc-500">Sin formas de pago: los gerentes suben sin elegir (queda &quot;No registrado&quot;).</p>}
         {formas.map(f => (
           <div key={f.id} className={`flex flex-wrap items-center gap-3 p-3 ${f.activa ? '' : 'opacity-50'}`}>
@@ -88,18 +88,18 @@ export default function FormasPago() {
                 onChange={e => setEditando({ id: f.id, nombre: e.target.value })}
                 onKeyDown={e => { if (e.key === 'Enter') guardarNombre(); if (e.key === 'Escape') setEditando(null) }}
                 onBlur={guardarNombre}
-                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100"
+                className="campo min-w-0 flex-1 py-1.5"
               />
             ) : (
               <button onClick={() => setEditando({ id: f.id, nombre: f.nombre })} className="min-w-0 flex-1 text-left text-sm text-zinc-100" title="Cambiar nombre">
                 {f.nombre}{!f.activa && <span className="ml-2 text-xs text-zinc-500">(apagada)</span>}
               </button>
             )}
-            <label className="flex items-center gap-1.5 text-xs text-zinc-400">
-              <input type="checkbox" checked={f.sale_de_caja} onChange={e => cambiar(f, { sale_de_caja: e.target.checked })} />
+            <label className="flex items-center gap-1.5 text-[13px] text-zinc-400">
+              <input type="checkbox" className="accent-emerald-500" checked={f.sale_de_caja} onChange={e => cambiar(f, { sale_de_caja: e.target.checked })} />
               Sale de la Caja
             </label>
-            <button onClick={() => cambiar(f, { activa: !f.activa })} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700">
+            <button onClick={() => cambiar(f, { activa: !f.activa })} className={`${f.activa ? 'btn-peligro' : 'btn-secundario'} btn-sm`}>
               {f.activa ? 'Apagar' : 'Prender'}
             </button>
           </div>
@@ -111,16 +111,16 @@ export default function FormasPago() {
             placeholder="Nueva forma (ej. Tarjeta BBVA empresa)"
             onChange={e => setNueva(n => ({ ...n, nombre: e.target.value }))}
             onKeyDown={e => { if (e.key === 'Enter') agregar() }}
-            className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600"
+            className="campo min-w-0 flex-1 py-1.5"
           />
-          <label className="flex items-center gap-1.5 text-xs text-zinc-400">
-            <input type="checkbox" checked={nueva.sale_de_caja} onChange={e => setNueva(n => ({ ...n, sale_de_caja: e.target.checked }))} />
+          <label className="flex items-center gap-1.5 text-[13px] text-zinc-400">
+            <input type="checkbox" className="accent-emerald-500" checked={nueva.sale_de_caja} onChange={e => setNueva(n => ({ ...n, sale_de_caja: e.target.checked }))} />
             Sale de la Caja
           </label>
           <button
             onClick={agregar}
             disabled={!nueva.nombre.trim() || !cuentaId}
-            className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-40"
+            className="btn-primario btn-sm"
           >+ Agregar</button>
         </div>
       </div>

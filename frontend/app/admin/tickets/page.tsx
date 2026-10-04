@@ -89,10 +89,10 @@ function needsEquivalence(unit: string | null | undefined) {
 }
 
 const ESTADO_COLOR: Record<string, string> = {
-  confirmado: 'bg-emerald-900/40 text-emerald-400',
-  pendiente: 'bg-amber-900/40 text-amber-400',
-  rechazado: 'bg-red-900/40 text-red-400',
-  archivado: 'bg-zinc-800 text-zinc-400',
+  confirmado: 'chip-bien',
+  pendiente: 'chip-revisar',
+  rechazado: 'chip-mal',
+  archivado: 'chip-neutro',
 }
 const ALERT_LABEL: Record<string, string> = {
   posible_duplicado: 'Posible duplicado',
@@ -134,15 +134,15 @@ function alertTone(tipo: string): AlertTone {
   return ALERT_TONE[tipo] ?? 'ambar'
 }
 const TONE_PILL: Record<AlertTone, string> = {
-  rojo: 'bg-red-900/40 text-red-300 border border-red-800/60',
-  naranja: 'bg-orange-900/40 text-orange-300 border border-orange-800/60',
-  ambar: 'bg-amber-900/30 text-amber-300 border border-amber-800/50',
+  rojo: 'chip-mal',
+  naranja: 'chip-revisar',
+  ambar: 'chip-info',
 }
 // Fondo fuerte para el renglon que necesita revision (antes era casi invisible, bg-.../10).
 const TONE_BOX: Record<AlertTone, string> = {
-  rojo: 'border-red-700/70 bg-red-950/50',
-  naranja: 'border-orange-700/70 bg-orange-950/50',
-  ambar: 'border-amber-700/70 bg-amber-950/50',
+  rojo: 'bg-red-900/70',
+  naranja: 'bg-amber-900/70',
+  ambar: 'bg-blue-900/70',
 }
 
 const LIMITE_TICKETS = 1000
@@ -947,19 +947,19 @@ export default function TicketsPage() {
   )
 
   const filaSosp = (t: Ticket) => (
-    <div key={t.id} className="rounded-lg bg-zinc-900 border border-zinc-800/80 p-3">
+    <div key={t.id} className="tarjeta p-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => abrirDetalle(t)} className="text-sm text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
+        <button onClick={() => abrirDetalle(t)} className="text-sm font-medium text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
         <span className="text-xs text-zinc-500">{t.fecha_ticket ?? 's/fecha'}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''}</span>
-        {t.sospecha_origen === 'manual' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">manual</span>}
-        <span className="ml-auto text-sm text-zinc-300">{fmt(t.monto)}</span>
+        {t.sospecha_origen === 'manual' && <span className="chip-neutro">manual</span>}
+        <span className="ml-auto text-sm text-zinc-200">{fmt(t.monto)}</span>
       </div>
       <input defaultValue={t.sospecha_motivo ?? ''} onBlur={e => guardarMotivo(t, e.target.value)} placeholder="motivo de la sospecha…"
-        className="mt-2 w-full rounded bg-zinc-800/60 border border-zinc-800 px-2 py-1 text-xs text-zinc-300 placeholder-zinc-600" />
-      <div className="mt-2 flex items-center gap-3">
-        <button onClick={() => resolverSospecha(t, 'descartada')} className="text-xs text-zinc-400 hover:text-zinc-200">Descartar</button>
-        <button onClick={() => resolverSospecha(t, 'confirmada')} className="text-xs font-medium text-red-400 hover:text-red-300">Es fraude</button>
-        <button onClick={() => abrirDetalle(t)} className="text-xs text-blue-400 hover:text-blue-300 ml-auto">Abrir →</button>
+        className="campo mt-2 w-full py-1.5" />
+      <div className="mt-2 flex items-center gap-1">
+        <button onClick={() => resolverSospecha(t, 'confirmada')} className="btn-peligro btn-sm">Es fraude</button>
+        <button onClick={() => resolverSospecha(t, 'descartada')} className="btn-quieto btn-sm">Descartar</button>
+        <button onClick={() => abrirDetalle(t)} className="btn-texto btn-sm ml-auto">Abrir →</button>
       </div>
     </div>
   )
@@ -968,12 +968,12 @@ export default function TicketsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-100">Tickets</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">{nombreSucursal} · revision completa por ticket</p>
+          <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Tickets</h2>
+          <p className="nota mt-0.5">{nombreSucursal}</p>
         </div>
         <button type="button" onClick={descargarReporte} disabled={descargando}
           title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">
+          className="btn-secundario">
           {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
         </button>
       </div>
@@ -982,34 +982,34 @@ export default function TicketsPage() {
         <Field label="Periodo"><SelectorPeriodo desde={desde} hasta={hasta} onChange={(d, h) => { setDesde(d); setHasta(h) }} /></Field>
         <Field label="Comercio">
           <select value={comercioFiltro} onChange={e => setComercioFiltro(e.target.value)}
-            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 max-w-[220px]">
+            className="campo max-w-[220px]">
             <option value="">Todos</option>
             {comerciosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
       </div>
 
-      <div className="rounded-2xl bg-zinc-900 border border-zinc-800">
+      <div className="tarjeta">
         <button type="button" onClick={() => setResumenAbierto(a => !a)} aria-expanded={resumenAbierto}
-          className="w-full text-left p-4 flex flex-wrap items-end gap-x-8 gap-y-3">
+          className="w-full text-left p-4 flex flex-wrap items-end gap-x-8 gap-y-3 rounded-xl hover:bg-zinc-800/40 transition-colors">
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Subidos (todo)</p>
+            <p className="etiqueta">Subidos (todo)</p>
             <p className="text-xl font-semibold text-zinc-100">{resumen ? fmt(resumen.subidos.monto) : '…'}</p>
-            <p className="text-[11px] text-zinc-500">{resumen ? resumen.subidos.tickets : '-'} tickets, con duplicados y rechazados</p>
+            <p className="text-xs text-zinc-500">{resumen ? resumen.subidos.tickets : '-'} tickets, con duplicados y rechazados</p>
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Oficiales (confirmados)</p>
-            <p className="text-xl font-semibold text-emerald-300">{resumen ? fmt(resumen.oficiales.monto) : '…'}</p>
-            <p className="text-[11px] text-zinc-500">{resumen ? resumen.oficiales.tickets : '-'} tickets</p>
+            <p className="etiqueta">Oficiales (confirmados)</p>
+            <p className="text-xl font-semibold text-emerald-400">{resumen ? fmt(resumen.oficiales.monto) : '…'}</p>
+            <p className="text-xs text-zinc-500">{resumen ? resumen.oficiales.tickets : '-'} tickets</p>
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Por justificar</p>
-            <p className={`text-xl font-semibold ${resumen && resumen.por_justificar > 0 ? 'text-amber-300' : 'text-zinc-100'}`}>{resumen ? fmt(resumen.por_justificar) : '…'}</p>
-            <p className="text-[11px] text-zinc-500">subidos − oficiales</p>
+            <p className="etiqueta">Por justificar</p>
+            <p className={`text-xl font-semibold ${resumen && resumen.por_justificar > 0 ? 'text-amber-400' : 'text-zinc-100'}`}>{resumen ? fmt(resumen.por_justificar) : '…'}</p>
+            <p className="text-xs text-zinc-500">subidos − oficiales</p>
           </div>
-          <span className="ml-auto text-xs text-zinc-500">{resumenAbierto ? 'Ocultar detalle' : 'Ver detalle'}</span>
+          <span className="ml-auto text-[13px] font-medium text-emerald-400">{resumenAbierto ? 'Ocultar detalle' : 'Ver detalle'}</span>
         </button>
-        {resumenError && <p className="px-4 pb-3 text-xs text-red-300">No se pudieron calcular los totales: {resumenError}</p>}
+        {resumenError && <p className="px-4 pb-3 text-sm text-red-400">No se pudieron calcular los totales: {resumenError}</p>}
         {resumenAbierto && resumen && (
           <div className="border-t border-zinc-800 p-4 space-y-3 text-sm">
             {([
@@ -1032,15 +1032,14 @@ export default function TicketsPage() {
               <span className="text-zinc-500 text-xs">{resumen.subidos.tickets} tickets</span>
               <span className="w-28 text-right text-zinc-100 font-medium">{fmt(resumen.subidos.monto)}</span>
             </div>
-            <p className="text-xs text-zinc-500">
-              Si se encuentra un ticket duplicado sin monto propio (ejemplo: nota de remisión sin monto y factura de la misma compra),
-              el duplicado sin monto propio cuenta con monto $0 o el monto que diga explícitamente el ticket.
-              Los rechazados y por revisar no entran a ningún arqueo hasta que se definan.
+            <p className="nota">
+              Un duplicado sin monto propio (p. ej. remisión y factura de la misma compra) cuenta $0 o el monto que diga el ticket.
+              Rechazados y por revisar no entran a ningún arqueo hasta que se definan.
               {resumen.tickets_sin_monto_leido > 0 && ` ${resumen.tickets_sin_monto_leido} tickets no tienen monto legible y cuentan como $0.`}
             </p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setFiltroEstado('todos')} className="rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium px-3 py-1.5">Ver todos los subidos</button>
-              <button type="button" onClick={() => setFiltroEstado('confirmados')} className="rounded-lg bg-emerald-700/80 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5">Ver solo los oficiales</button>
+            <div className="flex flex-wrap gap-1">
+              <button type="button" onClick={() => setFiltroEstado('todos')} className="btn-texto btn-sm">Ver todos los subidos</button>
+              <button type="button" onClick={() => setFiltroEstado('confirmados')} className="btn-texto btn-sm">Ver solo los oficiales</button>
             </div>
           </div>
         )}
@@ -1048,59 +1047,61 @@ export default function TicketsPage() {
 
       <div className="flex flex-wrap gap-2">
         {([
-          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos, color: 'bg-zinc-700 text-zinc-100' },
-          { k: 'pendientes', label: ticketFilterLabel('pendientes'), n: cuenta.pendientes, color: 'bg-amber-600 text-white' },
-          { k: 'alertas', label: ticketFilterLabel('alertas'), n: cuenta.alertas, color: 'bg-orange-600 text-white' },
-          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados, color: 'bg-emerald-700 text-white' },
-          { k: 'fraude', label: ticketFilterLabel('fraude'), n: cuenta.fraude, color: 'bg-red-700 text-white' },
+          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos, color: 'chip-neutro' },
+          { k: 'pendientes', label: ticketFilterLabel('pendientes'), n: cuenta.pendientes, color: 'chip-revisar' },
+          { k: 'alertas', label: ticketFilterLabel('alertas'), n: cuenta.alertas, color: 'chip-revisar' },
+          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados, color: 'chip-bien' },
+          { k: 'fraude', label: ticketFilterLabel('fraude'), n: cuenta.fraude, color: 'chip-mal' },
         ] as const).map(c => (
           <button key={c.k} onClick={() => setFiltroEstado(c.k)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${filtroEstado === c.k ? c.color : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${filtroEstado === c.k ? 'border-zinc-600 bg-zinc-800 text-zinc-100' : 'border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'}`}>
             {c.label}
-            <span className={`text-xs rounded-full px-1.5 ${filtroEstado === c.k ? 'bg-black/20' : 'bg-zinc-800'}`}>{c.n}</span>
+            <span className={filtroEstado === c.k ? c.color : 'chip-neutro'}>{c.n}</span>
           </button>
         ))}
         {(sinLeer.length > 0 || releyendo) && (
           <button onClick={() => releerSinLeer(sinLeer)} disabled={!!releyendo}
-            className="rounded-lg bg-blue-600/80 hover:bg-blue-600 disabled:opacity-60 text-white text-sm font-medium px-3 py-1.5">
+            className="btn-secundario btn-sm">
             {releyendo ? `Leyendo ${releyendo.hechos}/${releyendo.total}…` : `Releer con IA (${sinLeer.length} sin leer)`}
           </button>
         )}
       </div>
 
       {loadError && (
-        <div className="rounded-xl bg-red-950/40 border border-red-800/50 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-lg bg-red-900 px-3 py-2 text-sm text-red-300">
           No se pudieron cargar los tickets: {loadError}
         </div>
       )}
       {aviso && (
-        <div className="rounded-xl bg-amber-950/40 border border-amber-800/50 px-4 py-3 text-sm text-amber-300">
+        <div className="rounded-lg bg-amber-900 px-3 py-2 text-sm text-amber-300">
           {aviso}
         </div>
       )}
       {filtroEstado === 'fraude' ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-xs text-zinc-500 max-w-xl">Tickets marcados como sospechosos (por ti, por la IA o por el escaneo). Revisa, agrega el motivo y decide. No siempre son duplicados ni pares.</p>
+            <div className="space-y-0.5">
+              <p className="nota max-w-xl">Marcados por ti, por la IA o por el escaneo. Agrega el motivo y decide.</p>
+              <p className="nota">Escanea el periodo de arriba, pendientes incluidos. {sucursalId ? 'Solo esta sucursal.' : 'Todas las sucursales (compara dentro de cada una).'}</p>
+            </div>
             <button onClick={buscarSospechas} disabled={detectando}
-              className="rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 whitespace-nowrap">
+              className="btn-primario btn-sm">
               {detectando ? 'Escaneando…' : 'Buscar sospechas'}
             </button>
           </div>
-          <p className="text-[11px] text-zinc-600">Escanea el rango de fechas de arriba (incluye pendientes). {sucursalId ? 'Sucursal actual.' : 'Todas las sucursales (compara dentro de cada una).'}</p>
           {fraudeGrupos.grupos.length === 0 && fraudeGrupos.sueltos.length === 0 ? (
-            <p className="text-zinc-500 text-center py-12">Sin tickets sospechosos. Usa &quot;Buscar sospechas&quot; o marca uno manualmente desde su detalle.</p>
+            <p className="text-sm text-zinc-500 text-center py-12">Sin tickets sospechosos. Usa &quot;Buscar sospechas&quot; o marca uno desde su detalle.</p>
           ) : (
             <div className="space-y-4">
               {fraudeGrupos.grupos.map((g, i) => (
-                <div key={i} className="rounded-2xl bg-red-950/20 border border-red-900/40 p-3 space-y-2">
-                  <p className="text-xs font-medium text-red-300/90">Grupo relacionado · {g.length} tickets · {g[0]?.sospecha_motivo ?? 'sospecha'}</p>
+                <div key={i} className="rounded-xl bg-red-900/40 p-3 space-y-2">
+                  <p className="text-sm font-medium text-red-300">Grupo relacionado · {g.length} tickets · {g[0]?.sospecha_motivo ?? 'sospecha'}</p>
                   {g.map(filaSosp)}
                 </div>
               ))}
               {fraudeGrupos.sueltos.length > 0 && (
                 <div className="space-y-2">
-                  {fraudeGrupos.grupos.length > 0 && <p className="text-xs text-zinc-500">Individuales</p>}
+                  {fraudeGrupos.grupos.length > 0 && <h3 className="text-sm font-semibold text-zinc-300">Individuales</h3>}
                   {fraudeGrupos.sueltos.map(filaSosp)}
                 </div>
               )}
@@ -1108,9 +1109,9 @@ export default function TicketsPage() {
           )}
         </div>
       ) : loading ? (
-        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
       ) : ticketsFiltrados.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">No hay tickets en este periodo</p>
+        <p className="text-sm text-zinc-500 text-center py-12">No hay tickets en este periodo</p>
       ) : (
         <div className="space-y-2">
           {ticketsFiltrados.map(t => {
@@ -1118,7 +1119,7 @@ export default function TicketsPage() {
             const badges = ticketBadges(t)
             return (
               <button key={t.id} onClick={() => abrirDetalle(t)}
-                className="w-full flex items-center gap-4 rounded-xl bg-zinc-900 p-3 hover:bg-zinc-800/80 transition-colors text-left">
+                className="tarjeta w-full flex items-center gap-4 p-3 hover:bg-zinc-800/60 transition-colors text-left">
                 <div className="group relative h-14 w-14 rounded-lg bg-zinc-800 flex-shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {url && <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover rounded-lg" />}
@@ -1128,13 +1129,13 @@ export default function TicketsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm text-zinc-100 truncate">{t.comercio ?? 'Sin comercio'}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_COLOR[t.estado] ?? 'bg-zinc-800 text-zinc-400'}`}>{ticketStatusLabel(t.estado)}</span>
-                    {badges.map(b => <span key={b.label} className={`text-[10px] px-2 py-0.5 rounded-full ${TONE_PILL[alertTone(b.tipo)]}`}>{b.label}</span>)}
+                    <span className={ESTADO_COLOR[t.estado] ?? 'chip-neutro'}>{ticketStatusLabel(t.estado)}</span>
+                    {badges.map(b => <span key={b.label} className={TONE_PILL[alertTone(b.tipo)]}>{b.label}</span>)}
                   </div>
                   <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}{textoPagos(t.ticket_pagos) ? ` · ${textoPagos(t.ticket_pagos)}` : ''}</p>
-                  {t.nota && <p className="text-xs text-sky-300 truncate">Nota: {t.nota}</p>}
+                  {t.nota && <p className="text-xs text-blue-400 truncate">Nota: {t.nota}</p>}
                 </div>
-                <span className="text-sm text-zinc-300 whitespace-nowrap">{fmt(t.monto)}</span>
+                <span className="text-sm font-medium text-zinc-200 whitespace-nowrap">{fmt(t.monto)}</span>
               </button>
             )
           })}
@@ -1142,14 +1143,14 @@ export default function TicketsPage() {
       )}
 
       {detalle && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-black/60 p-0 lg:p-4" onClick={() => setDetalle(null)}>
+        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-0 lg:p-4" onClick={() => setDetalle(null)}>
           <div className="w-full lg:max-w-6xl rounded-t-2xl lg:rounded-2xl bg-zinc-900 border border-zinc-800 p-5 max-h-[94dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <datalist id="unidades-tickets">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
             <datalist id="catalogo-list">{catalogo.map(p => <option key={p.id} value={p.nombre} />)}</datalist>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
-                <p className="text-xs text-zinc-500">{detalle.ticket.sucursales?.nombre ?? 'Sin sucursal'} · subido por {detalle.ticket.empleados?.nombre ?? 'Desconocido'}</p>
+                <p className="nota">{detalle.ticket.sucursales?.nombre ?? 'Sin sucursal'} · subido por {detalle.ticket.empleados?.nombre ?? 'Desconocido'}</p>
                 <PagosTicket
                   key={detalle.ticket.id}
                   ticketId={detalle.ticket.id}
@@ -1165,69 +1166,69 @@ export default function TicketsPage() {
                     setAlertas(prev => ({ ...prev, [id]: (openAlerts as AlertRow[] | null) ?? [] }))
                   }}
                 />
-                <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={`text-[10px] px-2 py-0.5 rounded-full ${TONE_PILL[alertTone(b.tipo)]}`}>{b.label}</span>)}</div>
+                <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={TONE_PILL[alertTone(b.tipo)]}>{b.label}</span>)}</div>
                 {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
-                  <p key={i} className="mt-2 text-xs text-sky-300">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
+                  <p key={i} className="mt-2 text-[13px] text-amber-400">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
                 ))}
                 {detalle.ticket.nota && (
-                  <div className="mt-3 max-w-xl rounded-xl border border-sky-800/60 bg-sky-950/40 px-3 py-2">
-                    <p className="text-[11px] font-medium text-sky-400">Nota de {detalle.ticket.empleados?.nombre ?? 'quien lo subió'}</p>
+                  <div className="mt-3 max-w-xl rounded-lg bg-blue-900 px-3 py-2">
+                    <p className="text-xs font-medium text-blue-300">Nota de {detalle.ticket.empleados?.nombre ?? 'quien lo subió'}</p>
                     <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-zinc-100">{detalle.ticket.nota}</p>
                     {detalle.ticket.nota_para_ia && (
-                      <p className="mt-1 text-xs text-red-300">Ojo: la nota parece una orden para una IA. No cambia la aprobación (la IA que lee el ticket no ve las notas), pero conviene preguntarle al gerente.</p>
+                      <p className="mt-1 text-[13px] text-red-300">Ojo: parece una orden para una IA. La IA que lee el ticket no ve las notas, pero conviene preguntarle al gerente.</p>
                     )}
                   </div>
                 )}
               </div>
-              <button onClick={() => setDetalle(null)} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">x</button>
+              <button onClick={() => setDetalle(null)} aria-label="Cerrar" className="btn-quieto text-xl leading-none">×</button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-5 mt-4">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Comercio"><input defaultValue={detalle.ticket.comercio ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'comercio', e.target.value)} className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" /></Field>
-                  <Field label="Fecha"><input type="date" defaultValue={detalle.ticket.fecha_ticket ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'fecha_ticket', e.target.value)} className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" /></Field>
+                  <Field label="Comercio"><input defaultValue={detalle.ticket.comercio ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'comercio', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
+                  <Field label="Fecha"><input type="date" defaultValue={detalle.ticket.fecha_ticket ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'fecha_ticket', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
                 </div>
                 {detalle.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={detalle.url} alt="Ticket" decoding="async" className="w-full max-h-[64vh] object-contain rounded-xl bg-zinc-950" />
-                ) : <div className="h-64 rounded-xl bg-zinc-950 flex items-center justify-center text-zinc-600">Sin imagen</div>}
+                ) : <div className="h-64 rounded-xl bg-zinc-950 flex items-center justify-center text-sm text-zinc-500">Sin imagen</div>}
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => reintentarIA(detalle.ticket)} disabled={busy === 'ia'} className="rounded-xl bg-blue-600/80 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'ia' ? 'Leyendo...' : 'Volver a leer IA'}</button>
-                  <button onClick={() => rechazarTicket(detalle.ticket)} className="rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400">Rechazar</button>
+                  <button onClick={() => reintentarIA(detalle.ticket)} disabled={busy === 'ia'} className="btn-secundario">{busy === 'ia' ? 'Leyendo...' : 'Volver a leer IA'}</button>
+                  <button onClick={() => rechazarTicket(detalle.ticket)} className="btn-peligro">Rechazar</button>
                 </div>
                 {esSospechosoAbierto(detalle.ticket) ? (
                   <button onClick={() => { resolverSospecha(detalle.ticket, 'descartada'); setDetalle(null) }}
-                    className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-zinc-300">Quitar de revision de fraude</button>
+                    className="btn-quieto w-full">Quitar de revisión de fraude</button>
                 ) : (
                   <button onClick={() => { marcarSospechoso(detalle.ticket, ''); setDetalle(null) }}
-                    className="w-full rounded-xl bg-red-900/40 border border-red-900/60 py-2.5 text-sm font-medium text-red-300 hover:bg-red-900/60">🚩 Marcar como sospechoso</button>
+                    className="btn-peligro w-full">Marcar como sospechoso</button>
                 )}
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">Renglones ({detalle.items.length})</p>
-                  <div className="flex gap-2">
-                    <button onClick={agregarRenglon} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-100">+ Renglon</button>
-                    <button onClick={() => setEditando(v => !v)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-blue-300">{editando ? 'Vista simple' : 'Editar'}</button>
+                  <h4 className="text-sm font-semibold text-zinc-300">Renglones ({detalle.items.length})</h4>
+                  <div className="flex gap-1">
+                    <button onClick={agregarRenglon} className="btn-secundario btn-sm">+ Renglón</button>
+                    <button onClick={() => setEditando(v => !v)} className="btn-texto btn-sm">{editando ? 'Vista simple' : 'Editar'}</button>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  {detalle.items.length === 0 && <p className="rounded-xl bg-zinc-800/40 px-3 py-4 text-sm text-zinc-500">Sin renglones. Agrega los productos manualmente o vuelve a leer con IA.</p>}
+                  {detalle.items.length === 0 && <p className="rounded-lg bg-zinc-800/50 px-3 py-4 text-sm text-zinc-500">Sin renglones. Agrega los productos o vuelve a leer con IA.</p>}
                   {detalle.items.map(it => editando ? (
-                    <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-xl border p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'border-zinc-800 bg-zinc-900'}`}>
+                    <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-lg p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
                       <div className="flex gap-2">
-                        <input value={it.descripcion} onChange={e => setItemField(it.id, 'descripcion', e.target.value)} placeholder="Producto correcto" className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
-                        <button type="button" onClick={() => borrarRenglon(it)} className="rounded-lg bg-zinc-800 px-3 text-xs text-red-400">Borrar</button>
+                        <input value={it.descripcion} onChange={e => setItemField(it.id, 'descripcion', e.target.value)} placeholder="Producto correcto" className="campo flex-1 min-w-0 px-2 py-1.5" />
+                        <button type="button" onClick={() => borrarRenglon(it)} className="btn-peligro btn-sm">Borrar</button>
                       </div>
-                      {originalDesc[it.id] && originalDesc[it.id] !== it.descripcion && <p className="text-[11px] text-zinc-500">Leido originalmente: {originalDesc[it.id]}</p>}
+                      {originalDesc[it.id] && originalDesc[it.id] !== it.descripcion && <p className="text-xs text-zinc-500">Leído originalmente: {originalDesc[it.id]}</p>}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                        <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="cantidad" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
-                        <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="Unidad (cono, caja, pz...)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                        <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="precio" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
-                        <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="md:col-span-2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                        <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="cantidad" className="campo min-w-0 px-2 py-1.5" />
+                        <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="Unidad (cono, caja, pz...)" className="campo min-w-0 px-2 py-1.5" />
+                        <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="precio" className="campo min-w-0 px-2 py-1.5" />
+                        <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="campo md:col-span-2 min-w-0 px-2 py-1.5">
                           <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </div>
@@ -1241,8 +1242,8 @@ export default function TicketsPage() {
                           if (prod) vincularProducto(it, prod.id)
                         }}
                         placeholder="Buscar producto del catálogo… (si no, se crea por nombre al guardar)"
-                        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                      <input name="sinonimos" placeholder="Sinonimos/codigos adicionales separados por coma" className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                        className="campo w-full px-2 py-1.5" />
+                      <input name="sinonimos" placeholder="Sinónimos/códigos adicionales separados por coma" className="campo w-full px-2 py-1.5" />
                       {needsEquivalence(it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
                         const linkedSubIsBaseItem = Number(linked?.contiene_sub_cantidad) === 1 && !!linked?.contiene_sub_unidad && linked.contiene_sub_unidad.toLowerCase() !== String(linked?.contiene_unidad ?? '').toLowerCase()
@@ -1250,31 +1251,30 @@ export default function TicketsPage() {
                         const subQtyDefault = linkedSubIsBaseItem ? '' : linked?.contiene_sub_cantidad ?? ''
                         const subUnitDefault = linkedSubIsBaseItem ? '' : linked?.contiene_sub_unidad ?? ''
                         return (
-                          <div className="rounded-lg bg-zinc-800/40 p-2 space-y-1.5">
-                            <p className="text-[11px] text-zinc-400">Esta presentación trae: <span className="text-zinc-200">1 {it.unidad} = </span></p>
+                          <div className="rounded-lg bg-zinc-900/60 p-2 space-y-1.5">
+                            <p className="text-[13px] text-zinc-400">Esta presentación trae: <span className="text-zinc-200">1 {it.unidad} = </span></p>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                              <input key={`bq-${it.producto_catalogo_id ?? 'new'}`} name="baseQty" type="number" inputMode="decimal" defaultValue={linked?.contiene_cantidad ?? ''} placeholder="cantidad (30)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                              <input key={`bu-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="baseUnit" defaultValue={linked?.contiene_unidad ?? ''} placeholder="unidad (pz)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                              <input key={`bi-${it.producto_catalogo_id ?? 'new'}`} name="baseItem" defaultValue={baseItemDefault} placeholder="de qué (huevo)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              <input key={`bq-${it.producto_catalogo_id ?? 'new'}`} name="baseQty" type="number" inputMode="decimal" defaultValue={linked?.contiene_cantidad ?? ''} placeholder="cantidad (30)" className="campo min-w-0 px-2 py-1.5" />
+                              <input key={`bu-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="baseUnit" defaultValue={linked?.contiene_unidad ?? ''} placeholder="unidad (pz)" className="campo min-w-0 px-2 py-1.5" />
+                              <input key={`bi-${it.producto_catalogo_id ?? 'new'}`} name="baseItem" defaultValue={baseItemDefault} placeholder="de qué (huevo)" className="campo min-w-0 px-2 py-1.5" />
                             </div>
-                            <p className="text-[11px] text-zinc-500">Opcional si cada pieza trae volumen o peso (ej. cada media crema = 355 ml)</p>
+                            <p className="nota">Opcional si cada pieza trae volumen o peso (ej. cada media crema = 355 ml)</p>
                             <div className="grid grid-cols-2 gap-2">
-                              <input key={`sq-${it.producto_catalogo_id ?? 'new'}`} name="subQty" type="number" inputMode="decimal" defaultValue={subQtyDefault} placeholder="cantidad c/u (355)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                              <input key={`su-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="subUnit" defaultValue={subUnitDefault} placeholder="unidad final (ml)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              <input key={`sq-${it.producto_catalogo_id ?? 'new'}`} name="subQty" type="number" inputMode="decimal" defaultValue={subQtyDefault} placeholder="cantidad c/u (355)" className="campo min-w-0 px-2 py-1.5" />
+                              <input key={`su-${it.producto_catalogo_id ?? 'new'}`} list="unidades-tickets" name="subUnit" defaultValue={subUnitDefault} placeholder="unidad final (ml)" className="campo min-w-0 px-2 py-1.5" />
                             </div>
                             {linked?.contiene_cantidad && linked?.contiene_unidad && (
-                              <p className="text-[11px] text-emerald-500/80">Guardado: 1 {it.unidad} = {linked.contiene_cantidad} {linked.contiene_unidad}{linked.contiene_sub_cantidad && linked.contiene_sub_unidad ? ` = ${(Number(linked.contiene_cantidad) * Number(linked.contiene_sub_cantidad)).toLocaleString('es-MX')} ${linked.contiene_sub_unidad}` : ''}</p>
+                              <p className="text-xs text-emerald-400">Guardado: 1 {it.unidad} = {linked.contiene_cantidad} {linked.contiene_unidad}{linked.contiene_sub_cantidad && linked.contiene_sub_unidad ? ` = ${(Number(linked.contiene_cantidad) * Number(linked.contiene_sub_cantidad)).toLocaleString('es-MX')} ${linked.contiene_sub_unidad}` : ''}</p>
                             )}
                           </div>
                         )
                       })()}
                       <div className="flex items-center gap-2">
-                        <button type="submit" disabled={busy === it.id} className={`flex-1 rounded-lg py-2 text-sm font-medium text-zinc-100 disabled:opacity-60 transition-colors ${savedFlash[it.id] ? 'bg-emerald-700' : 'bg-zinc-700 hover:bg-zinc-600'}`}>{busy === it.id ? 'Guardando...' : savedFlash[it.id] ? '✓ Guardado' : 'Guardar y ensenar'}</button>
-                        {savedFlash[it.id] && <span className="text-sm text-emerald-400 font-medium whitespace-nowrap">✓ Guardado</span>}
+                        <button type="submit" disabled={busy === it.id} className={`btn-secundario btn-sm flex-1 ${savedFlash[it.id] ? 'border-emerald-500 text-emerald-400' : ''}`}>{busy === it.id ? 'Guardando...' : savedFlash[it.id] ? '✓ Guardado' : 'Guardar y enseñar'}</button>
                       </div>
                     </form>
                   ) : (
-                    <div key={it.id} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'border-transparent bg-zinc-800/50'}`}>
+                    <div key={it.id} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
                       <div className="min-w-0"><p className="text-zinc-100 truncate">{it.descripcion}</p><p className="text-xs text-zinc-500">{it.cantidad ?? ''} {it.unidad ?? ''} · {it.categorias_gasto?.nombre ?? 'sin categoria'}</p></div>
                       <span className="text-zinc-300 whitespace-nowrap">{fmt(it.monto)}</span>
                     </div>
@@ -1286,11 +1286,11 @@ export default function TicketsPage() {
                   <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
                 </div>
                 {detalle.ticket.estado !== 'confirmado' && (
-                  <button onClick={() => confirmarTicket(detalle.ticket)} disabled={busy === 'confirmar'} className="w-full rounded-xl bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 disabled:opacity-60">{busy === 'confirmar' ? 'Confirmando...' : 'Confirmar ticket'}</button>
+                  <button onClick={() => confirmarTicket(detalle.ticket)} disabled={busy === 'confirmar'} className="btn-primario w-full py-2.5">{busy === 'confirmar' ? 'Confirmando...' : 'Confirmar ticket'}</button>
                 )}
                 {sePuedeEliminar(detalle.ticket)
-                  ? <button onClick={() => eliminarTicket(detalle.ticket)} className="w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-medium text-red-400">Eliminar ticket</button>
-                  : <p className="text-[11px] text-zinc-500 text-center">Los tickets de sucursales reales no se eliminan: si no vale, usa Rechazar (sigue contando en &quot;Subidos&quot;).</p>}
+                  ? <button onClick={() => eliminarTicket(detalle.ticket)} className="btn-peligro w-full">Eliminar ticket</button>
+                  : <p className="nota text-center">Los tickets de sucursales reales no se eliminan: si no vale, usa Rechazar (sigue contando en &quot;Subidos&quot;).</p>}
               </div>
             </div>
           </div>
@@ -1301,5 +1301,5 @@ export default function TicketsPage() {
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="block"><span className="text-xs text-zinc-500 block mb-1">{label}</span>{children}</label>
+  return <label className="block"><span className="etiqueta block mb-1">{label}</span>{children}</label>
 }

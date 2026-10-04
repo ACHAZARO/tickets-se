@@ -283,7 +283,7 @@ export default function SubirPage({ params }: PageProps) {
   if (state === 'done') {
     return (
       <main className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center px-6 text-center safe-top safe-bottom">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-900/40 mb-6">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-900 mb-6">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-10 w-10 text-emerald-400"
@@ -295,25 +295,25 @@ export default function SubirPage({ params }: PageProps) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold text-zinc-100">¡Enviado! Muchas gracias</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">¡Enviado! Gracias</h2>
         <p className="mt-2 text-sm text-zinc-400">
-          {enviadas > 1 ? `${enviadas} tickets se están` : 'El ticket se está'} procesando automáticamente. No necesitas hacer nada más.
+          {enviadas > 1 ? `${enviadas} tickets se están` : 'El ticket se está'} procesando. No necesitas hacer nada más.
         </p>
         {(duplicadas > 0 || fallidas > 0) && (
-          <p className="mt-2 text-xs text-amber-400">
+          <p className="mt-3 rounded-lg bg-amber-900 px-3 py-2 text-sm text-amber-300">
             {duplicadas > 0 && `${duplicadas} ya estaba(n) subido(s). `}
             {fallidas > 0 && `${fallidas} no se pudo(eron) enviar; vuelve a intentarlas.`}
           </p>
         )}
         <button
           onClick={handleNewTicket}
-          className="mt-8 w-full max-w-xs rounded-2xl bg-zinc-800 py-4 text-base font-medium text-zinc-100 active:scale-95 transition-transform"
+          className="btn-primario mt-8 w-full max-w-xs py-3.5 text-base"
         >
           Subir otro ticket
         </button>
         <button
           onClick={() => router.push(`/sucursal/${slug}`)}
-          className="mt-3 w-full max-w-xs rounded-2xl py-4 text-base font-medium text-zinc-500 active:scale-95 transition-transform"
+          className="btn-quieto mt-3 w-full max-w-xs py-3.5 text-base"
         >
           Salir
         </button>
@@ -327,7 +327,7 @@ export default function SubirPage({ params }: PageProps) {
       <div className="mb-6 flex items-center gap-3">
         <button
           onClick={() => router.push(`/sucursal/${slug}`)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-800 text-zinc-400 active:scale-95 transition-transform"
+          className="btn-quieto h-11 w-11 px-0"
           aria-label="Volver"
         >
           <svg
@@ -342,8 +342,8 @@ export default function SubirPage({ params }: PageProps) {
           </svg>
         </button>
         <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Subir ticket</h1>
-          <p className="text-xs text-zinc-500">Sucursal: {slug}</p>
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Subir ticket</h1>
+          <p className="text-xs text-zinc-500">{slug}</p>
         </div>
       </div>
 
@@ -363,12 +363,12 @@ export default function SubirPage({ params }: PageProps) {
         <div className="flex flex-1 flex-col items-center justify-center gap-6">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex w-full flex-col items-center justify-center gap-4 rounded-3xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 px-6 py-16 text-center transition-colors hover:border-zinc-500 active:scale-[0.98]"
+            className="flex w-full flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-zinc-700 bg-zinc-900 px-6 py-14 text-center transition-[border-color,transform] duration-150 ease-out hover:border-emerald-500 active:scale-[0.98]"
           >
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-800">
+            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-emerald-900">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-8 w-8 text-zinc-400"
+                className="h-8 w-8 text-emerald-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -387,8 +387,8 @@ export default function SubirPage({ params }: PageProps) {
               </svg>
             </div>
             <div>
-              <p className="text-base font-medium text-zinc-200">Tomar foto / Subir imagen</p>
-              <p className="mt-1 text-sm text-zinc-500">Apunta la cámara al ticket de gastos</p>
+              <p className="text-lg font-semibold text-zinc-100">Tomar foto</p>
+              <p className="nota mt-1">o elegir de la galería</p>
             </div>
           </button>
         </div>
@@ -398,7 +398,7 @@ export default function SubirPage({ params }: PageProps) {
       {(state === 'preview' || state === 'processing') && imagePreview && (
         <div className="flex flex-1 flex-col gap-4">
           {/* Image preview */}
-          <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-900" style={{ aspectRatio: '3/4', maxHeight: '36vh' }}>
+          <div className="relative w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900" style={{ aspectRatio: '3/4', maxHeight: '36vh' }}>
             <Image
               src={imagePreview}
               alt="Vista previa del ticket"
@@ -409,7 +409,7 @@ export default function SubirPage({ params }: PageProps) {
             {state === 'processing' && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-950/70 backdrop-blur-sm">
                 <svg
-                  className="h-10 w-10 animate-spin text-zinc-300"
+                  className="h-10 w-10 animate-spin text-emerald-500"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -417,7 +417,7 @@ export default function SubirPage({ params }: PageProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
-                <p className="text-sm font-medium text-zinc-300">
+                <p className="text-sm font-medium text-zinc-100">
                   {progreso.total > 1 ? `Enviando ${progreso.actual} de ${progreso.total}...` : 'Enviando...'}
                 </p>
               </div>
@@ -427,12 +427,12 @@ export default function SubirPage({ params }: PageProps) {
           {state === 'preview' && (
             <div className="flex flex-col gap-3">
               <fieldset>
-                <legend className="mb-1.5 text-sm font-medium text-zinc-300">
+                <legend className="mb-1.5 text-sm font-medium text-zinc-200">
                   ¿Cómo se pagó? <span className="font-normal text-zinc-500">{esMixto ? '(escribe cuánto con cada una)' : '(puedes elegir varias)'}</span>
                 </legend>
-                {formas === null && !formasError && <p className="text-xs text-zinc-500">Cargando formas de pago...</p>}
+                {formas === null && !formasError && <p className="nota">Cargando formas de pago…</p>}
                 {formasError && (
-                  <button type="button" onClick={cargarFormas} className="text-xs text-amber-400 underline">
+                  <button type="button" onClick={cargarFormas} className="min-h-[44px] text-left text-sm text-amber-400 underline">
                     No cargaron las formas de pago. Toca para reintentar
                   </button>
                 )}
@@ -445,8 +445,8 @@ export default function SubirPage({ params }: PageProps) {
                           type="button"
                           aria-pressed={activo}
                           onClick={() => setElegidas(prev => (prev.includes(f.id) ? prev.filter(x => x !== f.id) : [...prev, f.id]))}
-                          className={`min-h-[48px] flex-1 rounded-2xl border px-4 py-2.5 text-left text-sm font-medium transition-colors active:scale-[0.98] ${
-                            activo ? 'border-zinc-100 bg-zinc-100 text-zinc-900' : 'border-zinc-800 bg-zinc-900 text-zinc-300'
+                          className={`min-h-[48px] flex-1 rounded-lg border px-4 py-2.5 text-left text-base font-medium transition-[background-color,border-color,transform] duration-150 ease-out active:scale-[0.98] ${
+                            activo ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-zinc-800 bg-zinc-900 text-zinc-200'
                           }`}
                         >
                           {f.nombre}
@@ -459,7 +459,7 @@ export default function SubirPage({ params }: PageProps) {
                             placeholder="$ monto"
                             value={montos[f.id] ?? ''}
                             onChange={e => setMontos(prev => ({ ...prev, [f.id]: e.target.value }))}
-                            className="w-32 rounded-2xl border border-zinc-700 bg-zinc-900 px-3 text-right text-base text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                            className="campo w-32 text-right text-base"
                           />
                         )}
                       </div>
@@ -467,21 +467,21 @@ export default function SubirPage({ params }: PageProps) {
                   })}
                 </div>
                 {esMixto && !faltaMonto && (
-                  <p className="mt-1.5 text-right text-xs text-zinc-400">Suma: <span className="font-medium text-zinc-200">{pesos(sumaMixto)}</span> (debe ser el total del ticket)</p>
+                  <p className="mt-1.5 text-right text-[13px] text-zinc-400">Suma: <span className="font-medium text-zinc-200">{pesos(sumaMixto)}</span> (debe ser el total del ticket)</p>
                 )}
                 {esMixto && imageFiles.length > 1 && (
-                  <p className="mt-1.5 text-xs text-amber-400">Pago con varias formas: sube una foto a la vez.</p>
+                  <p className="mt-1.5 text-[13px] text-amber-400">Pago con varias formas: sube una foto a la vez.</p>
                 )}
                 {!esMixto && imageFiles.length > 1 && elegidas.length === 1 && (
-                  <p className="mt-1 text-xs text-zinc-500">Se aplica a las {imageFiles.length} fotos.</p>
+                  <p className="nota mt-1">Se aplica a las {imageFiles.length} fotos.</p>
                 )}
               </fieldset>
               <div>
                 <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                  <label htmlFor="nota" className="text-sm font-medium text-zinc-300">
+                  <label htmlFor="nota" className="text-sm font-medium text-zinc-200">
                     Nota <span className="font-normal text-zinc-500">(opcional)</span>
                   </label>
-                  {nota.length > 0 && <span className="text-xs text-zinc-600">{nota.length}/500</span>}
+                  {nota.length > 0 && <span className="text-xs text-zinc-500">{nota.length}/500</span>}
                 </div>
                 <textarea
                   ref={notaRef}
@@ -491,16 +491,16 @@ export default function SubirPage({ params }: PageProps) {
                   maxLength={500}
                   rows={2}
                   placeholder="Solo si hace falta explicar algo"
-                  className="w-full resize-none rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none"
+                  className="campo w-full resize-none py-3 text-base"
                 />
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="nota mt-1">
                   La lee la persona que revisa, no la IA.{imageFiles.length > 1 ? ` Se guarda en las ${imageFiles.length} fotos.` : ''}
                 </p>
               </div>
               <button
                 onClick={handleProcess}
                 disabled={!puedeEnviar}
-                className="w-full rounded-2xl bg-zinc-100 py-4 text-base font-semibold text-zinc-900 transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:active:scale-100"
+                className="btn-primario w-full whitespace-normal py-3.5 text-base font-semibold disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-100"
               >
                 {pideForma && elegidas.length === 0
                   ? 'Elige cómo se pagó'
@@ -512,7 +512,7 @@ export default function SubirPage({ params }: PageProps) {
               </button>
               <button
                 onClick={handleDiscard}
-                className="w-full rounded-2xl bg-zinc-800 py-4 text-base font-medium text-zinc-300 transition-transform active:scale-[0.98]"
+                className="btn-quieto w-full py-3 text-base"
               >
                 Cancelar
               </button>
@@ -524,7 +524,7 @@ export default function SubirPage({ params }: PageProps) {
       {/* ERROR state */}
       {state === 'error' && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-900/30">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-900">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-8 w-8 text-red-400"
@@ -542,7 +542,7 @@ export default function SubirPage({ params }: PageProps) {
           </div>
           <button
             onClick={handleDiscard}
-            className="mt-4 w-full max-w-xs rounded-2xl bg-zinc-800 py-4 text-base font-medium text-zinc-100 active:scale-95 transition-transform"
+            className="btn-primario mt-4 w-full max-w-xs py-3.5 text-base"
           >
             Intentar de nuevo
           </button>

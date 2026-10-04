@@ -107,7 +107,7 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
   if (!n) return null
   return (
     <span title={`${n} productos del catalogo por revisar`}
-      className="ml-1.5 inline-flex min-w-[18px] justify-center rounded-full bg-amber-600 px-1.5 text-[11px] font-semibold leading-[18px] text-white">{n}</span>
+      className="ml-1.5 inline-flex min-w-[18px] justify-center rounded-full bg-amber-600 px-1.5 text-xs font-semibold leading-[18px] text-white">{n}</span>
   )
 }
 

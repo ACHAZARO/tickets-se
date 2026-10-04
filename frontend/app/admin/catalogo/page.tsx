@@ -193,7 +193,7 @@ export default function CatalogoPage() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" /></div>
+    return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
   }
 
   const prodsPorCat = (catId: string) => productos.filter(p => p.categoria_id === catId)
@@ -202,9 +202,8 @@ export default function CatalogoPage() {
     <div className="space-y-6">
       <datalist id="unidades-catalogo">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
       <div>
-        <h2 className="text-xl font-semibold text-zinc-100">Catálogo y categorías</h2>
-        <p className="text-sm text-zinc-500 mt-1">
-          Cada categoría con sus productos (lo que la IA ha aprendido).{' '}
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Catálogo y categorías</h2>
+        <p className="nota mt-1">
           {sucursalId ? 'Ves lo global + lo de esta sucursal; lo nuevo es de esta sucursal.' : 'Ves lo global; elige una sucursal arriba para algo específico.'}
         </p>
       </div>
@@ -212,59 +211,59 @@ export default function CatalogoPage() {
       <div className="flex gap-2">
         <input value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') agregarCat() }}
           placeholder="Nueva categoría (ej. Mantenimiento)"
-          className="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600" />
+          className="campo flex-1 px-4 py-2.5" />
         <button onClick={agregarCat} disabled={savingCat || !nuevaCat.trim()}
-          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-300 disabled:opacity-50">+ Categoría</button>
+          className="btn-primario">+ Categoría</button>
       </div>
 
       <div className="space-y-4">
         {categorias.map(c => {
           const prods = prodsPorCat(c.id)
           return (
-            <div key={c.id} className={`rounded-2xl bg-zinc-900 overflow-hidden ${!c.activa ? 'opacity-50' : ''}`}>
+            <div key={c.id} className={`tarjeta overflow-hidden ${!c.activa ? 'opacity-50' : ''}`}>
               <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <input value={c.nombre} onChange={e => renombrarCat(c, e.target.value)} onBlur={() => guardarNombreCat(c)}
-                    className="text-sm font-medium text-zinc-100 bg-transparent outline-none focus:bg-zinc-800 rounded px-2 py-1 min-w-0" />
+                    className="text-sm font-medium text-zinc-100 bg-transparent outline-none focus:bg-zinc-800 rounded-lg px-2 py-1 min-w-0" />
                   {c.sucursal_id === null
-                    ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">global</span>
-                    : <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400">sucursal</span>}
-                  <span className="text-xs text-zinc-600">· {prods.length} prod.</span>
+                    ? <span className="chip-neutro">global</span>
+                    : <span className="chip-info">sucursal</span>}
+                  <span className="text-xs text-zinc-500">· {prods.length} prod.</span>
                 </div>
                 <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
-                  className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap">+ producto</button>
+                  className="btn-secundario btn-sm">+ Producto</button>
                 <button onClick={() => toggleOperativo(c)}
                   title={c.cuenta_operativo ? 'Cuenta en el gasto de operación' : 'NO cuenta en operación (ej. equipo)'}
-                  className={`text-xs px-2 py-1 rounded-lg whitespace-nowrap ${c.cuenta_operativo ? 'bg-blue-900/40 text-blue-300' : 'bg-zinc-800 text-zinc-500'}`}>
+                  className={`${c.cuenta_operativo ? 'chip-info' : 'chip-neutro'} py-1 whitespace-nowrap hover:opacity-80`}>
                   {c.cuenta_operativo ? 'Operativo' : 'No operativo'}
                 </button>
                 <button onClick={() => toggleCat(c)}
-                  className={`text-xs px-2 py-1 rounded-lg ${c.activa ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                  className={`${c.activa ? 'chip-bien' : 'chip-mal'} py-1 hover:opacity-80`}>
                   {c.activa ? 'Activa' : 'Inactiva'}
                 </button>
                 <button onClick={() => pedirBorrarCat(c)} title="Borrar categoría"
-                  className="text-xs text-red-400 hover:text-red-300 px-1">borrar</button>
+                  className="btn-peligro btn-sm">Borrar</button>
               </div>
 
               {addProd?.categoriaId === c.id && (
-                <div className="px-4 py-3 bg-zinc-800/40 space-y-2 border-b border-zinc-800">
+                <div className="px-4 py-3 bg-zinc-800/50 space-y-2 border-b border-zinc-800">
                   <input value={addProd.nombre} onChange={e => setAddProd({ ...addProd, nombre: e.target.value })} placeholder="Nombre del producto (ej. Pasta)"
-                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                    className="campo w-full px-2 py-1.5" />
                   <input value={addProd.sinonimos} onChange={e => setAddProd({ ...addProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. barilla, espagueti)"
-                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
+                    className="campo w-full px-2 py-1.5" />
                   <div className="flex gap-2">
                     <input list="unidades-catalogo" value={addProd.unidad} onChange={e => setAddProd({ ...addProd, unidad: e.target.value })}
                       placeholder="Unidad (cono, caja, pz...)"
-                      className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                      className="campo px-2 py-1.5" />
                     <button onClick={guardarProducto} disabled={savingProd || !addProd.nombre.trim()}
-                      className="flex-1 rounded-lg bg-zinc-100 py-1.5 text-sm font-semibold text-zinc-900 disabled:opacity-50">Guardar</button>
-                    <button onClick={() => setAddProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
+                      className="btn-primario btn-sm flex-1">Guardar</button>
+                    <button onClick={() => setAddProd(null)} className="btn-quieto btn-sm">Cancelar</button>
                   </div>
                 </div>
               )}
 
               {prods.length === 0 ? (
-                <p className="px-4 py-3 text-xs text-zinc-600">Sin productos. La IA aprende al revisar tickets o agrégalos aquí.</p>
+                <p className="px-4 py-3 nota">Sin productos. Agrégalos con + Producto.</p>
               ) : (
                 <div className="divide-y divide-zinc-800/50">
                   {prods.map(p => (
@@ -273,76 +272,76 @@ export default function CatalogoPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
-                            {p.unidad_default && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.unidad_default}</span>}
-                            {p.veces_matched > 0 && <span className="text-[10px] text-zinc-600">{p.veces_matched}×</span>}
+                            {p.unidad_default && <span className="chip-neutro">{p.unidad_default}</span>}
+                            {p.veces_matched > 0 && <span className="text-xs text-zinc-500">{p.veces_matched}×</span>}
                           </div>
-                          {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">tambien: {p.sinonimos.join(', ')}</p>}
-                        {p.contiene_cantidad && p.contiene_unidad && <p className="text-[11px] text-zinc-600">1 {p.unidad_default ?? 'u'} = {p.contiene_cantidad} {p.contiene_unidad}{p.contiene_sub_cantidad && p.contiene_sub_unidad ? ` = ${(Number(p.contiene_cantidad) * Number(p.contiene_sub_cantidad)).toLocaleString('es-MX')} ${p.contiene_sub_unidad}` : ''}</p>}
+                          {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">también: {p.sinonimos.join(', ')}</p>}
+                        {p.contiene_cantidad && p.contiene_unidad && <p className="text-xs text-zinc-500">1 {p.unidad_default ?? 'u'} = {p.contiene_cantidad} {p.contiene_unidad}{p.contiene_sub_cantidad && p.contiene_sub_unidad ? ` = ${(Number(p.contiene_cantidad) * Number(p.contiene_sub_cantidad)).toLocaleString('es-MX')} ${p.contiene_sub_unidad}` : ''}</p>}
                         </div>
                         <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, nombre: p.nombre, nombreOriginal: p.nombre, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), ...splitEquivalenceFields(p) })}
-                          className="text-xs text-blue-400 hover:text-blue-300">{editProd?.id === p.id ? 'cerrar' : 'editar'}</button>
+                          className="btn-texto btn-sm">{editProd?.id === p.id ? 'Cerrar' : 'Editar'}</button>
                         <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
                           title="Es el mismo insumo que otro producto: unificarlos"
-                          className="text-xs text-amber-400 hover:text-amber-300">{unifProd?.id === p.id ? 'cancelar' : 'unificar'}</button>
-                        <button onClick={() => toggleProd(p)} className={`text-xs px-2 py-1 rounded-lg ${p.activo ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
-                        <button onClick={() => eliminarProd(p)} className="text-xs text-red-400 hover:text-red-300">eliminar</button>
+                          className="btn-quieto btn-sm">{unifProd?.id === p.id ? 'Cancelar' : 'Unificar'}</button>
+                        <button onClick={() => toggleProd(p)} className={`${p.activo ? 'chip-bien' : 'chip-mal'} py-1 hover:opacity-80`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
+                        <button onClick={() => eliminarProd(p)} className="btn-peligro btn-sm">Eliminar</button>
                       </div>
 
                       {unifProd?.id === p.id && (() => {
                         // Solo productos de la misma categoria y del mismo alcance (misma sucursal o global).
                         const candidatos = prods.filter(q => q.id !== p.id && (q.sucursal_id === p.sucursal_id || q.sucursal_id === null))
                         return (
-                          <div className="mt-2 space-y-2 bg-zinc-800/40 rounded-lg p-3">
-                            <label className="block text-[11px] text-zinc-500">Unificar &quot;{p.nombre}&quot; dentro de otro producto de esta categoría (mismo insumo con otro nombre)</label>
+                          <div className="mt-2 space-y-2 bg-zinc-800/50 rounded-lg p-3">
+                            <label className="etiqueta block">Unificar &quot;{p.nombre}&quot; dentro de:</label>
                             <select value={unifProd.destinoId} onChange={e => setUnifProd({ ...unifProd, destinoId: e.target.value })}
-                              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                              className="campo w-full px-2 py-1.5">
                               <option value="">Elige el producto que se queda…</option>
                               {candidatos.map(q => <option key={q.id} value={q.id}>{q.nombre}{q.unidad_default ? ` (${q.unidad_default})` : ''}</option>)}
                             </select>
-                            <p className="text-[11px] text-zinc-500">&quot;{p.nombre}&quot; desaparece del catálogo: sus compras pasan al producto elegido, que también reconocerá este nombre. Queda respaldo.</p>
+                            <p className="nota">&quot;{p.nombre}&quot; desaparece del catálogo: sus compras pasan al producto elegido, que también reconocerá este nombre. Queda respaldo.</p>
                             <div className="flex gap-2">
                               <button onClick={() => ejecutarUnificacion(p)} disabled={!unifProd.destinoId || unificando}
-                                className="rounded-lg bg-zinc-100 px-3 py-1.5 text-sm font-semibold text-zinc-900 disabled:opacity-50">{unificando ? 'Unificando…' : 'Unificar'}</button>
-                              <button onClick={() => setUnifProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
+                                className="btn-primario btn-sm">{unificando ? 'Unificando…' : 'Unificar'}</button>
+                              <button onClick={() => setUnifProd(null)} className="btn-quieto btn-sm">Cancelar</button>
                             </div>
                           </div>
                         )
                       })()}
 
                       {editProd?.id === p.id && (
-                        <div className="mt-2 space-y-2 bg-zinc-800/40 rounded-lg p-3">
-                          <label className="block text-[11px] text-zinc-500">Nombre (el anterior se guarda como sinónimo)</label>
+                        <div className="mt-2 space-y-2 bg-zinc-800/50 rounded-lg p-3">
+                          <label className="etiqueta block">Nombre (el anterior queda como sinónimo)</label>
                           <input value={editProd.nombre} onChange={e => setEditProd({ ...editProd, nombre: e.target.value })} placeholder="Nombre del producto"
-                            className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
-                          <label className="block text-[11px] text-zinc-500">Categoría (muévelo si está mal clasificado)</label>
+                            className="campo w-full px-2 py-1.5" />
+                          <label className="etiqueta block">Categoría</label>
                           <select value={editProd.categoria_id} onChange={e => setEditProd({ ...editProd, categoria_id: e.target.value })}
-                            className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100">
+                            className="campo w-full px-2 py-1.5">
                             {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                           </select>
                           <input value={editProd.sinonimos} onChange={e => setEditProd({ ...editProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. magna, premium, diesel)"
-                            className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100" />
-                          <label className="block text-[11px] text-zinc-500">Equivalencia (opcional): 1 {editProd.unidad || p.unidad_default || 'unidad'} trae…</label>
+                            className="campo w-full px-2 py-1.5" />
+                          <label className="etiqueta block">Equivalencia (opcional): 1 {editProd.unidad || p.unidad_default || 'unidad'} trae…</label>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input type="number" inputMode="decimal" value={editProd.contiene_cantidad} onChange={e => setEditProd({ ...editProd, contiene_cantidad: e.target.value })}
-                              placeholder="cantidad (30)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              placeholder="cantidad (30)" className="campo px-2 py-1.5" />
                             <input list="unidades-catalogo" value={editProd.contiene_unidad} onChange={e => setEditProd({ ...editProd, contiene_unidad: e.target.value })}
-                              placeholder="unidad (pz)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              placeholder="unidad (pz)" className="campo px-2 py-1.5" />
                             <input value={editProd.contiene_base_item} onChange={e => setEditProd({ ...editProd, contiene_base_item: e.target.value })}
-                              placeholder="de qué (huevo)" className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                              placeholder="de qué (huevo)" className="campo px-2 py-1.5" />
                           </div>
                           {editProd.contiene_cantidad.trim() !== '' && editProd.contiene_unidad.trim() !== '' && (
                             <>
-                              <label className="block text-[11px] text-zinc-500">Opcional si cada {editProd.contiene_unidad || 'pieza'} trae volumen o peso…</label>
+                              <label className="etiqueta block">Opcional si cada {editProd.contiene_unidad || 'pieza'} trae volumen o peso…</label>
                               <div className="flex gap-2">
                                 <input type="number" inputMode="decimal" value={editProd.contiene_sub_cantidad} onChange={e => setEditProd({ ...editProd, contiene_sub_cantidad: e.target.value })}
-                                  placeholder="cantidad c/u (355)" className="w-1/2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                                  placeholder="cantidad c/u (355)" className="campo w-1/2 px-2 py-1.5" />
                                 <input list="unidades-catalogo" value={editProd.contiene_sub_unidad} onChange={e => setEditProd({ ...editProd, contiene_sub_unidad: e.target.value })}
-                                  placeholder="unidad final (ml)" className="w-1/2 rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
+                                  placeholder="unidad final (ml)" className="campo w-1/2 px-2 py-1.5" />
                               </div>
                             </>
                           )}
                           {editProd.contiene_cantidad.trim() !== '' && editProd.contiene_unidad.trim() !== '' && (
-                            <p className="text-[11px] text-emerald-500/80">
+                            <p className="text-[13px] text-emerald-400">
                               1 {editProd.unidad || p.unidad_default || 'u'} = {editProd.contiene_cantidad} {editProd.contiene_unidad}
                               {editProd.contiene_sub_cantidad.trim() !== '' && editProd.contiene_sub_unidad.trim() !== '' &&
                                 ` = ${(Number(editProd.contiene_cantidad) * Number(editProd.contiene_sub_cantidad)).toLocaleString('es-MX')} ${editProd.contiene_sub_unidad}`}
@@ -353,9 +352,9 @@ export default function CatalogoPage() {
                           <div className="flex gap-2">
                             <input list="unidades-catalogo" value={editProd.unidad} onChange={e => setEditProd({ ...editProd, unidad: e.target.value })}
                               placeholder="Unidad (cono, caja, pz...)"
-                              className="rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600" />
-                            <button onClick={guardarEdicion} className="flex-1 rounded-lg bg-zinc-100 py-1.5 text-sm font-semibold text-zinc-900">Guardar</button>
-                            <button onClick={() => setEditProd(null)} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400">Cancelar</button>
+                              className="campo px-2 py-1.5" />
+                            <button onClick={guardarEdicion} className="btn-primario btn-sm flex-1">Guardar</button>
+                            <button onClick={() => setEditProd(null)} className="btn-quieto btn-sm">Cancelar</button>
                           </div>
                         </div>
                       )}
@@ -369,7 +368,7 @@ export default function CatalogoPage() {
       </div>
 
       {delCat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !borrando && setDelCat(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm p-4" onClick={() => !borrando && setDelCat(null)}>
           <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-zinc-100">Borrar &ldquo;{delCat.cat.nombre}&rdquo;</h3>
             {(delCat.nProd > 0 || delCat.nItems > 0) ? (
@@ -378,24 +377,24 @@ export default function CatalogoPage() {
                   Esta categoría tiene {delCat.nProd > 0 && <b>{delCat.nProd} producto(s)</b>}{delCat.nProd > 0 && delCat.nItems > 0 && ' y '}{delCat.nItems > 0 && <b>{delCat.nItems} renglón(es)</b>}. Para no perder gastos, muévelos a otra categoría antes de borrar.
                 </p>
                 <div>
-                  <label className="text-xs text-zinc-500 block mb-1">Mover todo a:</label>
+                  <label className="etiqueta block mb-1">Mover todo a:</label>
                   <select value={delCat.destino} onChange={e => setDelCat({ ...delCat, destino: e.target.value })}
-                    className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-2 py-2 text-sm text-zinc-100">
+                    className="campo w-full px-2 py-2">
                     <option value="">Elige categoría destino…</option>
                     {categorias.filter(k => k.id !== delCat.cat.id).map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                   </select>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-zinc-400">Esta categoría está vacía. Se puede borrar directamente.</p>
+              <p className="text-sm text-zinc-400">Está vacía; se puede borrar directamente.</p>
             )}
             <div className="flex gap-2 pt-1">
               <button onClick={confirmarBorrarCat} disabled={borrando || ((delCat.nProd > 0 || delCat.nItems > 0) && !delCat.destino)}
-                className="flex-1 rounded-xl bg-red-600/90 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50">
+                className="btn-peligro-lleno flex-1 py-2.5">
                 {borrando ? 'Borrando…' : 'Borrar categoría'}
               </button>
               <button onClick={() => setDelCat(null)} disabled={borrando}
-                className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300">Cancelar</button>
+                className="btn-quieto py-2.5">Cancelar</button>
             </div>
           </div>
         </div>

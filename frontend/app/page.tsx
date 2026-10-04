@@ -5,10 +5,10 @@ export default function HomePage() {
     <main className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm text-center">
         {/* Logo / Icon */}
-        <div className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-zinc-800">
+        <div className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-10 w-10 text-zinc-300"
+            className="h-10 w-10 text-emerald-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -22,37 +22,24 @@ export default function HomePage() {
           </svg>
         </div>
 
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-zinc-100">
+        <h1 className="mb-2 text-xl font-semibold tracking-tight text-zinc-100">
           Revisión de Tickets
         </h1>
-        <p className="mb-10 text-sm text-zinc-400">
-          Escanea el código QR de tu sucursal para comenzar, o ingresa el slug directamente.
+        <p className="mb-8 text-sm text-zinc-400">
+          Escanea el QR de tu sucursal para subir tickets.
         </p>
-
-        {/* Direct slug entry hint */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-left">
-          <p className="mb-1 text-xs font-medium uppercase tracking-widest text-zinc-500">
-            URL de acceso
-          </p>
-          <p className="font-mono text-sm text-zinc-300">
-            /sucursal/<span className="text-zinc-500">[slug]</span>
-          </p>
-          <p className="mt-3 text-xs text-zinc-500">
-            Cada sucursal tiene su propio enlace único. Usa el QR asignado a tu local.
-          </p>
-        </div>
 
         <Link
           href="/admin/login"
-          className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+          className="btn-secundario w-full py-3"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
           </svg>
-          Panel Admin
+          Entrar como admin
         </Link>
 
-        <p className="mt-6 text-xs text-zinc-600">
+        <p className="mt-6 text-xs text-zinc-500">
           Sistema interno &mdash; solo personal autorizado
         </p>
       </div>
