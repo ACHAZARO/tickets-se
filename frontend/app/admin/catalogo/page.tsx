@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSucursal } from '@/lib/sucursal-context'
 import { buildEquivalenceUpdate } from '@/lib/ticket-workflow.mjs'
-import { useToast, useConfirm } from '../ui'
+import { useToast, useConfirm, Interruptor } from '../ui'
 import { unificarProductos } from '../unificar'
 import { GaleriaTickets } from '../galeria-tickets'
 
@@ -38,7 +38,7 @@ function splitEquivalenceFields(p: Pick<Producto, 'contiene_cantidad' | 'contien
 const UNIDADES = ['pz', 'kg', 'g', 'ml', 'lt', 'caja', 'bulto', 'paquete', 'cono', 'charola', 'costal', 'reja', 'rollo', 'galon', 'six', 'docena', 'atado', 'manojo', 'otro']
 
 export default function CatalogoPage() {
-  const { sucursalId } = useSucursal()
+  const { sucursalId, sucursales } = useSucursal()
   const toast = useToast()
   const confirm = useConfirm()
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -222,30 +222,47 @@ export default function CatalogoPage() {
         {categorias.map(c => {
           const prods = prodsPorCat(c.id)
           return (
-            <div key={c.id} className={`tarjeta overflow-hidden ${!c.activa ? 'opacity-50' : ''}`}>
-              <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-zinc-800">
-                <div className="flex items-center gap-2 basis-full sm:basis-auto sm:flex-1 min-w-0">
-                  <input value={c.nombre} onChange={e => renombrarCat(c, e.target.value)} onBlur={() => guardarNombreCat(c)}
-                    aria-label="Nombre de la categoría"
-                    className="text-[15px] font-semibold text-zinc-100 bg-transparent outline-none focus:bg-zinc-800 rounded-lg -ml-2 px-2 py-1 min-w-0 flex-1" />
-                  {c.sucursal_id === null
-                    ? <span className="chip-neutro">global</span>
-                    : <span className="chip-info">sucursal</span>}
-                  <span className="text-xs text-zinc-500 whitespace-nowrap">{prods.length} prod.</span>
+            <div key={c.id} className="tarjeta overflow-hidden">
+              <div className="space-y-3 px-4 py-3.5 border-b border-zinc-800">
+                {/* 1. Que es: nombre (se edita tocandolo), cuantos articulos y de que sucursal */}
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  <label className="group relative flex min-w-0 basis-full items-center sm:basis-auto sm:flex-1" title="Toca para cambiar el nombre">
+                    <input value={c.nombre} onChange={e => renombrarCat(c, e.target.value)} onBlur={() => guardarNombreCat(c)}
+                      aria-label="Nombre de la categoría"
+                      className={`w-full min-w-0 rounded-lg -ml-2 px-2 py-1 text-base font-semibold bg-transparent outline-none hover:bg-zinc-800/60 focus:bg-zinc-800 ${c.activa ? 'text-zinc-100' : 'text-zinc-500'}`} />
+                    <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                      className="pointer-events-none absolute right-1 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-0">
+                      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </label>
+                  <p className="text-[13px] text-zinc-500 whitespace-nowrap">
+                    {prods.length} {prods.length === 1 ? 'artículo' : 'artículos'} · {c.sucursal_id === null
+                      ? <span title="Esta categoría existe en todas las sucursales">todas las sucursales</span>
+                      : <span title="Esta categoría solo existe en esta sucursal">solo {sucursales.find(x => x.id === c.sucursal_id)?.nombre ?? 'una sucursal'}</span>}
+                  </p>
                 </div>
-                <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
-                  className="btn-secundario btn-sm">+ Producto</button>
-                <button onClick={() => toggleOperativo(c)}
-                  title={c.cuenta_operativo ? 'Cuenta en el gasto de operación' : 'NO cuenta en operación (ej. equipo)'}
-                  className={`${c.cuenta_operativo ? 'chip-info' : 'chip-neutro'} py-1 whitespace-nowrap cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>
-                  {c.cuenta_operativo ? 'Operativo' : 'No operativo'}
-                </button>
-                <button onClick={() => toggleCat(c)}
-                  className={`${c.activa ? 'chip-bien' : 'chip-mal'} py-1 cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>
-                  {c.activa ? 'Activa' : 'Inactiva'}
-                </button>
-                <button onClick={() => pedirBorrarCat(c)} title="Borrar categoría"
-                  className="btn-peligro btn-sm ml-auto">Borrar</button>
+
+                {/* 2. Como se comporta: interruptores con su explicacion al pasar el cursor */}
+                <div className="flex flex-wrap gap-x-2 gap-y-1 -ml-2">
+                  <Interruptor encendido={c.activa} onCambiar={() => toggleCat(c)}
+                    etiqueta="La IA la usa"
+                    ayuda={c.activa
+                      ? 'Encendida: la IA puede poner tickets nuevos en esta categoría. Toca para apagarla.'
+                      : 'Apagada: la IA ya no pone tickets nuevos aquí (lo anterior se conserva). Toca para encenderla.'} />
+                  <Interruptor encendido={c.cuenta_operativo} onCambiar={() => toggleOperativo(c)}
+                    etiqueta="Cuenta en el gasto de operación"
+                    ayuda={c.cuenta_operativo
+                      ? 'Encendido: lo de esta categoría suma al gasto de operación en Números > Gasto. Toca si no debe contar (ej. equipo, inversiones).'
+                      : 'Apagado: NO suma al gasto de operación (se ve aparte en Números > Gasto). Toca para que cuente.'} />
+                </div>
+
+                {/* 3. Que puedo hacer */}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
+                    className="btn-secundario btn-sm">+ Agregar artículo</button>
+                  <button onClick={() => pedirBorrarCat(c)} title="Borrar la categoría (te pregunta a dónde mover sus artículos)"
+                    className="btn-peligro btn-sm ml-auto">Borrar categoría</button>
+                </div>
               </div>
 
               {addProd?.categoriaId === c.id && (
@@ -266,7 +283,7 @@ export default function CatalogoPage() {
               )}
 
               {prods.length === 0 ? (
-                <p className="px-4 py-3 nota">Sin productos. Agrégalos con + Producto.</p>
+                <p className="px-4 py-3 nota">Sin artículos. Agrégalos con «+ Agregar artículo».</p>
               ) : (
                 <div className="divide-y divide-zinc-800/50">
                   {prods.map(p => (
@@ -276,7 +293,7 @@ export default function CatalogoPage() {
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
                             {p.unidad_default && <span className="chip-neutro">{p.unidad_default}</span>}
-                            {p.veces_matched > 0 && <span className="text-xs text-zinc-500">{p.veces_matched}×</span>}
+                            {p.veces_matched > 0 && <span className="text-xs text-zinc-500" title={`La IA lo ha reconocido ${p.veces_matched} ${p.veces_matched === 1 ? 'vez' : 'veces'} en tickets`}>{p.veces_matched}×</span>}
                           </div>
                           {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">también: {p.sinonimos.join(', ')}</p>}
                         {p.contiene_cantidad && p.contiene_unidad && <p className="text-xs text-zinc-500">1 {p.unidad_default ?? 'u'} = {p.contiene_cantidad} {p.contiene_unidad}{p.contiene_sub_cantidad && p.contiene_sub_unidad ? ` = ${(Number(p.contiene_cantidad) * Number(p.contiene_sub_cantidad)).toLocaleString('es-MX')} ${p.contiene_sub_unidad}` : ''}</p>}
@@ -288,7 +305,10 @@ export default function CatalogoPage() {
                         <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
                           title="Es el mismo insumo que otro producto: unificarlos"
                           className="btn-quieto btn-sm">{unifProd?.id === p.id ? 'Cancelar' : 'Unificar'}</button>
-                        <button onClick={() => toggleProd(p)} className={`${p.activo ? 'chip-bien' : 'chip-mal'} py-1 cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
+                        <Interruptor compacto encendido={p.activo} onCambiar={() => toggleProd(p)} etiqueta="Activo"
+                          ayuda={p.activo
+                            ? 'Encendido: la IA reconoce este artículo en tickets nuevos. Toca para apagarlo.'
+                            : 'Apagado: la IA ya no lo usa para reconocer tickets nuevos. Toca para encenderlo.'} />
                         <button onClick={() => eliminarProd(p)} className="btn-peligro btn-sm">Eliminar</button>
                         </div>
                       </div>

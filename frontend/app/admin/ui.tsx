@@ -73,3 +73,21 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
     </UICtx.Provider>
   )
 }
+
+/**
+ * Interruptor si/no con su etiqueta: se ve que se puede tocar y el title explica que hace.
+ * Usar en vez de "chips" clicables (Activo/Inactivo) que no parecen botones.
+ */
+export function Interruptor({ encendido, onCambiar, etiqueta, ayuda, compacto = false }: {
+  encendido: boolean; onCambiar: () => void; etiqueta: string; ayuda: string; compacto?: boolean
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={encendido} onClick={onCambiar} title={ayuda}
+      className={`group inline-flex items-center gap-2 rounded-lg ${compacto ? 'px-1.5 py-1' : 'px-2 py-1.5'} text-[13px] text-zinc-300 transition-colors hover:bg-zinc-800`}>
+      <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${encendido ? 'bg-emerald-600' : 'bg-zinc-700'}`}>
+        <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${encendido ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+      </span>
+      {etiqueta}
+    </button>
+  )
+}
