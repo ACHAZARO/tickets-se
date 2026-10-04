@@ -3,6 +3,16 @@
 > Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
+## Sesion 2026-10-03 noche b (Claude) -- SEGUNDO REVISOR IA (prueba en seco) -> ver `PLAN_REVISOR_IA.md`
+- Problema de Alejandro: la IA deja demasiado a revision humana (14 dias: 27/63 = 43%; >95% de alertas se cerraban sin
+  correccion). Diagnostico: no es el modelo, son reglas fijas que mandan al humano todo lo "nuevo o raro" sin razonar.
+- Hecho: edge function nueva `revisor-ia` (admin-only, SOLO prueba: no toca tickets) + migracion `087_revisor_ia_pruebas`
+  (bitacora de juicios). Gemini `gemini-3.8-flash` juzga foto + lectura + detalle de alertas + historial del comercio +
+  tickets parecidos + catalogo + `reglas_ia`; candados en codigo (`aplicarCandados`). Nota del gerente NUNCA va a Gemini.
+- Resultado v2 sobre 67 tickets ya revisados: 13/13 rechazados -> humano; lo aprobado coincide 100% en fecha, total y
+  categoria; al humano llegaria ~10% (10 de 97 desde 14-sep) vs 56% hoy. Criterios de venta 1-5 cumplidos en seco.
+- Pendiente: OK de Alejandro para fase 2 (modo sombra en `procesar-ticket` + mostrar el juicio en Tickets).
+
 ## Sesion 2026-10-03 noche (Claude) -- FORMAS DE PAGO al subir + API para la conciliacion de Caja
 - Origen: pedido del cotejo de septiembre de Santa Elena (Caja / Gastos / Mercado Pago): saber como se pago cada ticket.
   Verificado: el corte 1-30/sep SE cuadra (151 subidos; 150 aprobados $82,157.06; 1 duplicado $1,552). Caso Adan Melchor
