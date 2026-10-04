@@ -136,7 +136,7 @@ export default function PagosTicket({ ticketId, total, pagos, onGuardado }: {
       )}
       <div className="flex justify-end gap-2">
         <button onClick={() => setEditando(false)} className="btn-quieto btn-sm">Cancelar</button>
-        <button onClick={guardar} disabled={guardando || faltaMonto} className="btn-primario btn-sm">
+        <button onClick={guardar} disabled={guardando || faltaMonto} className="btn-secundario btn-sm">
           {elegidas.length ? 'Guardar' : 'Dejar como No registrado'}
         </button>
       </div>

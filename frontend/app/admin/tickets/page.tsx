@@ -956,9 +956,9 @@ export default function TicketsPage() {
       </div>
       <input defaultValue={t.sospecha_motivo ?? ''} onBlur={e => guardarMotivo(t, e.target.value)} placeholder="motivo de la sospecha…"
         className="campo mt-2 w-full py-1.5" />
-      <div className="mt-2 flex items-center gap-1">
-        <button onClick={() => resolverSospecha(t, 'confirmada')} className="btn-peligro btn-sm">Es fraude</button>
+      <div className="mt-2 flex items-center gap-2">
         <button onClick={() => resolverSospecha(t, 'descartada')} className="btn-quieto btn-sm">Descartar</button>
+        <button onClick={() => resolverSospecha(t, 'confirmada')} className="btn-peligro btn-sm">Es fraude</button>
         <button onClick={() => abrirDetalle(t)} className="btn-texto btn-sm ml-auto">Abrir →</button>
       </div>
     </div>

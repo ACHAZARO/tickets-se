@@ -48,8 +48,8 @@ export function BotonTema({ className = '' }: { className?: string }) {
   if (oscuro === null) return <span className={`inline-block h-9 w-9 ${className}`} aria-hidden />
   return (
     <button type="button" onClick={alternar}
-      aria-label={oscuro ? 'Cambiar a modo dia' : 'Cambiar a modo noche'}
-      title={oscuro ? 'Modo dia' : 'Modo noche'}
+      aria-label={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'}
+      title={oscuro ? 'Modo día' : 'Modo noche'}
       className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${className}`}>
       {oscuro ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>

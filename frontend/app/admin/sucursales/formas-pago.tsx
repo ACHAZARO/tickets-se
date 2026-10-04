@@ -99,7 +99,7 @@ export default function FormasPago() {
               <input type="checkbox" className="accent-emerald-500" checked={f.sale_de_caja} onChange={e => cambiar(f, { sale_de_caja: e.target.checked })} />
               Sale de la Caja
             </label>
-            <button onClick={() => cambiar(f, { activa: !f.activa })} className={`${f.activa ? 'btn-peligro' : 'btn-secundario'} btn-sm`}>
+            <button onClick={() => cambiar(f, { activa: !f.activa })} className={`${f.activa ? 'btn-quieto' : 'btn-secundario'} btn-sm`}>
               {f.activa ? 'Apagar' : 'Prender'}
             </button>
           </div>
@@ -120,7 +120,7 @@ export default function FormasPago() {
           <button
             onClick={agregar}
             disabled={!nueva.nombre.trim() || !cuentaId}
-            className="btn-primario btn-sm"
+            className="btn-secundario btn-sm"
           >+ Agregar</button>
         </div>
       </div>

@@ -213,7 +213,7 @@ export default function CatalogoPage() {
           placeholder="Nueva categoría (ej. Mantenimiento)"
           className="campo flex-1 px-4 py-2.5" />
         <button onClick={agregarCat} disabled={savingCat || !nuevaCat.trim()}
-          className="btn-primario">+ Categoría</button>
+          className="btn-secundario">+ Categoría</button>
       </div>
 
       <div className="space-y-4">
@@ -234,11 +234,11 @@ export default function CatalogoPage() {
                   className="btn-secundario btn-sm">+ Producto</button>
                 <button onClick={() => toggleOperativo(c)}
                   title={c.cuenta_operativo ? 'Cuenta en el gasto de operación' : 'NO cuenta en operación (ej. equipo)'}
-                  className={`${c.cuenta_operativo ? 'chip-info' : 'chip-neutro'} py-1 whitespace-nowrap hover:opacity-80`}>
+                  className={`${c.cuenta_operativo ? 'chip-info' : 'chip-neutro'} py-1 whitespace-nowrap cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>
                   {c.cuenta_operativo ? 'Operativo' : 'No operativo'}
                 </button>
                 <button onClick={() => toggleCat(c)}
-                  className={`${c.activa ? 'chip-bien' : 'chip-mal'} py-1 hover:opacity-80`}>
+                  className={`${c.activa ? 'chip-bien' : 'chip-mal'} py-1 cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>
                   {c.activa ? 'Activa' : 'Inactiva'}
                 </button>
                 <button onClick={() => pedirBorrarCat(c)} title="Borrar categoría"
@@ -283,7 +283,7 @@ export default function CatalogoPage() {
                         <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
                           title="Es el mismo insumo que otro producto: unificarlos"
                           className="btn-quieto btn-sm">{unifProd?.id === p.id ? 'Cancelar' : 'Unificar'}</button>
-                        <button onClick={() => toggleProd(p)} className={`${p.activo ? 'chip-bien' : 'chip-mal'} py-1 hover:opacity-80`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
+                        <button onClick={() => toggleProd(p)} className={`${p.activo ? 'chip-bien' : 'chip-mal'} py-1 cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
                         <button onClick={() => eliminarProd(p)} className="btn-peligro btn-sm">Eliminar</button>
                       </div>
 

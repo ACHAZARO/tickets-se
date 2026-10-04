@@ -343,7 +343,7 @@ export default function SubirPage({ params }: PageProps) {
         </button>
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Subir ticket</h1>
-          <p className="text-xs text-zinc-500">{slug}</p>
+          <p className="text-xs text-zinc-500">Sucursal: {slug}</p>
         </div>
       </div>
 

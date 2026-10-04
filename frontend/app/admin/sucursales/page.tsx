@@ -116,7 +116,7 @@ export default function SucursalesPage() {
               <BtnSec onClick={() => setEmpPanel(s)}>Empleados</BtnSec>
               <BtnSec onClick={() => setQrSuc(s)}>QR</BtnSec>
               <BtnSec onClick={() => setSucForm({ id: s.id, nombre: s.nombre, slug: s.slug, direccion: s.direccion ?? '', activa: s.activa })}>Editar</BtnSec>
-              <button onClick={() => toggleActiva(s)} className={`${s.activa ? 'btn-peligro' : 'btn-secundario'} btn-sm`}>{s.activa ? 'Desactivar' : 'Activar'}</button>
+              <button onClick={() => toggleActiva(s)} className={`${s.activa ? 'btn-quieto' : 'btn-secundario'} btn-sm`}>{s.activa ? 'Desactivar' : 'Activar'}</button>
               <button onClick={() => eliminarSucursal(s)} className="btn-peligro btn-sm">Eliminar</button>
             </div>
           </div>

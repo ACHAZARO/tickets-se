@@ -61,8 +61,8 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
           <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-5 shadow-xl" onClick={e => e.stopPropagation()}>
             <p className="text-[15px] leading-relaxed text-zinc-100 whitespace-pre-line">{confirmState.msg}</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => closeConfirm(false)} className="btn-quieto">Cancelar</button>
-              <button onClick={() => closeConfirm(true)} autoFocus
+              <button onClick={() => closeConfirm(false)} autoFocus={confirmState.danger} className="btn-quieto">Cancelar</button>
+              <button onClick={() => closeConfirm(true)} autoFocus={!confirmState.danger}
                 className={confirmState.danger ? 'btn-peligro-lleno' : 'btn-primario'}>
                 {confirmState.danger ? 'Sí, continuar' : 'Aceptar'}
               </button>

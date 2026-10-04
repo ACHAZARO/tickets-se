@@ -333,7 +333,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     )
     const btnUnificar = (destino: ProdSug, origen: ProdSug, principal: boolean) => (
       <button key={destino.id} type="button" disabled={ocupado} onClick={() => unir(s, origen, destino)}
-        className={`${principal ? 'btn-primario' : 'btn-secundario'} btn-sm`}>
+        className={`${principal ? 'btn-primario' : 'btn-secundario'} btn-sm whitespace-normal text-left`}>
         Unificar en &quot;{destino.nombre}&quot;
       </button>
     )
@@ -419,7 +419,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
         <h2 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
           Catálogo por revisar <span className="chip-revisar">{sug.length}</span>
         </h2>
-        <p className="nota max-w-2xl">¿Son el mismo producto? Nada cambia hasta que respondas.</p>
+        <p className="nota max-w-2xl"><b className="font-medium text-zinc-400">Unificar</b>: mismo producto, queda uno. <b className="font-medium text-zinc-400">Distinto tamaño</b>: quedan los dos y el inventario los suma. Nada cambia hasta que respondas.</p>
       </div>
 
       {mismos.length > 0 && (
