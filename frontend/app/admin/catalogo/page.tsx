@@ -6,6 +6,7 @@ import { useSucursal } from '@/lib/sucursal-context'
 import { buildEquivalenceUpdate } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm } from '../ui'
 import { unificarProductos } from '../unificar'
+import { GaleriaTickets } from '../galeria-tickets'
 
 interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
 interface Producto {
@@ -55,6 +56,7 @@ export default function CatalogoPage() {
   const [borrando, setBorrando] = useState(false)
   // unificar un producto con otro (mismo insumo, dos nombres)
   const [unifProd, setUnifProd] = useState<null | { id: string; destinoId: string }>(null)
+  const [verTickets, setVerTickets] = useState<null | { id: string; nombre: string }>(null)
   const [unificando, setUnificando] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -221,14 +223,15 @@ export default function CatalogoPage() {
           const prods = prodsPorCat(c.id)
           return (
             <div key={c.id} className={`tarjeta overflow-hidden ${!c.activa ? 'opacity-50' : ''}`}>
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-zinc-800">
+                <div className="flex items-center gap-2 basis-full sm:basis-auto sm:flex-1 min-w-0">
                   <input value={c.nombre} onChange={e => renombrarCat(c, e.target.value)} onBlur={() => guardarNombreCat(c)}
-                    className="text-sm font-medium text-zinc-100 bg-transparent outline-none focus:bg-zinc-800 rounded-lg px-2 py-1 min-w-0" />
+                    aria-label="Nombre de la categoría"
+                    className="text-[15px] font-semibold text-zinc-100 bg-transparent outline-none focus:bg-zinc-800 rounded-lg -ml-2 px-2 py-1 min-w-0 flex-1" />
                   {c.sucursal_id === null
                     ? <span className="chip-neutro">global</span>
                     : <span className="chip-info">sucursal</span>}
-                  <span className="text-xs text-zinc-500">· {prods.length} prod.</span>
+                  <span className="text-xs text-zinc-500 whitespace-nowrap">{prods.length} prod.</span>
                 </div>
                 <button onClick={() => setAddProd({ categoriaId: c.id, nombre: '', sinonimos: '', unidad: '' })}
                   className="btn-secundario btn-sm">+ Producto</button>
@@ -242,7 +245,7 @@ export default function CatalogoPage() {
                   {c.activa ? 'Activa' : 'Inactiva'}
                 </button>
                 <button onClick={() => pedirBorrarCat(c)} title="Borrar categoría"
-                  className="btn-peligro btn-sm">Borrar</button>
+                  className="btn-peligro btn-sm ml-auto">Borrar</button>
               </div>
 
               {addProd?.categoriaId === c.id && (
@@ -268,7 +271,7 @@ export default function CatalogoPage() {
                 <div className="divide-y divide-zinc-800/50">
                   {prods.map(p => (
                     <div key={p.id} className={`px-4 py-2.5 ${!p.activo ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
@@ -278,13 +281,16 @@ export default function CatalogoPage() {
                           {p.sinonimos.length > 0 && <p className="text-xs text-zinc-500 truncate">también: {p.sinonimos.join(', ')}</p>}
                         {p.contiene_cantidad && p.contiene_unidad && <p className="text-xs text-zinc-500">1 {p.unidad_default ?? 'u'} = {p.contiene_cantidad} {p.contiene_unidad}{p.contiene_sub_cantidad && p.contiene_sub_unidad ? ` = ${(Number(p.contiene_cantidad) * Number(p.contiene_sub_cantidad)).toLocaleString('es-MX')} ${p.contiene_sub_unidad}` : ''}</p>}
                         </div>
+                        <div className="flex flex-wrap items-center gap-1 -ml-2 sm:ml-0">
+                        <button onClick={() => setVerTickets({ id: p.id, nombre: p.nombre })} className="btn-texto btn-sm">Ver tickets</button>
                         <button onClick={() => setEditProd(editProd?.id === p.id ? null : { id: p.id, nombre: p.nombre, nombreOriginal: p.nombre, categoria_id: p.categoria_id ?? c.id, unidad: p.unidad_default ?? '', sinonimos: p.sinonimos.join(', '), ...splitEquivalenceFields(p) })}
-                          className="btn-texto btn-sm">{editProd?.id === p.id ? 'Cerrar' : 'Editar'}</button>
+                          className="btn-secundario btn-sm">{editProd?.id === p.id ? 'Cerrar' : 'Editar'}</button>
                         <button onClick={() => setUnifProd(unifProd?.id === p.id ? null : { id: p.id, destinoId: '' })}
                           title="Es el mismo insumo que otro producto: unificarlos"
                           className="btn-quieto btn-sm">{unifProd?.id === p.id ? 'Cancelar' : 'Unificar'}</button>
                         <button onClick={() => toggleProd(p)} className={`${p.activo ? 'chip-bien' : 'chip-mal'} py-1 cursor-pointer ring-1 ring-inset ring-zinc-700 hover:ring-zinc-500`}>{p.activo ? 'Activo' : 'Inactivo'}</button>
                         <button onClick={() => eliminarProd(p)} className="btn-peligro btn-sm">Eliminar</button>
+                        </div>
                       </div>
 
                       {unifProd?.id === p.id && (() => {
@@ -399,6 +405,7 @@ export default function CatalogoPage() {
           </div>
         </div>
       )}
+      {verTickets && <GaleriaTickets producto={verTickets} onCerrar={() => setVerTickets(null)} />}
     </div>
   )
 }

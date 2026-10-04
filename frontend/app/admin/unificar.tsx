@@ -111,7 +111,7 @@ export function CerebroBadge({ pathname }: { pathname: string }) {
   )
 }
 
-interface EjemploTicket {
+export interface EjemploTicket {
   descripcion: string | null
   cantidad: number | null
   unidad: string | null
@@ -147,9 +147,9 @@ function aEjemplos(data: unknown): EjemploTicket[] {
 // Los renglones donde sale un producto, con la foto de su ticket (mas recientes primero, sin rechazados).
 // Si el producto no tiene renglones propios, busca los renglones cuyo texto es uno de sus sinonimos: asi se ve
 // que ese texto SI aparece en un ticket aunque quedo ligado a otro producto (caso "Sal 1 kg" vs "Sal fina").
-async function ejemplosDe(productoId: string): Promise<EjemploTicket[]> {
+export async function ejemplosDe(productoId: string, max = 40): Promise<EjemploTicket[]> {
   const { data, error } = await supabase.from('ticket_items').select(SELECT_EJEMPLO)
-    .eq('producto_catalogo_id', productoId).neq('registros_tickets.estado', 'rechazado').limit(40)
+    .eq('producto_catalogo_id', productoId).neq('registros_tickets.estado', 'rechazado').limit(max)
   if (error) return []
   const propios = aEjemplos(data)
   if (propios.length) return propios
