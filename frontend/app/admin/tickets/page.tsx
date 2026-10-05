@@ -64,6 +64,8 @@ interface Ticket {
   gemini_raw: Record<string, unknown> | null
   es_duplicado: boolean | null
   duplicado_de: string | null
+  // Aceptado solo en modo entrenamiento (migracion 098): nadie lo reviso.
+  entrenamiento?: boolean
   sucursales: { nombre: string; es_prueba?: boolean } | null
   empleados: { nombre: string } | null
   sospechoso?: boolean
@@ -235,7 +237,7 @@ function emptyItem(ticketId: string): Omit<Item, 'categorias_gasto'> {
   }
 }
 
-const SELECT_TICKET = 'id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, folio_ticket, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)'
+const SELECT_TICKET = 'id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, entrenamiento, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, folio_ticket, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)'
 
 export default function TicketsPage() {
   const { sucursalId, sucursales } = useSucursal()
@@ -1417,6 +1419,7 @@ export default function TicketsPage() {
                     <p className="text-sm text-zinc-100 truncate">{t.comercio ?? 'Sin comercio'}</p>
                     <span className={ESTADO_COLOR[t.estado] ?? 'chip-neutro'}>{ticketStatusLabel(t.estado)}</span>
                     {badges.map(b => <span key={b.label} className={TONE_PILL[alertTone(b.tipo)]}>{b.label}</span>)}
+                    {t.entrenamiento && <span className="chip-neutro" title="Se aceptó en modo entrenamiento: nadie lo revisó">Entrenamiento</span>}
                   </div>
                   <p className="text-xs text-zinc-500 truncate">{t.sucursales?.nombre ?? 'Sin sucursal'} · {t.empleados?.nombre ?? ''} · {t.fecha_ticket ?? 'Sin fecha'}{textoPagos(t.ticket_pagos) ? ` · ${textoPagos(t.ticket_pagos)}` : ''}</p>
                   {t.nota && <p className="text-xs text-blue-400 truncate">Nota: {t.nota}</p>}

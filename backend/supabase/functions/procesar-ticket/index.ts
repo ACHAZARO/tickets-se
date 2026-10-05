@@ -93,30 +93,88 @@ async function aprenderComercio(
   } catch (e) { console.error('aprenderComercio:', e) }
 }
 
-// Agrega al catalogo los renglones que ya tienen categoria pero no estaban en
-// el catalogo (producto_catalogo_id null). Asi la IA va aprendiendo sola.
-async function aprenderProductos(
+// MODO ENTRENAMIENTO (migracion 098, PLAN_MODO_ENTRENAMIENTO.md): se prende POR CUENTA. Mientras esta prendido el
+// admin sube tickets ya verificados y la IA los acepta y aprende de ellos. Si no se puede leer, se trabaja normal.
+async function cuentaEnEntrenamiento(supabase: SB, sucursalId: string): Promise<boolean> {
+  try {
+    const { data: suc } = await supabase.from('sucursales').select('cuenta_id').eq('id', sucursalId).maybeSingle()
+    const cuentaId = (suc?.cuenta_id as string | null) ?? null
+    if (!cuentaId) return false
+    const { data: op } = await supabase.from('cuenta_opciones').select('entrenamiento').eq('cuenta_id', cuentaId).maybeSingle()
+    return op?.entrenamiento === true
+  } catch (e) { console.error('cuentaEnEntrenamiento:', e); return false }
+}
+
+// Solo en entrenamiento: crea en el catalogo de la sucursal los renglones con categoria que la IA no conocia (nombre
+// tal como viene en el ticket) y los liga. Fuera de entrenamiento NO se aprende solo: una lectura mala contamina el
+// catalogo. Los renglones sin categoria se quedan sin clasificar (salen en Cerebro para que el admin los acomode).
+async function crearArticulosEntrenamiento(
   supabase: SB, sucursalId: string,
-  items: { descripcion: string; categoria_id: string | null; producto_catalogo_id: string | null; unidad: string | null }[]
+  items: { descripcion: string; categoria_id: string | null; producto_catalogo_id: string | null; unidad: string | null
+    necesita_revision: boolean; motivo_revision: string | null }[],
 ): Promise<void> {
-  const vistos = new Set<string>()
+  const creados = new Map<string, string>()
   for (const it of items) {
-    if (!it.categoria_id || it.producto_catalogo_id) continue
-    const nombre = it.descripcion?.trim()
-    if (!nombre) continue
-    const key = nombre.toLowerCase()
-    if (vistos.has(key)) continue
-    vistos.add(key)
-    try {
-      const { data: ex } = await supabase.from('catalogo_productos').select('id')
-        .ilike('nombre', nombre).or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`).limit(1).maybeSingle()
-      if (ex) continue
-      await supabase.from('catalogo_productos').insert({
-        nombre, sinonimos: [], categoria_id: it.categoria_id,
-        unidad_default: it.unidad ?? null, sucursal_id: sucursalId,
-      })
-    } catch (e) { console.error('aprenderProductos:', e) }
+    if (!it.categoria_id) continue
+    if (!it.producto_catalogo_id) {
+      const nombre = it.descripcion?.trim()
+      if (!nombre) continue
+      const key = nombre.toLowerCase()
+      let id = creados.get(key) ?? null
+      if (!id) {
+        try { id = await articuloEntrenamiento(supabase, sucursalId, nombre, it.categoria_id, it.unidad) }
+        catch (e) { console.error('crearArticulosEntrenamiento:', e) }
+        // Si no se pudo crear, el renglon se queda como estaba (con su motivo) y el ticket va a revision.
+        if (!id) continue
+        creados.set(key, id)
+      }
+      it.producto_catalogo_id = id
+    }
+    // Ya tiene categoria y articulo: lo que faltaba (articulo nuevo / unidad) no se pregunta en entrenamiento.
+    it.necesita_revision = false
+    it.motivo_revision = null
   }
+}
+
+// Busca el articulo por nombre (sin distinguir mayusculas) y si no existe lo crea. Al subir muchas fotos juntas se
+// procesan a la vez y dos tickets pueden crear el mismo articulo: tras crearlo se vuelve a buscar y, si hay otro igual
+// mas viejo, se usa ese y se borra el recien creado (aun no tiene renglones ligados).
+async function articuloEntrenamiento(
+  supabase: SB, sucursalId: string, nombre: string, categoriaId: string, unidad: string | null,
+): Promise<string | null> {
+  // ilike: se escapan los comodines de SQL; el * de PostgREST se cambia por _ (un caracter cualquiera).
+  const patron = nombre.replace(/[\\%_]/g, m => '\\' + m).replace(/\*/g, '_')
+  const buscar = async () => {
+    const { data, error } = await supabase.from('catalogo_productos').select('id, nombre')
+      .ilike('nombre', patron).or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`).order('created_at').limit(5)
+    if (error) throw new Error('buscar articulo: ' + error.message)
+    return ((data ?? []) as { id: string; nombre: string }[]).filter(p => p.nombre.toLowerCase() === nombre.toLowerCase())
+  }
+  const ya = await buscar()
+  if (ya.length) return ya[0].id
+  const { data: nuevo, error } = await supabase.from('catalogo_productos').insert({
+    nombre, sinonimos: [], categoria_id: categoriaId, unidad_default: unidad ?? null, sucursal_id: sucursalId,
+  }).select('id').single()
+  if (error) throw new Error('crear articulo: ' + error.message)
+  const primero = (await buscar())[0]?.id ?? (nuevo.id as string)
+  if (primero !== nuevo.id) await supabase.from('catalogo_productos').delete().eq('id', nuevo.id)
+  return primero
+}
+
+// Solo en entrenamiento: el mismo gasto en dos papeles (factura + ticket) no se cuenta dos veces, pero tampoco se
+// marca como fraude: el admin esta subiendo tickets ya verificados. Queda rechazado como copia (evidencia).
+async function rechazarCopiaEntrenamiento(supabase: SB, registroId: string, dupId: string): Promise<boolean> {
+  const { data: nuevo } = await supabase.from('registros_tickets').select('gemini_raw').eq('id', registroId).maybeSingle()
+  const { error } = await supabase.from('registros_tickets').update({
+    estado: 'rechazado', es_duplicado: true, duplicado_de: dupId, entrenamiento: true,
+    gemini_raw: { ...((nuevo?.gemini_raw as Record<string, unknown> | null) ?? {}), _rechazo_auto: 'copia_en_entrenamiento' },
+  }).eq('id', registroId).eq('estado', 'pendiente')
+  if (error) { console.error('rechazar copia en entrenamiento fallo:', error.message); return false }
+  await supabase.from('alertas_tickets').insert({
+    registro_ticket_id: registroId, tipo: 'posible_duplicado', duplicado_de_id: dupId, resuelta: true,
+    correccion: { nota: 'modo entrenamiento: el mismo gasto ya estaba subido; no se cuenta dos veces (no es fraude)' },
+  })
+  return true
 }
 
 // Procesamiento pesado en segundo plano: Gemini + items + alertas + auto-confirma.
@@ -133,6 +191,7 @@ async function procesarEnSegundoPlano(opts: {
     }).eq('id', registroId)
 
     const catalog: Catalog = await loadCatalog(sucursalId)
+    const entrenamiento = await cuentaEnEntrenamiento(supabase, sucursalId)
     if (catalog.negocio.fallo) {
       // Sin las reglas del negocio no se lee (saldria mal clasificado y podria auto-confirmarse): queda para releer.
       console.error('procesar-ticket:', catalog.negocio.fallo)
@@ -220,6 +279,14 @@ async function procesarEnSegundoPlano(opts: {
       ;(datos as Record<string, unknown>)._impuestos_sumados = Math.round(impuestos.reduce((s, x) => s + x, 0) * 100) / 100
     }
     const montoNoCuadra = sinTotal(itemsToInsert, montoTotal) || noCuadra(itemsToInsert, montoTotal, datos.tipo_documento)
+    if (entrenamiento) {
+      await crearArticulosEntrenamiento(supabase, sucursalId, itemsToInsert)
+      // Lo que no se pudo crear sigue pidiendo revision.
+      anySinUnidad = itemsToInsert.some(it => it.motivo_revision === 'sin_unidad')
+      anyProductoNuevo = itemsToInsert.some(it => it.motivo_revision === 'producto_nuevo')
+      for (const it of itemsToInsert) if (it.producto_catalogo_id) matchedIds.add(it.producto_catalogo_id)
+      ;(datos as Record<string, unknown>)._entrenamiento = true
+    }
     const { error: headerErr } = await supabase.from('registros_tickets').update({
       fecha_ticket: fechaTicket,
       folio_ticket: datos.folio_ticket ?? null,
@@ -261,8 +328,9 @@ async function procesarEnSegundoPlano(opts: {
 
     // Precios: detecta saltos fuertes vs la mediana de compras confirmadas. El historial se
     // guarda solo al confirmar (aqui abajo si sale limpio, o en confirmar-admin tras revision).
-    const precioAnomalo = await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
-    const envioAlto = await envioMuyAlto(supabase, itemsToInsert, catalog.products, sucursalId, datos.comercio ?? null, registroId, propias)
+    // En entrenamiento no se pregunta por precios ni envios: la IA apenas esta conociendo el negocio.
+    const precioAnomalo = entrenamiento ? false : await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
+    const envioAlto = entrenamiento ? null : await envioMuyAlto(supabase, itemsToInsert, catalog.products, sucursalId, datos.comercio ?? null, registroId, propias)
 
     let hayAlerta = false
     // Senales de alteracion o de comprobante reutilizado (las ve la IA): van a Fraude.
@@ -279,7 +347,8 @@ async function procesarEnSegundoPlano(opts: {
       notifyAlertEmail(registroId, 'ilegible'); hayAlerta = true
     }
     if (!fechaValida) { await createAlert(supabase, registroId, 'sin_fecha'); hayAlerta = true }
-    if (anySinCategoria || anyProductoNuevo) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
+    // En entrenamiento un renglon sin categoria NO frena el ticket: se queda "sin clasificar" para acomodarlo en Cerebro.
+    if ((anySinCategoria && !entrenamiento) || anyProductoNuevo) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
     if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (montoNoCuadra) { await createAlert(supabase, registroId, 'monto_anomalo'); hayAlerta = true }
@@ -291,7 +360,7 @@ async function procesarEnSegundoPlano(opts: {
     }
     if (envioAlto) { await createAlert(supabase, registroId, 'envio_alto', undefined, { motivo: envioAlto }); hayAlerta = true }
     // Articulos no autorizados (a Fraude, siempre) u ocasionales (a Por revisar): nunca se aprueban solos.
-    if ((await revisarUsoArticulos(supabase, registroId)).length) hayAlerta = true
+    if (!entrenamiento && (await revisarUsoArticulos(supabase, registroId)).length) hayAlerta = true
 
     // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
     // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.
@@ -300,7 +369,10 @@ async function procesarEnSegundoPlano(opts: {
       supabase, sucursalId, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registroId,
       datos.tipo_documento ?? null, propias,
     )
-    if (dupId) {
+    if (dupId && entrenamiento) {
+      if (await rechazarCopiaEntrenamiento(supabase, registroId, dupId)) return
+      await createAlert(supabase, registroId, 'posible_duplicado', dupId); hayAlerta = true
+    } else if (dupId) {
       // Papel repetido (factura + ticket de la misma compra, reimpresion, mismo folio). Decision Alejandro
       // 18-sep: no se cuenta ni se deja para revisar; se RECHAZA solo y va a la revision de fraude junto
       // con el original (si el gerente reporta el gasto dos veces, se le cobra).
@@ -312,7 +384,12 @@ async function procesarEnSegundoPlano(opts: {
       await createAlert(supabase, registroId, 'posible_duplicado', dupId)
       notifyAlertEmail(registroId, 'posible_duplicado'); hayAlerta = true
     }
-    if (sospecha) {
+    // Texto escrito en el papel para darle ordenes a la IA: va a Fraude AUN en entrenamiento.
+    if (sospecha && entrenamiento && !paraIA) {
+      // Entrenamiento: el admin verifico el papel. No va a Fraude; lo que vio la IA queda guardado como evidencia.
+      ;(datos as Record<string, unknown>)._sospecha_en_entrenamiento = sospecha
+      await supabase.from('registros_tickets').update({ gemini_raw: datos as unknown as Record<string, unknown> }).eq('id', registroId)
+    } else if (sospecha) {
       const { error: sospErr } = await supabase.from('registros_tickets').update({
         sospechoso: true, sospecha_origen: 'auto', sospecha_estado: 'abierta', sospecha_motivo: `IA: ${sospecha}`,
       }).eq('id', registroId)
@@ -323,6 +400,8 @@ async function procesarEnSegundoPlano(opts: {
     // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.
     if (!hayAlerta) {
       if (await autoConfirmar(supabase, registroId, sucursalId, empleadoId, storagePath, itemsToInsert)) {
+        // Rastro: se acepto en entrenamiento, nadie lo reviso (regla de evidencia).
+        if (entrenamiento) await supabase.from('registros_tickets').update({ entrenamiento: true }).eq('id', registroId)
         await guardarPrecios(supabase, itemsToInsert, catalog.products, sucursalId, registroId, fechaTicket)
       }
     }
