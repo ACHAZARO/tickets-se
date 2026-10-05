@@ -24,7 +24,7 @@ async function verifySessionToken(token: string, jwtSecret: string): Promise<{ s
 
 type Prod = {
   id: string; nombre: string; unidad_default: string | null
-  contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null
+  contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; uso: string | null
   insumos: { id: string; nombre: string; unidad_base: string } | null
 }
 
@@ -56,13 +56,14 @@ serve(async (req) => {
     const acum = new Map<string, Acum>()
     for (let desde = 0; desde < 50000; desde += 1000) {
       const { data, error } = await supabase.from('ticket_items')
-        .select('id, cantidad, unidad, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id)')
+        .select('id, cantidad, unidad, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id)')
         .eq('registros_tickets.estado', 'confirmado').eq('registros_tickets.sucursal_id', suc.id)
-        .not('producto_catalogo_id', 'is', null).order('id').range(desde, desde + 999)
+        .not('producto_catalogo_id', 'is', null).in('autorizacion', ['normal', 'aprobado']).order('id').range(desde, desde + 999)
       if (error) return json({ error: 'No se pudo leer la lista' }, 500)
       for (const r of (data as unknown as { cantidad: number | null; unidad: string | null; catalogo_productos: Prod | null }[]) ?? []) {
         const p = r.catalogo_productos
-        if (!p) continue
+        // Ocasionales y no autorizados no entran a Stock (migracion 094).
+        if (!p || (p.uso ?? 'normal') !== 'normal') continue
         const b = baseDeRenglon(p, r)
         if (!b || 'servicio' in b) continue
         const ins = p.insumos

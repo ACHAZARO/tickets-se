@@ -19,12 +19,12 @@ import { esEnvio, mediana } from '../_shared/precios.ts'
 const VERSION_PROMPT = 'v2-2026-10-03'
 // Alertas que el revisor NUNCA resuelve solo, diga lo que diga la IA (candado en codigo).
 // ('ilegible' no va aqui: sin renglones el revisor ni corre, y la que queda junto a 'ia_sin_leer' fue falta de cuota, no foto mala).
-const SIEMPRE_HUMANO = new Set(['duplicado', 'envio_alto'])
+const SIEMPRE_HUMANO = new Set(['duplicado', 'envio_alto', 'articulo_no_autorizado'])
 const MODELO_DEFAULT = 'gemini-3.8-flash'
 // Alertas que pone el sistema automaticamente (las manuales, como revisar_gerente, no se juzgan).
 const ALERTAS_AUTO = new Set([
   'ilegible', 'sin_fecha', 'producto_no_reconocido', 'sin_unidad', 'monto_anomalo', 'precio_anomalo',
-  'posible_duplicado', 'duplicado', 'envio_alto', 'ia_sin_leer',
+  'posible_duplicado', 'duplicado', 'envio_alto', 'ia_sin_leer', 'articulo_no_autorizado',
 ])
 
 // deno-lint-ignore no-explicit-any

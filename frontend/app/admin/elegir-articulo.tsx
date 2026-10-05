@@ -6,7 +6,8 @@ import { useId, useMemo, useState, type ReactNode } from 'react'
 // el campo se ve como pastilla verde ("ya existe"); si el nombre es nuevo, abajo avisa que se creara.
 // La lista va en el flujo (empuja el contenido) para que no la recorten tarjetas con overflow-hidden.
 
-export interface OpcionArticulo { id: string; nombre: string; detalle?: string }
+// oculta: articulo ocasional o no autorizado (094). No se sugiere al escribir, pero si escribes su nombre exacto se reconoce.
+export interface OpcionArticulo { id: string; nombre: string; detalle?: string; oculta?: boolean }
 
 const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 
@@ -39,7 +40,7 @@ export function ElegirArticulo({
     const empiezan: OpcionArticulo[] = [], contienen: OpcionArticulo[] = []
     for (const o of opciones) {
       const n = normal(o.nombre)
-      if (n === t) continue
+      if (n === t || o.oculta) continue
       if (n.startsWith(t)) empiezan.push(o)
       else if (n.includes(t)) contienen.push(o)
     }

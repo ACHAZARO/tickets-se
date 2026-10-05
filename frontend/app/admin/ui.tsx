@@ -7,11 +7,12 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, ty
 
 type ToastType = 'ok' | 'error' | 'info'
 interface Toast { id: number; msg: string; type: ToastType }
-interface ConfirmState { msg: string; danger: boolean; resolve: (v: boolean) => void }
+interface ConfirmOpts { danger?: boolean; si?: string; no?: string }
+interface ConfirmState { msg: string; danger: boolean; si?: string; no?: string; resolve: (v: boolean) => void }
 
 interface Ctx {
   toast: (msg: string, type?: ToastType) => void
-  confirm: (msg: string, opts?: { danger?: boolean }) => Promise<boolean>
+  confirm: (msg: string, opts?: ConfirmOpts) => Promise<boolean>
 }
 
 const UICtx = createContext<Ctx>({ toast: () => {}, confirm: async () => false })
@@ -29,8 +30,9 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500)
   }, [])
 
-  const confirm = useCallback((msg: string, opts?: { danger?: boolean }) =>
-    new Promise<boolean>(resolve => setConfirmState({ msg, danger: !!opts?.danger, resolve })), [])
+  // si/no: textos de los botones cuando la pregunta tiene dos respuestas reales (no solo continuar o volver).
+  const confirm = useCallback((msg: string, opts?: ConfirmOpts) =>
+    new Promise<boolean>(resolve => setConfirmState({ msg, danger: !!opts?.danger, si: opts?.si, no: opts?.no, resolve })), [])
 
   function closeConfirm(v: boolean) {
     confirmState?.resolve(v)
@@ -61,10 +63,10 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
           <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-5 shadow-xl" onClick={e => e.stopPropagation()}>
             <p className="text-[15px] leading-relaxed text-zinc-100 whitespace-pre-line">{confirmState.msg}</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => closeConfirm(false)} autoFocus={confirmState.danger} className="btn-quieto">Atrás</button>
+              <button onClick={() => closeConfirm(false)} autoFocus={confirmState.danger} className="btn-quieto">{confirmState.no ?? 'Atrás'}</button>
               <button onClick={() => closeConfirm(true)} autoFocus={!confirmState.danger}
                 className={confirmState.danger ? 'btn-peligro-lleno' : 'btn-primario'}>
-                {confirmState.danger ? 'Sí, continuar' : 'Aceptar'}
+                {confirmState.si ?? (confirmState.danger ? 'Sí, continuar' : 'Aceptar')}
               </button>
             </div>
           </div>

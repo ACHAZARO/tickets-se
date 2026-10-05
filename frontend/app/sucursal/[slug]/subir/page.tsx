@@ -120,6 +120,22 @@ export default function SubirPage({ params }: PageProps) {
       .then(r => r.ok ? r.json() : null).then(d => setPuedeContar(!!d?.habilitado)).catch(() => {})
   }, [sessionToken])
 
+  // Articulos que el admin NO aprobo (no autorizados, migracion 094): si el negocio lo activo, el gerente los ve al
+  // entrar y los da por vistos. La lista sale del servidor (solo los tickets que subio este gerente).
+  const [avisos, setAvisos] = useState<{ id: string; articulo: string; monto: number | null; comercio: string | null; fecha: string | null }[]>([])
+  useEffect(() => {
+    if (!sessionToken) return
+    fetch(`${EDGE_FUNCTIONS_URL}/avisos-gerente`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      .then(r => r.ok ? r.json() : null).then(d => setAvisos(Array.isArray(d?.avisos) ? d.avisos : [])).catch(() => {})
+  }, [sessionToken])
+  async function avisosVistos() {
+    const ids = avisos.map(a => a.id)
+    setAvisos([])
+    await fetch(`${EDGE_FUNCTIONS_URL}/avisos-gerente`, {
+      method: 'POST', headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+    }).catch(() => {})
+  }
+
   // Formas de pago del negocio: las da procesar-ticket (GET) con el mismo token de la sesion.
   const cargarFormas = useCallback(async () => {
     if (!sessionToken) return
@@ -331,6 +347,27 @@ export default function SubirPage({ params }: PageProps) {
 
   return (
     <main className="flex min-h-screen min-h-[100dvh] flex-col px-4 pb-8 pt-10 safe-top safe-bottom">
+      {avisos.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/80 p-4 sm:items-center">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="aviso-titulo" className="w-full max-w-md space-y-4 rounded-2xl border border-red-800 bg-zinc-900 p-5 shadow-xl">
+            <h2 id="aviso-titulo" className="text-lg font-semibold text-red-300">{avisos.length === 1 ? 'Un artículo no fue aprobado' : `${avisos.length} artículos no fueron aprobados`}</h2>
+            <ul className="space-y-2">
+              {avisos.map(a => (
+                <li key={a.id} className="rounded-lg bg-red-900 px-3 py-2 text-sm text-zinc-100">
+                  <b className="font-semibold">{a.articulo}</b>{a.monto != null ? ` · $${Number(a.monto).toLocaleString('es-MX', { maximumFractionDigits: 2 })}` : ''}
+                  <span className="block text-xs text-red-300">Ticket de {a.comercio ?? 'comercio sin nombre'}{a.fecha ? ` del ${a.fecha}` : ''}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm leading-relaxed text-zinc-300">
+              {avisos.length === 1 ? 'Este artículo no está aprobado y no pertenece' : 'Estos artículos no están aprobados y no pertenecen'} a la operación.
+              No se cuenta en el total de tus tickets y debes reponer ese dinero, o se tomará como hurto.
+              Para autorizarlo, habla con el administrador.
+            </p>
+            <button onClick={avisosVistos} className="btn-primario w-full py-3">Entendido</button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
         <button

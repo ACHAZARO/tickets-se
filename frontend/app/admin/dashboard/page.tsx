@@ -91,6 +91,7 @@ export default function DashboardPage() {
       let tq = supabase.from('ticket_items')
         .select('id, descripcion, cantidad, unidad, monto, categoria_id, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(id, fecha_ticket, comercio, estado, sucursal_id)')
         .eq('registros_tickets.estado', 'confirmado')
+        .in('autorizacion', ['normal', 'aprobado'])   // renglones no autorizados sin aprobar (094) no son gasto
         .gte('registros_tickets.fecha_ticket', inicio).lte('registros_tickets.fecha_ticket', fin)
       if (sucursalId) tq = tq.eq('registros_tickets.sucursal_id', sucursalId)
       return tq
@@ -173,7 +174,7 @@ export default function DashboardPage() {
       const tq = traerTodo(() => {
         let q = supabase.from('ticket_items')
           .select('id, monto, categoria_id, registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
-          .eq('registros_tickets.estado', 'confirmado').gte('registros_tickets.fecha_ticket', desde)
+          .eq('registros_tickets.estado', 'confirmado').in('autorizacion', ['normal', 'aprobado']).gte('registros_tickets.fecha_ticket', desde)
         if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
         return q
       })

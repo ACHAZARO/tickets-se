@@ -150,10 +150,11 @@ export function EditorRenglon({ itemId, onCerrar, onGuardado }: { itemId: string
         .eq('id', itemId).maybeSingle()
       const x = data as unknown as Renglon | null
       if (!x) { toast('No se encontró el renglón', 'error'); onCerrar(); return }
-      const { data: prods } = await supabase.from('catalogo_productos').select('id, nombre, categoria_id, categorias_gasto:categoria_id(nombre)')
+      const { data: prods } = await supabase.from('catalogo_productos').select('id, nombre, categoria_id, uso, categorias_gasto:categoria_id(nombre)')
         .eq('activo', true).or(`sucursal_id.is.null,sucursal_id.eq.${x.registros_tickets.sucursal_id}`).order('nombre')
-      const ops = ((prods as unknown as { id: string; nombre: string; categoria_id: string | null; categorias_gasto: { nombre: string } | null }[] | null) ?? [])
-        .map(p => ({ id: p.id, nombre: p.nombre, detalle: p.categorias_gasto?.nombre, categoria_id: p.categoria_id }))
+      const ops = ((prods as unknown as { id: string; nombre: string; categoria_id: string | null; uso: string; categorias_gasto: { nombre: string } | null }[] | null) ?? [])
+        // Ocasionales y no autorizados no se sugieren (094); si se liga uno no autorizado, la base lo manda a Fraude.
+        .map(p => ({ id: p.id, nombre: p.nombre, detalle: p.categorias_gasto?.nombre, categoria_id: p.categoria_id, oculta: p.uso !== 'normal' }))
       setOpciones(ops)
       setR(x)
       const actual = ops.find(o => o.id === x.producto_catalogo_id) ?? null

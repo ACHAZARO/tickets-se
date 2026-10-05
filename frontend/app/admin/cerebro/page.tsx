@@ -8,6 +8,7 @@ import { useToast, Consejo } from '../ui'
 import { ElegirArticulo, type OpcionArticulo } from '../elegir-articulo'
 import { GaleriaTickets } from '../galeria-tickets'
 import type { EjemploTicket } from '../unificar'
+import { ChipUso, usoDe } from '../uso-articulo'
 
 // Cerebro: lo que la IA ya aprendio, de lo general a lo particular -> Categorias > Comercios > Articulos, y a la
 // derecha lo que falta: renglones SIN CLASIFICAR (la IA los leyo pero no sabe que articulo son). Para clasificar uno se
@@ -15,7 +16,7 @@ import type { EjemploTicket } from '../unificar'
 // Los tickets RECHAZADOS no cuentan: no aparecen aqui (antes salia basura como "Ticket" o "Transaccion 2026...").
 
 interface Categoria { id: string; nombre: string }
-interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null }
+interface Producto { id: string; nombre: string; categoria_id: string | null; unidad_default: string | null; uso: string }
 interface Comercio { id: string; nombre: string; veces: number; categoria_id: string | null }
 interface SinClasificar { texto: string; veces: number; comercios: Set<string> }
 interface FormClasificar {
@@ -55,7 +56,7 @@ export default function CerebroPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
-    let prodQ = supabase.from('catalogo_productos').select('id, nombre, categoria_id, unidad_default').eq('activo', true).order('nombre')
+    let prodQ = supabase.from('catalogo_productos').select('id, nombre, categoria_id, unidad_default, uso').eq('activo', true).order('nombre')
     let comQ = supabase.from('comercios').select('id, nombre, veces, categoria_id').order('veces', { ascending: false })
     catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ
     prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ
@@ -204,7 +205,7 @@ export default function CerebroPage() {
     return m
   }, [comCat, comercios])
   const opcionesArticulo: OpcionArticulo[] = useMemo(
-    () => productos.map(p => ({ id: p.id, nombre: p.nombre, detalle: catNombre(p.categoria_id) })),
+    () => productos.map(p => ({ id: p.id, nombre: p.nombre, detalle: catNombre(p.categoria_id), oculta: usoDe(p.uso) !== 'normal' })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [productos, categorias])
 
@@ -307,7 +308,7 @@ export default function CerebroPage() {
               {articulosFiltrados.map(p => (
                 <div key={p.id} className="flex items-center gap-2 px-4 py-2.5 hover:bg-zinc-800/40">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-zinc-100" title={p.nombre}>{p.nombre}</p>
+                    <p className="flex items-center gap-1.5 text-sm text-zinc-100" title={p.nombre}><span className="truncate">{p.nombre}</span><ChipUso uso={p.uso} /></p>
                     <p className="text-xs text-zinc-500">{catNombre(p.categoria_id)}{p.unidad_default ? ` · ${p.unidad_default}` : ''}</p>
                     {sel?.tipo !== 'comercio' && (comerciosDeProducto.get(p.id)?.length ?? 0) > 0 && (() => {
                       const l = comerciosDeProducto.get(p.id)!

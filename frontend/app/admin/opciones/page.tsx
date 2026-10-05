@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 import { useOpciones } from '@/lib/opciones'
 import { Interruptor, useToast } from '../ui'
 
@@ -8,6 +10,22 @@ import { Interruptor, useToast } from '../ui'
 export default function OpcionesPage() {
   const { cuentas, guardar } = useOpciones()
   const toast = useToast()
+  // Categorias de cada cuenta (las globales + las de sus sucursales) para elegir la de "gasto extra".
+  const [cats, setCats] = useState<{ id: string; nombre: string; sucursal_id: string | null }[]>([])
+  const [sucCuenta, setSucCuenta] = useState<Record<string, string>>({})
+  useEffect(() => {
+    Promise.all([
+      supabase.from('categorias_gasto').select('id, nombre, sucursal_id').eq('activa', true).order('orden'),
+      supabase.from('sucursales').select('id, cuenta_id'),
+    ]).then(([c, s]) => {
+      setCats((c.data as { id: string; nombre: string; sucursal_id: string | null }[] | null) ?? [])
+      setSucCuenta(Object.fromEntries(((s.data as { id: string; cuenta_id: string | null }[] | null) ?? []).filter(x => x.cuenta_id).map(x => [x.id, x.cuenta_id!])))
+    })
+  }, [])
+  const catsDe = (cuentaId: string) => {
+    const vistos = new Set<string>()
+    return cats.filter(k => (k.sucursal_id === null || sucCuenta[k.sucursal_id] === cuentaId) && !vistos.has(k.nombre.toLowerCase()) && vistos.add(k.nombre.toLowerCase()))
+  }
 
   async function cambiar(cuentaId: string, cambios: Parameters<typeof guardar>[1], ok: string) {
     const err = await guardar(cuentaId, cambios)
@@ -54,6 +72,28 @@ export default function OpcionesPage() {
                   : 'Necesita «Usar Stock» encendido.'} />
             </div>
             {!c.usa_stock && <p className="nota pl-0.5">Disponible cuando prendas «Usar Stock».</p>}
+          </div>
+
+          <div className="space-y-3 px-4 py-4">
+            <div className="space-y-1">
+              <h4 className="text-sm font-semibold text-zinc-300">Artículos no autorizados</h4>
+              <p className="nota">Los que marcas como «No autorizado» en Artículos: si aparecen en un ticket van a Fraude. Tú decides si se aprueban.</p>
+            </div>
+            <label className="block max-w-sm space-y-1">
+              <span className="etiqueta block">Lo que apruebes cuenta en</span>
+              <select value={c.categoria_extra_id ?? ''} className="campo w-full"
+                onChange={e => cambiar(c.cuenta_id, { categoria_extra_id: e.target.value || null }, 'Listo: lo aprobado irá a esa categoría')}>
+                <option value="">La categoría «Extras» (si existe)</option>
+                {catsDe(c.cuenta_id).map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
+              </select>
+            </label>
+            <div className="-ml-2">
+              <Interruptor encendido={c.avisar_gerente_no_autorizado} etiqueta="Avisarle al gerente lo que no se aprobó"
+                onCambiar={() => cambiar(c.cuenta_id, { avisar_gerente_no_autorizado: !c.avisar_gerente_no_autorizado },
+                  c.avisar_gerente_no_autorizado ? 'El gerente ya no verá esos avisos' : 'Listo: el gerente lo verá al entrar con su PIN')}
+                ayuda="Al entrar con su PIN, el gerente ve cada artículo que no se aprobó: no cuenta en sus tickets y debe reponer ese dinero." />
+            </div>
+            <p className="nota pl-0.5">Si lo prendes, en su siguiente sesión verá: «Este artículo no está aprobado y no pertenece a la operación. No se cuenta en el total de tus tickets y debes reponer ese dinero, o se tomará como hurto. Para autorizarlo, habla con el administrador».</p>
           </div>
         </section>
       ))}

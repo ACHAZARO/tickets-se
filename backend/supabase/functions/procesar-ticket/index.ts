@@ -16,6 +16,7 @@ import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
 import { formasDeCuenta, guardarPagos, leerPagos, revisarPagos } from '../_shared/pagos.ts'
+import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
@@ -289,6 +290,8 @@ async function procesarEnSegundoPlano(opts: {
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
     }
     if (envioAlto) { await createAlert(supabase, registroId, 'envio_alto', undefined, { motivo: envioAlto }); hayAlerta = true }
+    // Articulos no autorizados (a Fraude, siempre) u ocasionales (a Por revisar): nunca se aprueban solos.
+    if ((await revisarUsoArticulos(supabase, registroId)).length) hayAlerta = true
 
     // registroId se excluye: el encabezado ya esta guardado y si no, se encontraria a si mismo
     // y un duplicado real (ej. factura + ticket de la misma compra) pasaria sin alerta.

@@ -11,6 +11,7 @@ import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
 import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
 import { revisarPagos } from '../_shared/pagos.ts'
+import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
 // lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
@@ -271,6 +272,8 @@ serve(async (req: Request) => {
       if (sospErr) console.error('marcar sospecha fallo:', sospErr.message)
       alertas.push('texto_para_ia')
     }
+    // Articulos no autorizados (a Fraude) u ocasionales (a Por revisar), igual que la subida normal.
+    if (!rechazado) alertas.push(...await revisarUsoArticulos(supabase, registro_id))
     if (rechazado) alertas.push('rechazado')
 
     return json({ ok: true, items: items.length, modelo: lectura.modelo, fecha: fechaTicket, posible_duplicado: dupId, alertas })

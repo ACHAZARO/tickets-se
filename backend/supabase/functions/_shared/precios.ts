@@ -35,6 +35,8 @@ export async function guardarPrecios(
     if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
     const prod = productos.find(p => p.id === pid)
     if (prod?.unidad_default && it.unidad && it.unidad !== prod.unidad_default) continue
+    // Ocasionales y no autorizados no llevan historial de precios (migracion 094).
+    if (prod && (prod.uso ?? 'normal') !== 'normal') continue
     vistos.add(pid)
     const unit = monto / cant
     try {
@@ -63,6 +65,7 @@ export async function hayPrecioAnomalo(
     const prod = productos.find(p => p.id === pid)
     // Los envios se comparan por proveedor (envioMuyAlto), no contra todas las motos de la sucursal.
     if (prod && esEnvio(prod.nombre)) continue
+    if (prod && (prod.uso ?? 'normal') !== 'normal') continue
     const mismaUnidad = !prod?.unidad_default || !it.unidad || it.unidad === prod.unidad_default
     if (!mismaUnidad) continue
     try {

@@ -41,15 +41,18 @@ export default function EntradasPage() {
     const seq = ++fetchSeq.current
     const { data } = await traerTodo(() => {
       let q = supabase.from('ticket_items')
-        .select('id, descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(nombre, unidad_base)), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
+        .select('id, descripcion, cantidad, unidad, monto, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso, insumos:insumo_id(nombre, unidad_base)), registros_tickets!inner(fecha_ticket, estado, sucursal_id)')
         .eq('registros_tickets.estado', 'confirmado')
+        .in('autorizacion', ['normal', 'aprobado'])   // renglones no autorizados sin aprobar (094) no son gasto
         .gte('registros_tickets.fecha_ticket', desde).lte('registros_tickets.fecha_ticket', hasta)
       if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
       return q
     })
 
     const map = new Map<string, Fila>()
-    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; insumos: { nombre: string; unidad_base: string } | null } | null }>) ?? []) {
+    for (const row of (data as unknown as Array<{ descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; categorias_gasto: { nombre: string } | null; catalogo_productos: { nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; uso?: string; insumos: { nombre: string; unidad_base: string } | null } | null }>) ?? []) {
+      // Ocasionales y no autorizados no son inventario (094).
+      if ((row.catalogo_productos?.uso ?? 'normal') !== 'normal') continue
       const nombre = (row.catalogo_productos?.nombre ?? row.descripcion ?? 'Sin nombre').trim()
       // Si el producto pertenece a un insumo, la fila es el INSUMO: "Sal 1 kg" y "Sal 1.1 kg" suman juntos.
       const insumo = row.catalogo_productos?.insumos ?? null

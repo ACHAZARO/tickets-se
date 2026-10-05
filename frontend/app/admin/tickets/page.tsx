@@ -13,6 +13,7 @@ import { SelectorPeriodo, rangoMesActual } from '../periodo'
 import { ElegirArticulo } from '../elegir-articulo'
 import type { TicketReporte } from '@/lib/export-xlsx'
 import PagosTicket, { textoPagos, type PagoTicket } from './pagos-ticket'
+import { ChipUso, SelectorUso, useMarcarUso, usoDe, type Uso } from '../uso-articulo'
 
 interface Item {
   id: string
@@ -26,6 +27,7 @@ interface Item {
   motivo_revision: string | null
   orden: number | null
   categorias_gasto: { nombre: string } | null
+  autorizacion?: string // 'normal' | 'pendiente' | 'aprobado' | 'rechazado' (articulos no autorizados, 094)
 }
 interface CatalogProduct {
   id: string
@@ -36,6 +38,17 @@ interface CatalogProduct {
   contiene_unidad: string | null
   contiene_sub_cantidad: number | null
   contiene_sub_unidad: string | null
+  uso?: string
+}
+// Renglon de un articulo NO AUTORIZADO esperando decision (sale en Fraude), con su ticket para abrirlo.
+interface RenglonNoAut {
+  id: string
+  descripcion: string | null
+  monto: number | null
+  cantidad: number | null
+  unidad: string | null
+  catalogo_productos: { nombre: string } | null
+  registros_tickets: Ticket
 }
 interface Ticket {
   id: string
@@ -71,6 +84,8 @@ interface Resumen {
   otros_estados: Bloque
   por_justificar: number
   tickets_sin_monto_leido: number
+  renglones_no_aprobados?: { renglones: number; monto: number }
+  renglones_por_decidir?: { renglones: number; monto: number }
 }
 interface AlertRow {
   registro_ticket_id: string
@@ -109,6 +124,8 @@ const ALERT_LABEL: Record<string, string> = {
   monto_anomalo: 'Monto anomalo',
   envio_alto: 'Envío muy alto',
   pagos_no_cuadran: 'Pagos no cuadran',
+  articulo_no_autorizado: 'Artículo no autorizado',
+  articulo_ocasional: 'Compra ocasional',
 }
 // Que tan grave es cada alerta, para pintarla: rojo = dinero/duplicado en riesgo (revisar ya),
 // naranja = falta clasificar el producto, ambar = informativo o leve (ej. cambio de precio).
@@ -121,6 +138,7 @@ const ALERT_TONE: Record<string, AlertTone> = {
   ia_sin_leer: 'rojo',
   revisar_gerente: 'rojo',
   pagos_no_cuadran: 'rojo',
+  articulo_no_autorizado: 'rojo',
   rechazado: 'rojo',
   producto_no_reconocido: 'naranja',
   producto_nuevo: 'naranja',
@@ -303,7 +321,7 @@ export default function TicketsPage() {
 
   const loadCatalogo = useCallback(async (sucId: string | null) => {
     let q = supabase.from('catalogo_productos')
-      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad')
+      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso')
       .eq('activo', true).order('nombre')
     q = sucId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucId}`) : q
     const { data } = await q
@@ -368,6 +386,71 @@ export default function TicketsPage() {
 
   useEffect(() => { fetchTickets() }, [fetchTickets])
 
+  // Renglones de articulos NO AUTORIZADOS esperando decision, de CUALQUIER fecha (si quien manejaba antes la
+  // operacion metio algo, aqui sale). Van en la pestana Fraude.
+  const [noAut, setNoAut] = useState<RenglonNoAut[]>([])
+  const cargarNoAut = useCallback(async () => {
+    let q = supabase.from('ticket_items')
+      .select(`id, descripcion, monto, cantidad, unidad, catalogo_productos:producto_catalogo_id(nombre), registros_tickets!inner(${SELECT_TICKET})`)
+      .eq('autorizacion', 'pendiente').neq('registros_tickets.estado', 'rechazado').limit(500)
+    if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
+    const { data, error } = await q
+    if (!error) setNoAut((data as unknown as RenglonNoAut[]) ?? [])
+  }, [sucursalId])
+  useEffect(() => { cargarNoAut() }, [cargarNoAut, tickets])
+
+  const marcarUso = useMarcarUso()
+  async function cambiarUsoProd(prod: CatalogProduct, u: Uso) {
+    const r = await marcarUso(prod, u)
+    if (!r || !detalle) return
+    // Recarga el ticket abierto: pudo quedar algun renglon pendiente de aprobar.
+    await abrirDetalle(detalle.ticket)
+    cargarNoAut()
+  }
+
+  async function refrescarAlertas(ticketId: string): Promise<AlertRow[]> {
+    const { data } = await supabase.from('alertas_tickets')
+      .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
+      .eq('registro_ticket_id', ticketId).eq('resuelta', false)
+    const rows = (data as AlertRow[] | null) ?? []
+    setAlertas(prev => ({ ...prev, [ticketId]: rows }))
+    return rows
+  }
+
+  // Aprobar / no aprobar UN renglon no autorizado (nunca el ticket entero). Aprobado = gasto extra; no aprobado = no
+  // cuenta y queda por justificar.
+  async function decidirRenglon(itemId: string, ticket: Ticket, aprobar: boolean) {
+    if (!aprobar && !(await confirm('¿No aprobar este renglón?\n\nNo contará como gasto: queda por justificar (se le cobra a quien subió el ticket). El resto del ticket no cambia.', { danger: true, si: 'No aprobar' }))) return
+    setBusy('aut-' + itemId)
+    await ensureFreshSession()
+    const { data, error } = await supabase.rpc('decidir_renglon_no_autorizado', { p_item: itemId, p_aprobar: aprobar })
+    setBusy(null)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    const nuevo = aprobar ? 'aprobado' : 'rechazado'
+    setDetalle(d => d && d.ticket.id === ticket.id ? { ...d, items: d.items.map(x => x.id === itemId ? { ...x, autorizacion: nuevo } : x) } : d)
+    setNoAut(prev => prev.filter(r => r.id !== itemId))
+    toast(aprobar ? 'Aprobado: cuenta como gasto extra' : 'No aprobado: no cuenta y queda por justificar')
+    const pendientes = Number((data as { pendientes?: number } | null)?.pendientes ?? 0)
+    const restantes = await refrescarAlertas(ticket.id)
+    // Igual que al guardar un renglon: si el ticket ya quedo limpio y seguia pendiente, se confirma.
+    if (pendientes === 0 && restantes.length === 0 && ticket.estado === 'pendiente' && !(ticket.sospechoso && (ticket.sospecha_estado ?? 'abierta') !== 'descartada')) {
+      const { data: its } = await supabase.from('ticket_items').select('id').eq('registro_ticket_id', ticket.id).eq('necesita_revision', true).limit(1)
+      if (!its?.length) await confirmarTicket(ticket)
+    }
+  }
+
+  // Compra ocasional: un clic para decir "esta bien" (cierra la alerta y, si ya no hay nada mas, confirma).
+  async function okOcasional(t: Ticket) {
+    const { error } = await supabase.from('alertas_tickets').update({ resuelta: true })
+      .eq('registro_ticket_id', t.id).eq('tipo', 'articulo_ocasional').eq('resuelta', false)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    const restantes = await refrescarAlertas(t.id)
+    toast('Listo: compra ocasional aceptada')
+    const pendienteRenglon = detalle?.ticket.id === t.id && detalle.items.some(x => x.necesita_revision || x.autorizacion === 'pendiente')
+    const enFraude = !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
+    if (restantes.length === 0 && t.estado === 'pendiente' && !pendienteRenglon && !enFraude) await confirmarTicket(t)
+  }
+
   // Enlace directo desde otras pantallas (p.ej. Precios > Ver tickets): /admin/tickets?abrir=<id> abre ese
   // ticket aunque no caiga en el periodo elegido. Se limpia la URL para que recargar no lo vuelva a abrir.
   const abrirDetalleRef = useRef<((t: Ticket) => Promise<void>) | null>(null)
@@ -429,7 +512,7 @@ export default function TicketsPage() {
     setBusy('abrir')
     setEditando(true)
     await loadCatalogo(t.sucursal_id)
-    const selectBase = 'id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision, categorias_gasto:categoria_id(nombre)'
+    const selectBase = 'id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision, autorizacion, categorias_gasto:categoria_id(nombre)'
     let items: Item[] = []
     if (itemOrderSupported) {
       const { data, error } = await supabase.from('ticket_items')
@@ -743,6 +826,9 @@ export default function TicketsPage() {
       const { error } = await supabase.from('ticket_items').update(payload).eq('id', it.id)
       if (error) { toast(error.message, 'error'); setBusy(null); return }
     }
+    // Si se ligo a un articulo NO AUTORIZADO, la base lo deja pendiente sola (trigger 096): se lee como quedo.
+    const { data: aut } = await supabase.from('ticket_items').select('autorizacion').eq('id', savedId).maybeSingle()
+    const autorizacion = (aut as { autorizacion?: string } | null)?.autorizacion ?? it.autorizacion ?? 'normal'
     await loadCatalogo(detalle.ticket.sucursal_id)
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
     const currentItems = detalle.items.map(x => x.id === it.id ? {
@@ -756,6 +842,7 @@ export default function TicketsPage() {
         producto_catalogo_id: productoId,
         necesita_revision: necesita,
         motivo_revision: payload.motivo_revision as string | null,
+        autorizacion,
         orden: itemOrderSupported ? itemOrder : x.orden,
         categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
       } : x)
@@ -818,11 +905,12 @@ export default function TicketsPage() {
       await supabase.auth.refreshSession()
       ;({ error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: t.id } }))
     }
-    if (!error) await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('resuelta', false)
+    // La de articulo no autorizado NO se cierra aqui: se cierra al decidir cada renglon.
+    if (!error) await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('resuelta', false).neq('tipo', 'articulo_no_autorizado')
     setBusy(null)
     if (error) { toast('No se pudo confirmar: ' + error.message + ' (si dice sesion/401, recarga la pagina)', 'error'); return }
     setTickets(prev => prev.map(x => x.id === t.id ? { ...x, estado: 'confirmado' } : x))
-    setAlertas(prev => ({ ...prev, [t.id]: [] }))
+    await refrescarAlertas(t.id)
     toast('Ticket confirmado')
     setDetalle(null)
   }
@@ -950,6 +1038,7 @@ export default function TicketsPage() {
     confirmados: baseTickets.filter(t => t.estado === 'confirmado').length,
     fraude: baseTickets.filter(esSospechosoAbierto).length,
   }
+  const noAutVis = comercioFiltro ? noAut.filter(r => (r.registros_tickets.comercio ?? '') === comercioFiltro) : noAut
   const fraudeGrupos = (() => {
     const sosp = baseTickets.filter(esSospechosoAbierto)
     const byGroup = new Map<string, Ticket[]>()
@@ -1037,6 +1126,8 @@ export default function TicketsPage() {
               { label: 'Oficiales (confirmados)', b: resumen.oficiales, cls: 'text-emerald-300', sub: false },
               { label: 'Por revisar (aun sin decidir)', b: resumen.en_revision, cls: 'text-zinc-200', sub: false },
               { label: 'Rechazados (no valen)', b: resumen.no_validos, cls: 'text-red-300', sub: false },
+              ...(resumen.renglones_no_aprobados && resumen.renglones_no_aprobados.renglones > 0 ? [{ label: `Artículos no aprobados (${resumen.renglones_no_aprobados.renglones} ${resumen.renglones_no_aprobados.renglones === 1 ? 'renglón' : 'renglones'} dentro de tickets oficiales)`, b: { tickets: 0, monto: resumen.renglones_no_aprobados.monto }, cls: 'text-red-300', sub: false }] : []),
+              ...(resumen.renglones_por_decidir && resumen.renglones_por_decidir.renglones > 0 ? [{ label: `Artículos no autorizados por decidir (${resumen.renglones_por_decidir.renglones} en Fraude; no cuentan hasta que decidas)`, b: { tickets: 0, monto: resumen.renglones_por_decidir.monto }, cls: 'text-amber-300', sub: false }] : []),
               { label: 'En revision de Fraude (papel repetido, alterado)', b: resumen.no_validos.por_motivo.fraude, cls: 'text-zinc-400', sub: true },
               { label: 'Misma foto subida dos veces', b: resumen.no_validos.por_motivo.duplicado, cls: 'text-zinc-400', sub: true },
               { label: 'Otros (ilegible, manual)', b: resumen.no_validos.por_motivo.otro, cls: 'text-zinc-400', sub: true },
@@ -1044,7 +1135,7 @@ export default function TicketsPage() {
             ]).map(r => (
               <div key={r.label} className={`flex items-baseline gap-3 ${r.sub ? 'pl-5 text-xs' : ''}`}>
                 <span className={`flex-1 ${r.sub ? 'text-zinc-500' : 'text-zinc-300'}`}>{r.label}</span>
-                <span className="text-zinc-500 text-xs">{r.b.tickets} tickets</span>
+                <span className="text-zinc-500 text-xs">{r.b.tickets ? `${r.b.tickets} tickets` : ''}</span>
                 <span className={`w-28 text-right ${r.cls}`}>{fmt(r.b.monto)}</span>
               </div>
             ))}
@@ -1077,7 +1168,7 @@ export default function TicketsPage() {
             tenue: 'bg-amber-900 text-amber-300 hover:bg-amber-800', lleno: 'bg-amber-600 text-white' },
           { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados,
             tenue: 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800', lleno: 'bg-emerald-600 text-white' },
-          { k: 'fraude', label: ticketFilterLabel('fraude'), n: cuenta.fraude,
+          { k: 'fraude', label: ticketFilterLabel('fraude'), n: new Set([...baseTickets.filter(esSospechosoAbierto).map(t => t.id), ...noAutVis.map(r => r.registros_tickets.id)]).size,
             tenue: 'bg-red-900 text-red-300 hover:bg-red-800', lleno: 'bg-red-600 text-white' },
         ] as const).map(c => {
           const elegido = filtroEstado === c.k
@@ -1119,7 +1210,31 @@ export default function TicketsPage() {
               {detectando ? 'Escaneando…' : 'Buscar sospechas'}
             </button>
           </div>
-          {fraudeGrupos.grupos.length === 0 && fraudeGrupos.sueltos.length === 0 ? (
+          {noAutVis.length > 0 && (
+            <section aria-labelledby="no-aut" className="space-y-2 rounded-xl bg-red-900/40 p-3">
+              <div>
+                <h3 id="no-aut" className="text-sm font-semibold text-red-300">Artículos no autorizados por revisar · {noAutVis.length}</h3>
+                <p className="nota">El negocio no compra estos artículos. Aprobado: cuenta como gasto extra. No aprobado: no cuenta y queda por justificar. Solo cambia ese renglón, no el ticket.</p>
+              </div>
+              {noAutVis.map(r => {
+                const t = r.registros_tickets
+                return (
+                  <div key={r.id} className="tarjeta flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-zinc-100 break-words">{r.catalogo_productos?.nombre ?? r.descripcion ?? 'Artículo'} <span className="font-normal text-zinc-400">· {fmt(r.monto)}</span></p>
+                      <p className="text-xs text-zinc-500">{t.comercio ?? 'Sin comercio'} · {t.fecha_ticket ?? 's/fecha'}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''} · subió {t.empleados?.nombre ?? '—'}{r.descripcion && r.catalogo_productos?.nombre && r.descripcion !== r.catalogo_productos.nombre ? ` · el ticket dice «${r.descripcion}»` : ''}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <button onClick={() => decidirRenglon(r.id, t, true)} disabled={busy === 'aut-' + r.id} className="btn-secundario btn-sm">Aprobar</button>
+                      <button onClick={() => decidirRenglon(r.id, t, false)} disabled={busy === 'aut-' + r.id} className="btn-peligro btn-sm">No aprobar</button>
+                      <button onClick={() => abrirDetalle(t)} className="btn-texto btn-sm">Ver ticket</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </section>
+          )}
+          {fraudeGrupos.grupos.length === 0 && fraudeGrupos.sueltos.length === 0 && noAutVis.length > 0 ? null : fraudeGrupos.grupos.length === 0 && fraudeGrupos.sueltos.length === 0 ? (
             <p className="text-sm text-zinc-500 text-center py-12">Sin tickets sospechosos. Usa &quot;Buscar sospechas&quot; o marca uno desde su detalle.</p>
           ) : (
             <div className="space-y-4">
@@ -1196,6 +1311,10 @@ export default function TicketsPage() {
                   }}
                 />
                 <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={TONE_PILL[alertTone(b.tipo)]}>{b.label}</span>)}</div>
+                {(alertas[detalle.ticket.id] ?? []).some(a => a.tipo === 'articulo_ocasional') && (
+                  <AvisoOcasional items={detalle.items} catalogo={catalogo}
+                    onListo={() => okOcasional(detalle.ticket)} onNormal={p => cambiarUsoProd(p, 'normal')} />
+                )}
                 {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
                   <p key={i} className="mt-2 text-[13px] text-amber-400">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
                 ))}
@@ -1264,13 +1383,24 @@ export default function TicketsPage() {
                       <ElegirArticulo name="productoNombre" ariaLabel="Artículo del catálogo"
                         key={`prod-${it.id}-${it.producto_catalogo_id ?? 'new'}`}
                         valorInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
-                        opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined }))}
+                        opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined, oculta: usoDe(p.uso) !== 'normal' }))}
                         onCambio={(texto, elegida) => {
                           if (!texto.trim()) { vincularProducto(it, ''); return }
                           if (elegida && elegida.id !== it.producto_catalogo_id) vincularProducto(it, elegida.id)
                         }}
                         placeholder="Artículo del catálogo (escribe para buscar)"
                         notaNuevo={t => <>«{t}» es nuevo: se creará al guardar el renglón.</>} />
+                      <BloqueAutorizacion it={it} busy={busy === 'aut-' + it.id} onDecidir={a => decidirRenglon(it.id, detalle.ticket, a)} />
+                      {(() => {
+                        const prod = catalogo.find(p => p.id === it.producto_catalogo_id)
+                        if (!prod) return null
+                        return (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[13px] text-zinc-400">«{prod.nombre}» se compra:</span>
+                            <SelectorUso uso={prod.uso} onElegir={u => cambiarUsoProd(prod, u)} />
+                          </div>
+                        )
+                      })()}
                       <input name="sinonimos" placeholder="Sinónimos/códigos adicionales separados por coma" className="campo w-full px-2 py-1.5" />
                       {needsEquivalence(it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
@@ -1303,7 +1433,7 @@ export default function TicketsPage() {
                     </form>
                   ) : (
                     <div key={it.id} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
-                      <div className="min-w-0"><p className="text-zinc-100 truncate">{it.descripcion}</p><p className="text-xs text-zinc-500">{it.cantidad ?? ''} {it.unidad ?? ''} · {it.categorias_gasto?.nombre ?? 'sin categoria'}</p></div>
+                      <div className="min-w-0"><p className="text-zinc-100 truncate">{it.descripcion} <ChipUso uso={catalogo.find(p => p.id === it.producto_catalogo_id)?.uso} /> {it.autorizacion === 'rechazado' && <span className="chip-mal">No aprobado</span>}{it.autorizacion === 'pendiente' && <span className="chip-mal">Por aprobar</span>}</p><p className="text-xs text-zinc-500">{it.cantidad ?? ''} {it.unidad ?? ''} · {it.categorias_gasto?.nombre ?? 'sin categoria'}</p></div>
                       <span className="text-zinc-300 whitespace-nowrap">{fmt(it.monto)}</span>
                     </div>
                   ))}
@@ -1324,6 +1454,62 @@ export default function TicketsPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Renglon de un articulo NO AUTORIZADO: pide decision (pendiente) o muestra lo decidido con opcion de cambiarlo.
+function BloqueAutorizacion({ it, busy, onDecidir }: { it: Item; busy: boolean; onDecidir: (aprobar: boolean) => void }) {
+  const a = it.autorizacion ?? 'normal'
+  if (a === 'normal') return null
+  if (a === 'pendiente') return (
+    <div className="space-y-2 rounded-lg bg-red-900 px-3 py-2">
+      <p className="text-[13px] text-red-300"><b className="font-semibold">Artículo no autorizado.</b> El negocio no lo compra. Aprobado: cuenta como gasto extra. No aprobado: no cuenta y queda por justificar.</p>
+      <div className="flex flex-wrap gap-1">
+        <button type="button" onClick={() => onDecidir(true)} disabled={busy} className="btn-secundario btn-sm">Aprobar</button>
+        <button type="button" onClick={() => onDecidir(false)} disabled={busy} className="btn-peligro btn-sm">No aprobar</button>
+      </div>
+    </div>
+  )
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {a === 'aprobado'
+        ? <span className="chip-bien">Aprobado como gasto extra</span>
+        : <span className="chip-mal">No aprobado: no cuenta</span>}
+      <button type="button" onClick={() => onDecidir(a !== 'aprobado')} disabled={busy} className="btn-texto btn-sm">
+        {a === 'aprobado' ? 'Cambiar a no aprobado' : 'Cambiar a aprobado'}
+      </button>
+    </div>
+  )
+}
+
+// Compra OCASIONAL en el ticket: un clic para aceptarla. Si ese articulo ya se compro 3+ veces en 2 meses, pregunta
+// si ya es de uso normal (asi la etiqueta no se queda vieja).
+function AvisoOcasional({ items, catalogo, onListo, onNormal }: {
+  items: Item[]; catalogo: CatalogProduct[]; onListo: () => void; onNormal: (p: CatalogProduct) => void
+}) {
+  const ocas = catalogo.filter(p => p.uso === 'ocasional' && items.some(i => i.producto_catalogo_id === p.id))
+  const [veces, setVeces] = useState<Record<string, number>>({})
+  const ids = ocas.map(p => p.id).join(',')
+  useEffect(() => {
+    if (!ids) return
+    const desde = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10)
+    Promise.all(ids.split(',').map(async id => {
+      const { count } = await supabase.from('ticket_items').select('id, registros_tickets!inner(fecha_ticket, estado)', { count: 'exact', head: true })
+        .eq('producto_catalogo_id', id).neq('registros_tickets.estado', 'rechazado').gte('registros_tickets.fecha_ticket', desde)
+      return [id, count ?? 0] as const
+    })).then(r => setVeces(Object.fromEntries(r)))
+  }, [ids])
+  return (
+    <div className="mt-2 max-w-xl space-y-2 rounded-lg bg-blue-900 px-3 py-2">
+      <p className="text-[13px] text-blue-300"><b className="font-semibold">Compra ocasional:</b> {ocas.map(p => p.nombre).join(', ') || 'un artículo ocasional'}. Cuenta como gasto; no entra a Stock ni a precios.</p>
+      {ocas.filter(p => (veces[p.id] ?? 0) >= 3).map(p => (
+        <p key={p.id} className="flex flex-wrap items-center gap-2 text-[13px] text-zinc-100">
+          «{p.nombre}» se compró {veces[p.id]} veces en 2 meses. ¿Ya lo compran seguido?
+          <button type="button" onClick={() => onNormal(p)} className="btn-texto btn-sm">Volverlo normal</button>
+        </p>
+      ))}
+      <button type="button" onClick={onListo} className="btn-secundario btn-sm">Está bien</button>
     </div>
   )
 }

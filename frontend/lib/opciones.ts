@@ -10,6 +10,9 @@ export interface OpcionesCuenta {
   nombre: string
   usa_stock: boolean
   gerente_conteo: boolean
+  // Articulos no autorizados (migracion 094): a donde va lo aprobado y si el gerente ve lo que no se aprobo.
+  categoria_extra_id: string | null
+  avisar_gerente_no_autorizado: boolean
 }
 
 /** Cuentas que el admin ve (por sus sucursales) con sus opciones. */
@@ -22,7 +25,7 @@ export function useOpciones() {
     const [{ data: sucs }, { data: cts }, { data: ops }] = await Promise.all([
       supabase.from('sucursales').select('id, cuenta_id'),
       supabase.from('cuentas').select('id, nombre').order('nombre'),
-      supabase.from('cuenta_opciones').select('cuenta_id, usa_stock, gerente_conteo'),
+      supabase.from('cuenta_opciones').select('cuenta_id, usa_stock, gerente_conteo, categoria_extra_id, avisar_gerente_no_autorizado'),
     ])
     const mapa: Record<string, string> = {}
     for (const s of (sucs as { id: string; cuenta_id: string | null }[] | null) ?? []) if (s.cuenta_id) mapa[s.id] = s.cuenta_id
@@ -32,18 +35,22 @@ export function useOpciones() {
       cuenta_id: c.id, nombre: c.nombre,
       usa_stock: porCuenta.get(c.id)?.usa_stock ?? false,
       gerente_conteo: porCuenta.get(c.id)?.gerente_conteo ?? false,
+      categoria_extra_id: porCuenta.get(c.id)?.categoria_extra_id ?? null,
+      avisar_gerente_no_autorizado: porCuenta.get(c.id)?.avisar_gerente_no_autorizado ?? false,
     })))
   }, [])
   useEffect(() => { cargar() }, [cargar])
 
-  async function guardar(cuentaId: string, cambios: Partial<Pick<OpcionesCuenta, 'usa_stock' | 'gerente_conteo'>>) {
+  async function guardar(cuentaId: string, cambios: Partial<Pick<OpcionesCuenta, 'usa_stock' | 'gerente_conteo' | 'categoria_extra_id' | 'avisar_gerente_no_autorizado'>>) {
     const actual = cuentas?.find(c => c.cuenta_id === cuentaId)
     if (!actual) return 'Cuenta no encontrada'
     const nuevo = { ...actual, ...cambios }
     // Sin Stock no tiene sentido que el gerente cuente.
     if (!nuevo.usa_stock) nuevo.gerente_conteo = false
     const { error } = await supabase.from('cuenta_opciones').upsert({
-      cuenta_id: cuentaId, usa_stock: nuevo.usa_stock, gerente_conteo: nuevo.gerente_conteo, updated_at: new Date().toISOString(),
+      cuenta_id: cuentaId, usa_stock: nuevo.usa_stock, gerente_conteo: nuevo.gerente_conteo,
+      categoria_extra_id: nuevo.categoria_extra_id, avisar_gerente_no_autorizado: nuevo.avisar_gerente_no_autorizado,
+      updated_at: new Date().toISOString(),
     })
     if (error) return error.message
     setCuentas(cs => cs?.map(c => c.cuenta_id === cuentaId ? nuevo : c) ?? cs)

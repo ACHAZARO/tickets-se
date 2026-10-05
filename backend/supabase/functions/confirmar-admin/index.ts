@@ -71,6 +71,8 @@ serve(async (req: Request) => {
       supabase.from('ticket_items')
         .select('descripcion, cantidad, unidad, monto, producto_catalogo_id, categorias_gasto:categoria_id ( nombre )')
         .eq('registro_ticket_id', registro_id)
+        // Renglones no autorizados sin aprobar (094) no son gasto.
+        .in('autorizacion', ['normal', 'aprobado'])
         .order('orden', { ascending: true })
         .order('created_at', { ascending: true })
         .order('id', { ascending: true }),
@@ -119,7 +121,7 @@ serve(async (req: Request) => {
     const lineas = (itemsData ?? []) as { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[]
     const ids = [...new Set(lineas.map(it => it.producto_catalogo_id).filter(Boolean))] as string[]
     const { data: prods } = ids.length
-      ? await supabase.from('catalogo_productos').select('id, unidad_default').in('id', ids)
+      ? await supabase.from('catalogo_productos').select('id, unidad_default, uso').in('id', ids)
       : { data: [] }
     await guardarPrecios(supabase, lineas, (prods ?? []) as CatalogProduct[], reg.sucursal_id, registro_id, reg.fecha_ticket ?? null)
 

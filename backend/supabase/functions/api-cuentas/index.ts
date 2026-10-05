@@ -241,7 +241,7 @@ async function opTicket(ctx: Ctx, a: { ticket_id?: string | null }) {
   if (!r || !suc) throw new ErrorApi(404, { error: 'Ticket no encontrado' })
   const [{ data: items, error: itErr }, { data: al, error: alErr }, { data: pg, error: pgErr }] = await Promise.all([
     ctx.supabase.from('ticket_items')
-      .select('descripcion, cantidad, unidad, monto, necesita_revision, motivo_revision, orden, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre)')
+      .select('descripcion, cantidad, unidad, monto, necesita_revision, motivo_revision, orden, autorizacion, categorias_gasto:categoria_id(nombre), catalogo_productos:producto_catalogo_id(nombre)')
       .eq('registro_ticket_id', id).order('orden', { ascending: true, nullsFirst: false }),
     ctx.supabase.from('alertas_tickets').select('tipo, resuelta, created_at').eq('registro_ticket_id', id).order('created_at'),
     ctx.supabase.from('ticket_pagos').select('monto, formas_pago:forma_pago_id(nombre, sale_de_caja, orden)').eq('registro_ticket_id', id),

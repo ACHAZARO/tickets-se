@@ -71,7 +71,7 @@ export default function ComerciosPage() {
 
     // Tickets OFICIALES (confirmados) del periodo: cuanto se le compro a cada comercio.
     const tQ = traerTodo(() => {
-      let q = supabase.from('registros_tickets').select('id, comercio, monto, fecha_ticket, created_at')
+      let q = supabase.from('registros_tickets').select('id, comercio, monto, fecha_ticket, created_at, ticket_items(monto, autorizacion)')
         .eq('estado', 'confirmado').gte('fecha_ticket', desde).lte('fecha_ticket', hasta)
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       return q
@@ -82,6 +82,7 @@ export default function ComerciosPage() {
       let q = supabase.from('ticket_items')
         .select('id, monto, cantidad, producto_catalogo_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default), categorias_gasto:categoria_id(nombre), registros_tickets!inner(comercio, fecha_ticket, created_at, estado, sucursal_id)')
         .eq('registros_tickets.estado', 'confirmado')
+        .in('autorizacion', ['normal', 'aprobado'])   // renglones no autorizados sin aprobar (094) no son gasto
       if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
       return q
     })
@@ -98,11 +99,13 @@ export default function ComerciosPage() {
     setCategorias(catRes.data ?? [])
 
     const res: Record<string, ResumenComercio> = {}
-    for (const t of (tRes.data as { comercio: string | null; monto: number | null; fecha_ticket: string | null; created_at: string }[] | null) ?? []) {
+    for (const t of (tRes.data as { comercio: string | null; monto: number | null; fecha_ticket: string | null; created_at: string; ticket_items: { monto: number | null; autorizacion: string }[] | null }[] | null) ?? []) {
       const k = clave(t.comercio)
       if (!k) continue
       const r = res[k] ?? (res[k] = { gasto: 0, tickets: 0, ultima: null, categorias: [] })
-      r.gasto += Number(t.monto ?? 0)
+      // Renglones no autorizados sin aprobar (094) no son gasto: igual que los oficiales de Tickets.
+      const noCuenta = (t.ticket_items ?? []).filter(i => i.autorizacion === 'pendiente' || i.autorizacion === 'rechazado').reduce((s, i) => s + Number(i.monto ?? 0), 0)
+      r.gasto += Number(t.monto ?? 0) - noCuenta
       r.tickets += 1
       const f = t.fecha_ticket ?? t.created_at.slice(0, 10)
       if (!r.ultima || f > r.ultima) r.ultima = f

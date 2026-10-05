@@ -8,6 +8,8 @@ export interface CatalogProduct {
   unidad_default: string | null
   precio_referencia: number | null
   veces_matched: number
+  // 'normal' | 'ocasional' | 'no_autorizado' (migracion 094). Los no normales no cuentan para precios ni stock.
+  uso: string
 }
 
 export interface CatalogCategory {
@@ -60,7 +62,7 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
   const { data: categories } = await catQ
 
   let prodQ = supabase.from('catalogo_productos')
-    .select('id, nombre, sinonimos, unidad_default, precio_referencia, veces_matched, categorias_gasto:categoria_id(nombre)')
+    .select('id, nombre, sinonimos, unidad_default, precio_referencia, veces_matched, uso, categorias_gasto:categoria_id(nombre)')
     .eq('activo', true)
   prodQ = scope ? prodQ.or(scope) : prodQ.is('sucursal_id', null)
   const { data: products } = await prodQ
@@ -102,6 +104,7 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
       unidad_default: p.unidad_default as string | null,
       precio_referencia: p.precio_referencia as number | null,
       veces_matched: (p.veces_matched as number) ?? 0,
+      uso: (p.uso as string | null) ?? 'normal',
     })),
     comercios: (comercios ?? []).map((c: AnyRow) => {
       const obs = observadas.get((c.nombre as string).toLowerCase())

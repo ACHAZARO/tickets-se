@@ -8,6 +8,7 @@ import { useToast, useConfirm, Interruptor, Consejo } from '../ui'
 import { unificarProductos, ejemplosDe } from '../unificar'
 import { GaleriaTickets } from '../galeria-tickets'
 import { ElegirArticulo, type OpcionArticulo } from '../elegir-articulo'
+import { ChipUso, SelectorUso, useMarcarUso, usoDe, USO, type Uso } from '../uso-articulo'
 
 interface Categoria { id: string; nombre: string; orden: number; activa: boolean; sucursal_id: string | null; cuenta_operativo: boolean }
 interface Producto {
@@ -23,6 +24,7 @@ interface Producto {
   contiene_unidad: string | null
   contiene_sub_cantidad: number | null
   contiene_sub_unidad: string | null
+  uso: string
 }
 
 function splitEquivalenceFields(p: Pick<Producto, 'contiene_cantidad' | 'contiene_unidad' | 'contiene_sub_cantidad' | 'contiene_sub_unidad'>) {
@@ -61,10 +63,12 @@ export default function CatalogoPage() {
   const [addExiste, setAddExiste] = useState<OpcionArticulo | null>(null)   // alta: el nombre ya es un articulo
   const [editChoca, setEditChoca] = useState<OpcionArticulo | null>(null)   // edicion: el nombre nuevo es OTRO articulo
   const [unificando, setUnificando] = useState(false)
+  const [verUso, setVerUso] = useState<Uso | null>(null)   // filtro: solo ocasionales / solo no autorizados
+  const marcarUso = useMarcarUso()
 
   const fetchData = useCallback(async () => {
     let catQ = supabase.from('categorias_gasto').select('id, nombre, orden, activa, sucursal_id, cuenta_operativo').order('orden')
-    let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad').order('nombre')
+    let prodQ = supabase.from('catalogo_productos').select('id, nombre, sinonimos, categoria_id, unidad_default, veces_matched, activo, sucursal_id, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso').order('nombre')
     catQ = sucursalId ? catQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : catQ // "Todas": sin filtro (global + todas las sucursales)
     prodQ = sucursalId ? prodQ.or(`sucursal_id.is.null,sucursal_id.eq.${sucursalId}`) : prodQ
     const [catRes, prodRes] = await Promise.all([catQ, prodQ])
@@ -224,10 +228,18 @@ export default function CatalogoPage() {
     return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500" /></div>
   }
 
-  const prodsPorCat = (catId: string) => productos.filter(p => p.categoria_id === catId)
+  const prodsPorCat = (catId: string) => productos.filter(p => p.categoria_id === catId && (!verUso || usoDe(p.uso) === verUso))
   const opcionesArticulo: OpcionArticulo[] = productos.map(p => ({
-    id: p.id, nombre: p.nombre, detalle: categorias.find(c => c.id === p.categoria_id)?.nombre,
+    id: p.id, nombre: p.nombre, detalle: categorias.find(c => c.id === p.categoria_id)?.nombre, oculta: usoDe(p.uso) !== 'normal',
   }))
+  const nUso = (u: Uso) => productos.filter(p => usoDe(p.uso) === u).length
+  async function cambiarUso(p: Producto, u: Uso) {
+    const r = await marcarUso(p, u)
+    if (!r) return
+    setProductos(prev => prev.map(x => x.id === p.id ? { ...x, uso: r.uso, categoria_id: r.categoria_id ?? x.categoria_id } : x))
+    // Si estaba abierto para editar, que «Guardar» no regrese la categoria anterior.
+    if (r.categoria_id) setEditProd(e => e && e.id === p.id ? { ...e, categoria_id: r.categoria_id! } : e)
+  }
 
   return (
     <div className="space-y-6">
@@ -247,9 +259,22 @@ export default function CatalogoPage() {
           className="btn-secundario">+ Categoría</button>
       </div>
 
+      {(nUso('ocasional') > 0 || nUso('no_autorizado') > 0 || verUso) && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar artículos">
+          <span className="etiqueta">Ver</span>
+          {([null, 'ocasional', 'no_autorizado'] as (Uso | null)[]).map(u => (
+            <button key={u ?? 'todos'} onClick={() => setVerUso(u)} aria-pressed={verUso === u} title={u ? USO[u].ayuda : 'Todos los artículos'}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${verUso === u ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}>
+              {u ? `${USO[u].texto} (${nUso(u)})` : 'Todos'}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-4">
         {categorias.map(c => {
           const prods = prodsPorCat(c.id)
+          if (verUso && prods.length === 0) return null
           return (
             <div key={c.id} className="tarjeta overflow-hidden">
               <div className="space-y-3 px-4 py-3.5 border-b border-zinc-800">
@@ -333,6 +358,7 @@ export default function CatalogoPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-zinc-100 truncate">{p.nombre}</span>
+                            <ChipUso uso={p.uso} />
                             {p.unidad_default && <span className="chip-neutro">{p.unidad_default}</span>}
                             {p.veces_matched > 0 && <span className="text-xs text-zinc-500" title={`La IA lo ha reconocido ${p.veces_matched} ${p.veces_matched === 1 ? 'vez' : 'veces'} en tickets`}>{p.veces_matched}×</span>}
                           </div>
@@ -387,6 +413,11 @@ export default function CatalogoPage() {
                             className="campo w-full px-2 py-1.5">
                             {categorias.map(k => <option key={k.id} value={k.id}>{k.nombre}</option>)}
                           </select>
+                          <div className="space-y-1">
+                            <span className="etiqueta block">¿Cómo se compra?</span>
+                            <SelectorUso uso={p.uso} onElegir={u => cambiarUso(p, u)} />
+                            <p className="nota">{USO[usoDe(p.uso)].ayuda} Se guarda al tocarlo.</p>
+                          </div>
                           <input value={editProd.sinonimos} onChange={e => setEditProd({ ...editProd, sinonimos: e.target.value })} placeholder="Sinónimos / marcas (ej. magna, premium, diesel)"
                             className="campo w-full px-2 py-1.5" />
                           <label className="etiqueta block">Equivalencia (opcional): 1 {editProd.unidad || p.unidad_default || 'unidad'} trae…</label>

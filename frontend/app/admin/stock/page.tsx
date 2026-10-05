@@ -68,8 +68,8 @@ export default function StockPage() {
     const seq = ++fetchSeq.current
     const [{ data, error }, { data: cts }] = await Promise.all([
       traerTodo(() => supabase.from('ticket_items')
-        .select('id, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id, fecha_ticket, created_at)')
-        .eq('registros_tickets.estado', 'confirmado').eq('registros_tickets.sucursal_id', sucursalId)
+        .select('id, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso, insumos:insumo_id(id, nombre, unidad_base)), registros_tickets!inner(estado, sucursal_id, fecha_ticket, created_at)')
+        .eq('registros_tickets.estado', 'confirmado').eq('registros_tickets.sucursal_id', sucursalId).in('autorizacion', ['normal', 'aprobado'])
         .not('producto_catalogo_id', 'is', null)),
       traerTodo(() => supabase.from('conteos_inventario').select('id, clave, fecha, cantidad, unidad').eq('sucursal_id', sucursalId)),
     ])
@@ -78,7 +78,7 @@ export default function StockPage() {
 
     type Row = {
       cantidad: number | null; unidad: string | null; monto: number | null
-      catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; insumos: { id: string; nombre: string; unidad_base: string } | null } | null
+      catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; uso?: string; insumos: { id: string; nombre: string; unidad_base: string } | null } | null
       registros_tickets: { fecha_ticket: string | null; created_at: string } | null
     }
     // 1) Cada renglon a su unidad base con la MISMA regla que usa el celular del gerente (lib/stock.mjs).
@@ -87,7 +87,8 @@ export default function StockPage() {
     const map = new Map<string, Acum>()
     for (const row of (data as unknown as Row[]) ?? []) {
       const prod = row.catalogo_productos
-      if (!prod) continue
+      // Ocasionales y no autorizados no entran a Stock (094): misma regla que el conteo del gerente.
+      if (!prod || (prod.uso ?? 'normal') !== 'normal') continue
       const r = baseDeRenglon(prod, row)
       if (!r || 'servicio' in r) continue   // sin medida, o servicio (envios): no va al inventario
       const insumo = prod.insumos ?? null
