@@ -78,6 +78,18 @@
   senalo a la gerente). **Septiembre SE final: oficiales $82,157.06 (150)**, operativo $63,148.11, fuera de operacion $18,813.95,
   no validos $1,552 (hoja duplicada). Queda abierto solo: Costco 21-sep faltan $195 de renglones; Costco 30-sep $442 sin ticket;
   envios Costco $170/$249 por confirmar con la gerente.
+- **05-oct (tickets faltantes de la gerente; respaldo `respaldo.r20261005_*`):** Chedraui 30-sep $442 (salchichas $417 IVA 0 +
+  plumon $25) = la diferencia del Costco 30-sep -> aprobado (producto nuevo "Plumon Bic negro"). Walmart 21-sep $195 (TR#09112)
+  YA estaba subido el 21-sep y contando; el Costco 21-sep traia a mano $584.45 = Costco $389.45 + ese Walmart -> Costco bajo de
+  $734 a **$539** (impreso + envio $149.55). El Walmart reenviado quedo rechazado (papel repetido) con sospecha descartada.
+  Envios Costco $170/$249: Alejandro los aprueba (flete grande por pedido grande); seguir senalandolos.
+  **Septiembre SE FINAL: oficiales $82,404.06 (151)**, operativo $63,590.11, fuera de operacion $18,813.95, sin desglosar $0, 0 pendientes.
+  **Duda abierta:** hielo $75 (nota Estrella) con fecha a mano "03/09/26" subido el 3-oct junto con tickets de octubre; el "09"
+  parece repasado. Cuenta en septiembre; Alejandro decide si es 3-oct.
+- **Hueco de producto (para vender):** un ticket que llega tarde se va al mes de SU fecha (resumen_tickets usa fecha_ticket; sin
+  fecha, la de subida). Si la IA lo lee limpio se aprueba SOLO y cambia un mes que el dueno ya cerro, sin aviso. Propuesta:
+  boton "Cerrar mes"; lo que llegue despues con fecha de ese mes NO se auto-aprueba: cae en Tickets con etiqueta "de mes cerrado"
+  y el dueno elige "cuenta en septiembre (reabre)" o "cuenta en el mes actual".
 
 ## Sesion 2026-09-28 (Claude) -- cierre antes del respaldo
 - Alejandro aprobo subir los cambios del 21-sep en `admin/tickets/page.tsx` (colores de alertas por gravedad + cerrar
