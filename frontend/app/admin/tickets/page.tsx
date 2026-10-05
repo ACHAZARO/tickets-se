@@ -47,8 +47,9 @@ interface RenglonNoAut {
   monto: number | null
   cantidad: number | null
   unidad: string | null
-  catalogo_productos: { nombre: string } | null
+  catalogo_productos: { nombre: string; categoria_id: string | null } | null
   registros_tickets: Ticket
+  otros?: number // cuantos renglones MAS trae su ticket (si hay, se avisa que esos siguen contando)
 }
 interface Ticket {
   id: string
@@ -394,13 +395,27 @@ export default function TicketsPage() {
   // Renglones de articulos NO AUTORIZADOS esperando decision, de CUALQUIER fecha (si quien manejaba antes la
   // operacion metio algo, aqui sale). Van en la pestana Fraude.
   const [noAut, setNoAut] = useState<RenglonNoAut[]>([])
+  const noAutSeq = useRef(0)
   const cargarNoAut = useCallback(async () => {
+    // Solo la ULTIMA carga pinta (al abrir se restaura la sucursal y salen dos cargas seguidas).
+    const seq = ++noAutSeq.current
     let q = supabase.from('ticket_items')
-      .select(`id, descripcion, monto, cantidad, unidad, catalogo_productos:producto_catalogo_id(nombre), registros_tickets!inner(${SELECT_TICKET})`)
+      .select(`id, descripcion, monto, cantidad, unidad, catalogo_productos:producto_catalogo_id(nombre, categoria_id), registros_tickets!inner(${SELECT_TICKET})`)
       .eq('autorizacion', 'pendiente').neq('registros_tickets.estado', 'rechazado').limit(500)
     if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
     const { data, error } = await q
-    if (!error) setNoAut((data as unknown as RenglonNoAut[]) ?? [])
+    if (error || seq !== noAutSeq.current) return
+    // En "Todas" no entra la sucursal de prueba (igual que los totales).
+    const lista = ((data as unknown as RenglonNoAut[]) ?? []).filter(r => sucursalId || !r.registros_tickets.sucursales?.es_prueba)
+    // Cuantos renglones trae cada ticket: si es el unico, no hace falta explicar que el resto sigue contando.
+    const ids = [...new Set(lista.map(r => r.registros_tickets.id))]
+    const porTicket: Record<string, number> = {}
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data: its } = await supabase.from('ticket_items').select('registro_ticket_id').in('registro_ticket_id', ids.slice(i, i + 300))
+      for (const x of (its as { registro_ticket_id: string }[] | null) ?? []) porTicket[x.registro_ticket_id] = (porTicket[x.registro_ticket_id] ?? 0) + 1
+    }
+    if (seq !== noAutSeq.current) return
+    setNoAut(lista.map(r => ({ ...r, otros: Math.max(0, (porTicket[r.registros_tickets.id] ?? 1) - 1) })))
   }, [sucursalId])
   useEffect(() => { cargarNoAut() }, [cargarNoAut, tickets])
 
@@ -443,19 +458,20 @@ export default function TicketsPage() {
     return rows
   }
 
-  // Aprobar / no aprobar UN renglon no autorizado (nunca el ticket entero). Aprobado = gasto extra; no aprobado = no
-  // cuenta y queda por justificar.
-  async function decidirRenglon(itemId: string, ticket: Ticket, aprobar: boolean) {
-    if (!aprobar && !(await confirm('¿No aprobar este renglón?\n\nNo contará como gasto: queda por justificar (se le cobra a quien subió el ticket). El resto del ticket no cambia.', { danger: true, si: 'No aprobar' }))) return
+  // Aprobar (en la categoria que elijas) o no aprobar UN renglon no autorizado; nunca el ticket entero.
+  // No aprobado = no cuenta como gasto y se suma a «Por justificar» (tarjeta de totales de Tickets).
+  async function decidirRenglon(itemId: string, ticket: Ticket, aprobar: boolean, categoriaId?: string | null, otros = 0) {
+    if (!aprobar && !(await confirm(`¿No aprobar este artículo?\n\nNo contará como gasto y se sumará a «Por justificar», en los totales de arriba de Tickets.${otros > 0 ? `\n\nLos otros ${otros} ${otros === 1 ? 'artículo' : 'artículos'} del ticket siguen contando.` : ''}`, { danger: true, si: 'No aprobar' }))) return
     setBusy('aut-' + itemId)
     await ensureFreshSession()
-    const { data, error } = await supabase.rpc('decidir_renglon_no_autorizado', { p_item: itemId, p_aprobar: aprobar })
+    const { data, error } = await supabase.rpc('decidir_renglon_no_autorizado', { p_item: itemId, p_aprobar: aprobar, p_categoria: aprobar ? categoriaId || null : null })
     setBusy(null)
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     const nuevo = aprobar ? 'aprobado' : 'rechazado'
-    setDetalle(d => d && d.ticket.id === ticket.id ? { ...d, items: d.items.map(x => x.id === itemId ? { ...x, autorizacion: nuevo } : x) } : d)
+    const catNueva = aprobar && categoriaId ? categoriaId : null
+    setDetalle(d => d && d.ticket.id === ticket.id ? { ...d, items: d.items.map(x => x.id === itemId ? { ...x, autorizacion: nuevo, ...(catNueva ? { categoria_id: catNueva, categorias_gasto: { nombre: cats.find(c => c.id === catNueva)?.nombre ?? '' } } : {}) } : x) } : d)
     setNoAut(prev => prev.filter(r => r.id !== itemId))
-    toast(aprobar ? 'Aprobado: cuenta como gasto extra' : 'No aprobado: no cuenta y queda por justificar')
+    toast(aprobar ? `Aprobado${catNueva ? ` en «${cats.find(c => c.id === catNueva)?.nombre ?? ''}»` : ''}` : 'No aprobado: se sumó a «Por justificar»')
     const pendientes = Number((data as { pendientes?: number } | null)?.pendientes ?? 0)
     const restantes = await refrescarAlertas(ticket.id)
     // Igual que al guardar un renglon: si el ticket ya quedo limpio y seguia pendiente, se confirma.
@@ -1343,7 +1359,7 @@ export default function TicketsPage() {
             <section aria-labelledby="no-aut" className="space-y-2 rounded-xl bg-red-900/40 p-3">
               <div>
                 <h3 id="no-aut" className="text-sm font-semibold text-red-300">Artículos no autorizados por revisar · {noAutVis.length}</h3>
-                <p className="nota">El negocio no compra estos artículos. Aprobado: cuenta como gasto extra. No aprobado: no cuenta y queda por justificar. Solo cambia ese renglón, no el ticket.</p>
+                <p className="nota"><b className="font-medium text-zinc-300">No aprobar:</b> no cuenta como gasto y se suma a «Por justificar», en los totales de arriba.</p>
               </div>
               {noAutVis.map(r => {
                 const t = r.registros_tickets
@@ -1352,10 +1368,11 @@ export default function TicketsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-zinc-100 break-words">{r.catalogo_productos?.nombre ?? r.descripcion ?? 'Artículo'} <span className="font-normal text-zinc-400">· {fmt(r.monto)}</span></p>
                       <p className="text-xs text-zinc-500">{t.comercio ?? 'Sin comercio'} · {t.fecha_ticket ?? 's/fecha'}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''} · subió {t.empleados?.nombre ?? '—'}{r.descripcion && r.catalogo_productos?.nombre && r.descripcion !== r.catalogo_productos.nombre ? ` · el ticket dice «${r.descripcion}»` : ''}</p>
+                      {(r.otros ?? 0) > 0 && <p className="text-xs text-zinc-400">Solo cambia este artículo: los otros {r.otros} del ticket siguen contando.</p>}
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
-                      <button onClick={() => decidirRenglon(r.id, t, true)} disabled={busy === 'aut-' + r.id} className="btn-secundario btn-sm">Aprobar</button>
-                      <button onClick={() => decidirRenglon(r.id, t, false)} disabled={busy === 'aut-' + r.id} className="btn-peligro btn-sm">No aprobar</button>
+                      <DecidirRenglon cats={cats} categoriaInicial={r.catalogo_productos?.categoria_id ?? null} busy={busy === 'aut-' + r.id}
+                        onDecidir={(a, cat) => decidirRenglon(r.id, t, a, cat, r.otros ?? 0)} />
                       <button onClick={() => abrirDetalle(t)} className="btn-texto btn-sm">Ver ticket</button>
                     </div>
                   </div>
@@ -1514,7 +1531,9 @@ export default function TicketsPage() {
                         }}
                         placeholder="Artículo del catálogo (escribe para buscar)"
                         notaNuevo={t => <>«{t}» es nuevo: se creará al guardar el renglón.</>} />
-                      <BloqueAutorizacion it={it} busy={busy === 'aut-' + it.id} onDecidir={a => decidirRenglon(it.id, detalle.ticket, a)} />
+                      <BloqueAutorizacion it={it} cats={cats} otros={detalle.items.length - 1}
+                        categoriaInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.categoria_id ?? null}
+                        busy={busy === 'aut-' + it.id} onDecidir={(a, cat) => decidirRenglon(it.id, detalle.ticket, a, cat, detalle.items.length - 1)} />
                       {(() => {
                         const prod = catalogo.find(p => p.id === it.producto_catalogo_id)
                         if (!prod) return null
@@ -1583,26 +1602,51 @@ export default function TicketsPage() {
 }
 
 // Renglon de un articulo NO AUTORIZADO: pide decision (pendiente) o muestra lo decidido con opcion de cambiarlo.
-function BloqueAutorizacion({ it, busy, onDecidir }: { it: Item; busy: boolean; onDecidir: (aprobar: boolean) => void }) {
+function BloqueAutorizacion({ it, cats, categoriaInicial, otros, busy, onDecidir }: {
+  it: Item; cats: { id: string; nombre: string }[]; categoriaInicial: string | null; otros: number; busy: boolean
+  onDecidir: (aprobar: boolean, categoriaId?: string | null) => void
+}) {
   const a = it.autorizacion ?? 'normal'
   if (a === 'normal') return null
   if (a === 'pendiente') return (
     <div className="space-y-2 rounded-lg bg-red-900 px-3 py-2">
-      <p className="text-[13px] text-red-300"><b className="font-semibold">Artículo no autorizado.</b> El negocio no lo compra. Aprobado: cuenta como gasto extra. No aprobado: no cuenta y queda por justificar.</p>
-      <div className="flex flex-wrap gap-1">
-        <button type="button" onClick={() => onDecidir(true)} disabled={busy} className="btn-secundario btn-sm">Aprobar</button>
-        <button type="button" onClick={() => onDecidir(false)} disabled={busy} className="btn-peligro btn-sm">No aprobar</button>
-      </div>
+      <p className="text-[13px] text-red-300"><b className="font-semibold">Artículo no autorizado.</b> No aprobar: no cuenta como gasto y se suma a «Por justificar».{otros > 0 ? ' Los demás artículos del ticket siguen contando.' : ''}</p>
+      <DecidirRenglon cats={cats} categoriaInicial={categoriaInicial} busy={busy} onDecidir={onDecidir} />
     </div>
   )
   return (
     <div className="flex flex-wrap items-center gap-2">
       {a === 'aprobado'
-        ? <span className="chip-bien">Aprobado como gasto extra</span>
-        : <span className="chip-mal">No aprobado: no cuenta</span>}
-      <button type="button" onClick={() => onDecidir(a !== 'aprobado')} disabled={busy} className="btn-texto btn-sm">
-        {a === 'aprobado' ? 'Cambiar a no aprobado' : 'Cambiar a aprobado'}
-      </button>
+        ? <span className="chip-bien">Aprobado{it.categorias_gasto?.nombre ? ` en ${it.categorias_gasto.nombre}` : ''}</span>
+        : <span className="chip-mal">No aprobado: en «Por justificar»</span>}
+      {a === 'aprobado'
+        ? <button type="button" onClick={() => onDecidir(false)} disabled={busy} className="btn-texto btn-sm">Cambiar a no aprobado</button>
+        : <DecidirRenglon cats={cats} categoriaInicial={categoriaInicial} busy={busy} soloAprobar onDecidir={onDecidir} />}
+    </div>
+  )
+}
+
+// Aprobar pide la CATEGORIA en la que va a contar (viene puesta la del articulo); No aprobar va directo (con su confirmacion).
+function DecidirRenglon({ cats, categoriaInicial, busy, soloAprobar = false, onDecidir }: {
+  cats: { id: string; nombre: string }[]; categoriaInicial: string | null; busy: boolean; soloAprobar?: boolean
+  onDecidir: (aprobar: boolean, categoriaId?: string | null) => void
+}) {
+  const [eligiendo, setEligiendo] = useState(false)
+  const [cat, setCat] = useState(categoriaInicial ?? '')
+  if (eligiendo) return (
+    <div className="flex flex-wrap items-center gap-1">
+      <select value={cat} onChange={e => setCat(e.target.value)} aria-label="Categoría en la que cuenta" className="campo py-1 text-[13px]">
+        <option value="" disabled>Elige categoría…</option>
+        {cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      </select>
+      <button type="button" onClick={() => { onDecidir(true, cat); setEligiendo(false) }} disabled={busy || !cat} className="btn-primario btn-sm">Aprobar aquí</button>
+      <button type="button" onClick={() => setEligiendo(false)} className="btn-quieto btn-sm">Atrás</button>
+    </div>
+  )
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <button type="button" onClick={() => setEligiendo(true)} disabled={busy} className={soloAprobar ? 'btn-texto btn-sm' : 'btn-secundario btn-sm'}>{soloAprobar ? 'Cambiar a aprobado' : 'Aprobar'}</button>
+      {!soloAprobar && <button type="button" onClick={() => onDecidir(false)} disabled={busy} className="btn-peligro btn-sm">No aprobar</button>}
     </div>
   )
 }
