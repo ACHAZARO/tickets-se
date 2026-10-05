@@ -3,6 +3,16 @@
 > Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
+## Sesion 2026-10-05 (Claude) -- Fraude de JULIO Wings Palace cerrado
+- 21 tickets abiertos en Fraude (jul WP). Respaldo `respaldo.r097_fraude_wp_jul`. Ningun monto contado cambio.
+- 19 = mismo gasto subido dos veces (factura+remision/ticket de Cervezas y Refrescos x6, reimpresion Nutrioli, JugoKarl
+  27-jul que paga la nota fiada del 21-jul, papel repetido Servicios de Informatica, copia de "Gas compras Aps") ->
+  sospecha DESCARTADA: el original sigue confirmado, la copia sigue rechazada y ahora cuenta como "duplicado", no "fraude".
+- 2 = FRAUDE confirmado (rechazados, no cuentan): Sonigas $400 de talonario 2024 reutilizado (aed2e314) y "Gas compras
+  Aps" $1,350 a mano sin ticket de gasera firmado por Fer Villanueva (07918aae).
+- Siguen abiertos en Fraude WP: mayo 10, junio 17, agosto 4. Pendiente: rediseno de los botones de Fraude (ideas dadas a
+  Alejandro el 05-oct: "Es el mismo gasto" / "Si cuenta" / "Es fraude"; hoy "Es fraude" sobre un ticket confirmado NO lo rechaza).
+
 ## Sesion 2026-10-03 noche b (Claude) -- SEGUNDO REVISOR IA (prueba en seco) -> ver `PLAN_REVISOR_IA.md`
 - Problema de Alejandro: la IA deja demasiado a revision humana (14 dias: 27/63 = 43%; >95% de alertas se cerraban sin
   correccion). Diagnostico: no es el modelo, son reglas fijas que mandan al humano todo lo "nuevo o raro" sin razonar.
