@@ -9,9 +9,16 @@
   Abajo, gris: "En el ticket dice: «...»" (lo que leyo la IA).
 - CAMBIO de comportamiento: escribir otro nombre SUELTA el articulo ligado (antes lo RENOMBRABA en el catalogo sin avisar).
   Renombrar se hace en Catalogo.
-- Titulos Cantidad / Unidad / Precio total / Categoria + linea "$233.24 por los 2 pz -> $116.62 por pz".
-- Sinonimos: plegable "Otros nombres con los que aparece en los tickets (N ya aprendidos)" con explicacion y los ya aprendidos.
-- Verificado en local (desktop y 375px) con un ticket real de ago WP sin guardar; tsc OK.
+- Titulos Cantidad / Unidad / Precio total / Categoria + nota fija "Precio total: lo que se pago por todas las unidades de
+  este renglon (el mismo numero que ves en ese renglon del ticket)". Sin icono "+" en el aviso de articulo nuevo.
+- Se QUITO el campo manual de sinonimos: lo que dice el ticket se aprende solo al guardar y el Cerebro (090) agrega el resto.
+- Se QUITO "Guardar y ensenar" por renglon. Un solo boton abajo: "Guardar y confirmar ticket" (pendiente/rechazado) o
+  "Guardar cambios" (confirmado). Guarda los renglones tocados, nuevos o por revisar, ensena al catalogo y confirma.
+  Antes "Confirmar ticket" NO guardaba lo editado (se perdia sin aviso). Si se van a crear articulos, primero pregunta
+  "Se crearan N articulos nuevos: ... ¿Seguir?".
+- "Corregir" (forma de pago) ahora dice "Cambiar forma de pago" / "Registrar forma de pago". Comercio y Fecha en recuadro.
+- Verificado en local: ticket PRUEBA $134 (0e20a53f) guardado y confirmado de punta a punta (creo "Frijol negro" y "Arroz"
+  en el catalogo de PRUEBA, renglones ligados, estado confirmado) + "Guardar cambios" en confirmado OK; tsc OK.
 - Pendiente: en modo entrenamiento (PLAN_MODO_ENTRENAMIENTO.md) no avisar "se creara" por cada articulo.
 
 ## Sesion 2026-10-05 (Claude) -- Fraude de JULIO Wings Palace cerrado

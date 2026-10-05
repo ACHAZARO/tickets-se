@@ -39,7 +39,6 @@ interface CatalogProduct {
   contiene_sub_cantidad: number | null
   contiene_sub_unidad: string | null
   uso?: string
-  sinonimos?: string[] | null
 }
 // Renglon de un articulo NO AUTORIZADO esperando decision (sale en Fraude), con su ticket para abrirlo.
 interface RenglonNoAut {
@@ -269,7 +268,9 @@ export default function TicketsPage() {
   }, [])
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
-  const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
+  // Formularios de cada renglon y cuales se tocaron: el boton de abajo guarda todos juntos.
+  const formsRenglon = useRef<Record<string, HTMLFormElement | null>>({})
+  const renglonesTocados = useRef<Set<string>>(new Set())
   const [loadError, setLoadError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [itemOrderSupported, setItemOrderSupported] = useState(true)
@@ -328,7 +329,7 @@ export default function TicketsPage() {
 
   const loadCatalogo = useCallback(async (sucId: string | null) => {
     let q = supabase.from('catalogo_productos')
-      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso, sinonimos')
+      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso')
       .eq('activo', true).order('nombre')
     q = sucId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucId}`) : q
     const { data } = await q
@@ -712,6 +713,7 @@ export default function TicketsPage() {
   }
 
   function vincularProducto(it: Item, prodId: string) {
+    renglonesTocados.current.add(it.id)
     const prod = catalogo.find(p => p.id === prodId)
     setDetalle(d => d ? {
       ...d,
@@ -838,37 +840,29 @@ export default function TicketsPage() {
     return productoId
   }
 
-  async function guardarItemTicket(it: Item, form: HTMLFormElement) {
-    if (!detalle) return
-    setBusy(it.id)
-    await ensureFreshSession()
+  // Guarda UN renglon en la BD (y ensena al catalogo: liga/crea el articulo y aprende lo que dice el ticket como
+  // sinonimo). No toca la pantalla: devuelve la lista de renglones actualizada. Lanza error si algo falla.
+  async function guardarRenglon(it: Item, form: HTMLFormElement, items: Item[], ticket: Ticket): Promise<Item[]> {
     const fd = new FormData(form)
     const productNameInput = String(fd.get('productoNombre') ?? '').trim()
-    let productoId: string | null = null
-    try {
-      productoId = await ensureProduct(it, {
-        productName: productNameInput,
-        synonymText: String(fd.get('sinonimos') ?? ''),
-        baseQty: String(fd.get('baseQty') ?? ''),
-        baseUnit: String(fd.get('baseUnit') ?? ''),
-        baseItem: String(fd.get('baseItem') ?? ''),
-        subQty: String(fd.get('subQty') ?? ''),
-        subUnit: String(fd.get('subUnit') ?? ''),
-      })
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'No se pudo guardar el producto', 'error')
-      setBusy(null)
-      return
-    }
+    const productoId = await ensureProduct(it, {
+      productName: productNameInput,
+      synonymText: '',
+      baseQty: String(fd.get('baseQty') ?? ''),
+      baseUnit: String(fd.get('baseUnit') ?? ''),
+      baseItem: String(fd.get('baseItem') ?? ''),
+      subQty: String(fd.get('subQty') ?? ''),
+      subUnit: String(fd.get('subUnit') ?? ''),
+    })
     const necesita = !it.categoria_id || !it.unidad || !productoId
-    const itemOrder = it.orden ?? nextTicketItemOrder(detalle.items)
+    const itemOrder = it.orden ?? nextTicketItemOrder(items)
     const descripcionFinal = resolveItemDescription({
       detectedName: originalDesc[it.id] ?? '',
       rowDescription: it.descripcion,
       productName: productNameInput,
     })
     const payload: Record<string, unknown> = {
-      registro_ticket_id: detalle.ticket.id,
+      registro_ticket_id: ticket.id,
       descripcion: descripcionFinal,
       cantidad: it.cantidad,
       unidad: it.unidad || null,
@@ -881,69 +875,84 @@ export default function TicketsPage() {
     if (itemOrderSupported) payload.orden = itemOrder
     let savedId = it.id
     if (it.id.startsWith('nuevo-')) {
-      const insertQ = supabase.from('ticket_items').insert(payload)
-      const { data, error } = itemOrderSupported
-        ? await insertQ.select('id,orden').single()
-        : await insertQ.select('id').single()
-      if (error) { toast(error.message, 'error'); setBusy(null); return }
+      const { data, error } = await supabase.from('ticket_items').insert(payload).select('id').single()
+      if (error) throw new Error(error.message)
       savedId = (data as { id: string }).id
+      setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
     } else {
       const { error } = await supabase.from('ticket_items').update(payload).eq('id', it.id)
-      if (error) { toast(error.message, 'error'); setBusy(null); return }
+      if (error) throw new Error(error.message)
     }
     // Si se ligo a un articulo NO AUTORIZADO, la base lo deja pendiente sola (trigger 096): se lee como quedo.
     const { data: aut } = await supabase.from('ticket_items').select('autorizacion').eq('id', savedId).maybeSingle()
     const autorizacion = (aut as { autorizacion?: string } | null)?.autorizacion ?? it.autorizacion ?? 'normal'
-    if (productoId && !catalogo.some(p => p.id === productoId)) toast(`Se creó el artículo «${productNameInput || it.descripcion}» en el catálogo`)
-    await loadCatalogo(detalle.ticket.sucursal_id)
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
-    const currentItems = detalle.items.map(x => x.id === it.id ? {
-        ...x,
-        id: savedId,
-        descripcion: payload.descripcion as string,
-        cantidad: payload.cantidad as number | null,
-        unidad: payload.unidad as string | null,
-        monto: payload.monto as number | null,
-        categoria_id: payload.categoria_id as string | null,
-        producto_catalogo_id: productoId,
-        necesita_revision: necesita,
-        motivo_revision: payload.motivo_revision as string | null,
-        autorizacion,
-        orden: itemOrderSupported ? itemOrder : x.orden,
-        categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
-      } : x)
-    const totalTicket = await syncTicketTotal(detalle.ticket, currentItems)
+    return items.map(x => x.id === it.id ? {
+      ...x,
+      id: savedId,
+      descripcion: descripcionFinal,
+      cantidad: it.cantidad,
+      unidad: it.unidad || null,
+      monto: it.monto,
+      categoria_id: it.categoria_id || null,
+      producto_catalogo_id: productoId,
+      necesita_revision: necesita,
+      motivo_revision: payload.motivo_revision as string | null,
+      autorizacion,
+      orden: itemOrderSupported ? itemOrder : x.orden,
+      categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
+    } : x)
+  }
 
-    // Resolver las alertas de renglon que ya no aplican y REFRESCAR el estado de la
-    // lista. Sin esto, la etiqueta "Productos nuevos" y el filtro "Requieren revision"
-    // quedaban viejos y el ticket parecia seguir pendiente aunque ya se guardo.
-    const algunRenglonPendiente = currentItems.some(x => x.necesita_revision)
-    // 'ia_sin_leer' se cierra en cuanto el admin captura renglones a mano: asi el lote
-    // "Releer con IA" ya no pisa esa captura.
-    const tiposAResolver = algunRenglonPendiente
-      ? ['producto_no_reconocido', 'ia_sin_leer']
-      : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria', 'ia_sin_leer']
-    await supabase.from('alertas_tickets').update({ resuelta: true })
-      .eq('registro_ticket_id', detalle.ticket.id).in('tipo', tiposAResolver)
-    const { data: openAlerts } = await supabase.from('alertas_tickets')
-      .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
-      .eq('registro_ticket_id', detalle.ticket.id).eq('resuelta', false)
-    const alertasRestantes = (openAlerts as AlertRow[] | null) ?? []
-    setAlertas(prev => ({ ...prev, [detalle.ticket.id]: alertasRestantes }))
+  // UN solo boton para todo el ticket: guarda los renglones que cambiaron o que faltan por revisar (y ensena al
+  // catalogo) y, si se pide, confirma el ticket. Antes habia "Guardar y ensenar" por renglon y "Confirmar ticket"
+  // NO guardaba lo editado: si no picabas el de cada renglon, la correccion se perdia.
+  async function guardarTicket(confirmar: boolean) {
+    const d = detalle
+    if (!d) return
+    const porGuardar = d.items.filter(it => formsRenglon.current[it.id] && (
+      it.id.startsWith('nuevo-') || renglonesTocados.current.has(it.id) || it.necesita_revision || !it.producto_catalogo_id))
+    // Avisar ANTES que articulos nuevos se van a crear en el catalogo.
+    const nuevos = Array.from(new Set(porGuardar.flatMap(it => {
+      if (it.producto_catalogo_id || !it.categoria_id) return []
+      const nombre = String(new FormData(formsRenglon.current[it.id]!).get('productoNombre') ?? '').trim() || it.descripcion.trim()
+      if (!nombre || catalogo.some(p => p.nombre.toLowerCase() === nombre.toLowerCase())) return []
+      return [nombre]
+    })))
+    if (nuevos.length && !(await confirm(
+      nuevos.length === 1
+        ? `Se creará el artículo nuevo «${nuevos[0]}» en el catálogo. ¿Seguir?`
+        : `Se crearán ${nuevos.length} artículos nuevos en el catálogo: ${nuevos.map(n => `«${n}»`).join(', ')}. ¿Seguir?`))) return
 
-    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, monto: totalTicket }, items: currentItems } : d)
-    setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
-    setBusy(null)
-    // Feedback visible: que SE NOTE que se guardo el renglon.
-    setSavedFlash(prev => ({ ...prev, [savedId]: true }))
-    setTimeout(() => setSavedFlash(prev => { const n = { ...prev }; delete n[savedId]; return n }), 2500)
-
-    // El usuario espera "guardar = listo": si el ticket quedo limpio (todos los
-    // renglones revisados y sin alertas) y aun esta pendiente, lo confirmamos para
-    // que se vaya a Completados de una vez, sin tener que buscar otro boton.
-    if (!algunRenglonPendiente && alertasRestantes.length === 0 && detalle.ticket.estado !== 'confirmado') {
-      await confirmarTicket(detalle.ticket)
+    setBusy('guardar')
+    await ensureFreshSession()
+    let items = d.items
+    let ticket = d.ticket
+    try {
+      for (const it of porGuardar) items = await guardarRenglon(it, formsRenglon.current[it.id]!, items, ticket)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast('No se pudo guardar un renglón: ' + (msg.toLowerCase().includes('row-level') ? 'tu sesión expiró, recarga la página.' : msg), 'error')
+      setDetalle(x => x ? { ...x, items } : x)
+      setBusy(null)
+      return
     }
+    if (porGuardar.length) {
+      renglonesTocados.current.clear()
+      await loadCatalogo(ticket.sucursal_id)
+      ticket = { ...ticket, monto: await syncTicketTotal(ticket, items) }
+      // Cerrar las alertas de renglon que ya no aplican y refrescar la lista (si no, el ticket parecia seguir pendiente).
+      const tiposAResolver = items.some(x => x.necesita_revision)
+        ? ['producto_no_reconocido', 'ia_sin_leer']
+        : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria', 'ia_sin_leer']
+      await supabase.from('alertas_tickets').update({ resuelta: true })
+        .eq('registro_ticket_id', ticket.id).in('tipo', tiposAResolver)
+      await refrescarAlertas(ticket.id)
+      setDetalle(x => x ? { ...x, ticket, items } : x)
+    }
+    setBusy(null)
+    if (confirmar) await confirmarTicket(ticket)
+    else toast(porGuardar.length ? 'Cambios guardados' : 'No había cambios por guardar')
   }
 
   async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
@@ -1476,7 +1485,7 @@ export default function TicketsPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-5 mt-4">
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-800/50 p-3">
                   <Field label="Comercio"><input defaultValue={detalle.ticket.comercio ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'comercio', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
                   <Field label="Fecha"><input type="date" defaultValue={detalle.ticket.fecha_ticket ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'fecha_ticket', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
                 </div>
@@ -1509,7 +1518,7 @@ export default function TicketsPage() {
                 <div className="space-y-2">
                   {detalle.items.length === 0 && <p className="rounded-lg bg-zinc-800/50 px-3 py-4 text-sm text-zinc-500">Sin renglones. Agrega los productos o vuelve a leer con IA.</p>}
                   {detalle.items.map(it => editando ? (
-                    <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-lg p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
+                    <form key={it.id} ref={el => { formsRenglon.current[it.id] = el }} onInput={() => renglonesTocados.current.add(it.id)} onSubmit={e => e.preventDefault()} className={`rounded-lg p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
                       {(() => {
                         // UN solo campo de nombre: si es del catalogo se ve como pastilla verde; si no, se avisa que se creara.
                         const ligado = catalogo.find(p => p.id === it.producto_catalogo_id)
@@ -1549,14 +1558,7 @@ export default function TicketsPage() {
                             <option value="">Elige categoría</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                           </select></label>
                       </div>
-                      {(() => {
-                        // Que quede claro que el precio es de TODO lo comprado, no de una unidad.
-                        const cant = Number(it.cantidad), monto = Number(it.monto)
-                        const u = (it.unidad ?? '').trim() || 'unidad'
-                        if (!it.monto) return <p className="nota">Precio total = lo que se pagó por todo el renglón (ej. los 2 kg juntos), no el precio de 1.</p>
-                        if (!it.cantidad || !(cant > 0)) return <p className="nota">{fmt(monto)} es lo que se pagó por todo el renglón.</p>
-                        return <p className="nota">{fmt(monto)} por {cant === 1 ? '' : 'los '}{cant.toLocaleString('es-MX')} {u}{cant !== 1 ? ` → ${fmt(monto / cant)} por ${u}` : ''}</p>
-                      })()}
+                      <p className="nota">Precio total: lo que se pagó por todas las unidades de este renglón. Es el mismo número que ves en ese renglón del ticket.</p>
                       <BloqueAutorizacion it={it} cats={cats} otros={detalle.items.length - 1}
                         categoriaInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.categoria_id ?? null}
                         busy={busy === 'aut-' + it.id} onDecidir={(a, cat) => decidirRenglon(it.id, detalle.ticket, a, cat, detalle.items.length - 1)} />
@@ -1568,22 +1570,6 @@ export default function TicketsPage() {
                             <span className="text-[13px] text-zinc-400">«{prod.nombre}» se compra:</span>
                             <SelectorUso uso={prod.uso} onElegir={u => cambiarUsoProd(prod, u)} />
                           </div>
-                        )
-                      })()}
-                      {(() => {
-                        const ligado = catalogo.find(p => p.id === it.producto_catalogo_id)
-                        const ya = (ligado?.sinonimos ?? []).filter(Boolean)
-                        return (
-                          <details className="rounded-lg bg-zinc-900/60 px-2 py-1.5">
-                            <summary className="cursor-pointer text-[13px] text-zinc-400">Otros nombres con los que aparece en los tickets{ya.length ? ` (${ya.length} ya ${ya.length === 1 ? 'aprendido' : 'aprendidos'})` : ''} · opcional</summary>
-                            <div className="mt-2 space-y-1.5">
-                              <p className="nota">Lo que dice este ticket se aprende solo al guardar. Aquí agrega otras formas en que lo escriben otros comercios, para que la IA lo reconozca la próxima vez. Ej.: GARRAFON 20L, AGUA BONAFONT. Separa con comas.</p>
-                              {ya.length > 0 && (
-                                <div className="flex flex-wrap gap-1">{ya.slice(0, 20).map(s => <span key={s} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">{s}</span>)}{ya.length > 20 && <span className="text-xs text-zinc-500">+{ya.length - 20}</span>}</div>
-                              )}
-                              <input name="sinonimos" placeholder="Otro nombre, otro más..." className="campo w-full px-2 py-1.5" />
-                            </div>
-                          </details>
                         )
                       })()}
                       {needsEquivalence(it.unidad) && (() => {
@@ -1611,9 +1597,6 @@ export default function TicketsPage() {
                           </div>
                         )
                       })()}
-                      <div className="flex items-center gap-2">
-                        <button type="submit" disabled={busy === it.id} className={`btn-secundario btn-sm flex-1 ${savedFlash[it.id] ? 'border-emerald-500 text-emerald-400' : ''}`}>{busy === it.id ? 'Guardando...' : savedFlash[it.id] ? '✓ Guardado' : 'Guardar y enseñar'}</button>
-                      </div>
                     </form>
                   ) : (
                     <div key={it.id} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
@@ -1627,8 +1610,10 @@ export default function TicketsPage() {
                   <span className="text-zinc-500">Total ticket</span>
                   <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
                 </div>
-                {detalle.ticket.estado !== 'confirmado' && (
-                  <button onClick={() => confirmarTicket(detalle.ticket)} disabled={busy === 'confirmar'} className="btn-primario w-full py-2.5">{busy === 'confirmar' ? 'Confirmando...' : 'Confirmar ticket'}</button>
+                {detalle.ticket.estado !== 'confirmado' ? (
+                  <button onClick={() => guardarTicket(true)} disabled={busy === 'guardar' || busy === 'confirmar'} className="btn-primario w-full py-2.5">{busy === 'guardar' ? 'Guardando...' : busy === 'confirmar' ? 'Confirmando...' : 'Guardar y confirmar ticket'}</button>
+                ) : editando && (
+                  <button onClick={() => guardarTicket(false)} disabled={busy === 'guardar'} className="btn-primario w-full py-2.5">{busy === 'guardar' ? 'Guardando...' : 'Guardar cambios'}</button>
                 )}
                 {sePuedeEliminar(detalle.ticket)
                   ? <button onClick={() => eliminarTicket(detalle.ticket)} className="btn-peligro w-full">Eliminar ticket</button>

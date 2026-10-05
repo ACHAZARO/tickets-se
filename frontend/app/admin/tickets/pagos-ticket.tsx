@@ -98,7 +98,7 @@ export default function PagosTicket({ ticketId, total, pagos, onGuardado }: {
         Pagado con:{' '}
         {texto ? <span className="font-medium text-zinc-100">{texto}</span> : <span className="text-zinc-500">No registrado</span>}
         {caja !== null && <span className="text-zinc-500"> · salió de Caja {pesos(caja)}</span>}
-        <button onClick={() => setEditando(true)} className="btn-texto btn-sm ml-1 px-1.5 py-0.5">Corregir</button>
+        <button onClick={() => setEditando(true)} className="btn-texto btn-sm ml-1 px-1.5 py-0.5">{texto ? 'Cambiar forma de pago' : 'Registrar forma de pago'}</button>
         {noCuadra && <p className="mt-0.5 text-red-400">Los pagos no suman el total del ticket ({total != null ? pesos(Number(total)) : 'sin total'}).</p>}
       </div>
     )
