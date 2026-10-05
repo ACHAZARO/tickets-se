@@ -3,6 +3,17 @@
 > Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
+## Sesion 2026-10-05 b (Claude) -- Renglones del ticket mas claros (rama `rediseno-pistache`, NO en produccion)
+- Un solo campo "Articulo" (se quito "Producto correcto" + "Articulo del catalogo"): si es del catalogo se ve como pastilla
+  verde "ya existe"; si no, avisa "no esta en el catalogo: al guardar se creara" y al guardar sale aviso "Se creo el articulo".
+  Abajo, gris: "En el ticket dice: «...»" (lo que leyo la IA).
+- CAMBIO de comportamiento: escribir otro nombre SUELTA el articulo ligado (antes lo RENOMBRABA en el catalogo sin avisar).
+  Renombrar se hace en Catalogo.
+- Titulos Cantidad / Unidad / Precio total / Categoria + linea "$233.24 por los 2 pz -> $116.62 por pz".
+- Sinonimos: plegable "Otros nombres con los que aparece en los tickets (N ya aprendidos)" con explicacion y los ya aprendidos.
+- Verificado en local (desktop y 375px) con un ticket real de ago WP sin guardar; tsc OK.
+- Pendiente: en modo entrenamiento (PLAN_MODO_ENTRENAMIENTO.md) no avisar "se creara" por cada articulo.
+
 ## Sesion 2026-10-05 (Claude) -- Fraude de JULIO Wings Palace cerrado
 - 21 tickets abiertos en Fraude (jul WP). Respaldo `respaldo.r097_fraude_wp_jul`. Ningun monto contado cambio.
 - 19 = mismo gasto subido dos veces (factura+remision/ticket de Cervezas y Refrescos x6, reimpresion Nutrioli, JugoKarl

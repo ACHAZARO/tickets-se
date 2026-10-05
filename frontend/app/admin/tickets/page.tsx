@@ -39,6 +39,7 @@ interface CatalogProduct {
   contiene_sub_cantidad: number | null
   contiene_sub_unidad: string | null
   uso?: string
+  sinonimos?: string[] | null
 }
 // Renglon de un articulo NO AUTORIZADO esperando decision (sale en Fraude), con su ticket para abrirlo.
 interface RenglonNoAut {
@@ -327,7 +328,7 @@ export default function TicketsPage() {
 
   const loadCatalogo = useCallback(async (sucId: string | null) => {
     let q = supabase.from('catalogo_productos')
-      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso')
+      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso, sinonimos')
       .eq('activo', true).order('nombre')
     q = sucId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucId}`) : q
     const { data } = await q
@@ -893,6 +894,7 @@ export default function TicketsPage() {
     // Si se ligo a un articulo NO AUTORIZADO, la base lo deja pendiente sola (trigger 096): se lee como quedo.
     const { data: aut } = await supabase.from('ticket_items').select('autorizacion').eq('id', savedId).maybeSingle()
     const autorizacion = (aut as { autorizacion?: string } | null)?.autorizacion ?? it.autorizacion ?? 'normal'
+    if (productoId && !catalogo.some(p => p.id === productoId)) toast(`Se creó el artículo «${productNameInput || it.descripcion}» en el catálogo`)
     await loadCatalogo(detalle.ticket.sucursal_id)
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
     const currentItems = detalle.items.map(x => x.id === it.id ? {
@@ -1508,29 +1510,53 @@ export default function TicketsPage() {
                   {detalle.items.length === 0 && <p className="rounded-lg bg-zinc-800/50 px-3 py-4 text-sm text-zinc-500">Sin renglones. Agrega los productos o vuelve a leer con IA.</p>}
                   {detalle.items.map(it => editando ? (
                     <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-lg p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
-                      <div className="flex gap-2">
-                        <input value={it.descripcion} onChange={e => setItemField(it.id, 'descripcion', e.target.value)} placeholder="Producto correcto" className="campo flex-1 min-w-0 px-2 py-1.5" />
-                        <button type="button" onClick={() => borrarRenglon(it)} className="btn-peligro btn-sm">Borrar</button>
-                      </div>
-                      {originalDesc[it.id] && originalDesc[it.id] !== it.descripcion && <p className="text-xs text-zinc-500">Leído originalmente: {originalDesc[it.id]}</p>}
+                      {(() => {
+                        // UN solo campo de nombre: si es del catalogo se ve como pastilla verde; si no, se avisa que se creara.
+                        const ligado = catalogo.find(p => p.id === it.producto_catalogo_id)
+                        const leido = originalDesc[it.id] || ''
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="etiqueta">Artículo</span>
+                              <button type="button" onClick={() => borrarRenglon(it)} className="btn-peligro btn-sm">Borrar</button>
+                            </div>
+                            <ElegirArticulo name="productoNombre" ariaLabel="Artículo"
+                              key={`prod-${it.id}`}
+                              valorInicial={ligado?.nombre ?? it.descripcion ?? ''}
+                              opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined, oculta: usoDe(p.uso) !== 'normal' }))}
+                              onCambio={(texto, elegida) => {
+                                // Escribir otro nombre SUELTA el articulo ligado (no lo renombra): renombrar se hace en Catalogo.
+                                if (elegida) { if (elegida.id !== it.producto_catalogo_id) vincularProducto(it, elegida.id) }
+                                else if (it.producto_catalogo_id) vincularProducto(it, '')
+                              }}
+                              placeholder="Escribe para buscar en el catálogo"
+                              notaNuevo={t => <>«{t}» no está en el catálogo: al guardar se creará como artículo nuevo.</>} />
+                            {leido && leido.toLowerCase() !== (ligado?.nombre ?? it.descripcion ?? '').toLowerCase() && (
+                              <p className="text-xs text-zinc-500">En el ticket dice: «{leido}»</p>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                        <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="cantidad" className="campo min-w-0 px-2 py-1.5" />
-                        <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="Unidad (cono, caja, pz...)" className="campo min-w-0 px-2 py-1.5" />
-                        <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="precio" className="campo min-w-0 px-2 py-1.5" />
-                        <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="campo md:col-span-2 min-w-0 px-2 py-1.5">
-                          <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
+                        <label className="block min-w-0"><span className="etiqueta block mb-1">Cantidad</span>
+                          <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="2" className="campo w-full min-w-0 px-2 py-1.5" /></label>
+                        <label className="block min-w-0"><span className="etiqueta block mb-1">Unidad</span>
+                          <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="kg, pz, caja..." className="campo w-full min-w-0 px-2 py-1.5" /></label>
+                        <label className="block min-w-0 col-span-2 md:col-span-1"><span className="etiqueta block mb-1">Precio total</span>
+                          <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="$ pagado" className="campo w-full min-w-0 px-2 py-1.5" /></label>
+                        <label className="block min-w-0 col-span-2"><span className="etiqueta block mb-1">Categoría</span>
+                          <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="campo w-full min-w-0 px-2 py-1.5">
+                            <option value="">Elige categoría</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          </select></label>
                       </div>
-                      <ElegirArticulo name="productoNombre" ariaLabel="Artículo del catálogo"
-                        key={`prod-${it.id}-${it.producto_catalogo_id ?? 'new'}`}
-                        valorInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
-                        opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined, oculta: usoDe(p.uso) !== 'normal' }))}
-                        onCambio={(texto, elegida) => {
-                          if (!texto.trim()) { vincularProducto(it, ''); return }
-                          if (elegida && elegida.id !== it.producto_catalogo_id) vincularProducto(it, elegida.id)
-                        }}
-                        placeholder="Artículo del catálogo (escribe para buscar)"
-                        notaNuevo={t => <>«{t}» es nuevo: se creará al guardar el renglón.</>} />
+                      {(() => {
+                        // Que quede claro que el precio es de TODO lo comprado, no de una unidad.
+                        const cant = Number(it.cantidad), monto = Number(it.monto)
+                        const u = (it.unidad ?? '').trim() || 'unidad'
+                        if (!it.monto) return <p className="nota">Precio total = lo que se pagó por todo el renglón (ej. los 2 kg juntos), no el precio de 1.</p>
+                        if (!it.cantidad || !(cant > 0)) return <p className="nota">{fmt(monto)} es lo que se pagó por todo el renglón.</p>
+                        return <p className="nota">{fmt(monto)} por {cant === 1 ? '' : 'los '}{cant.toLocaleString('es-MX')} {u}{cant !== 1 ? ` → ${fmt(monto / cant)} por ${u}` : ''}</p>
+                      })()}
                       <BloqueAutorizacion it={it} cats={cats} otros={detalle.items.length - 1}
                         categoriaInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.categoria_id ?? null}
                         busy={busy === 'aut-' + it.id} onDecidir={(a, cat) => decidirRenglon(it.id, detalle.ticket, a, cat, detalle.items.length - 1)} />
@@ -1544,7 +1570,22 @@ export default function TicketsPage() {
                           </div>
                         )
                       })()}
-                      <input name="sinonimos" placeholder="Sinónimos/códigos adicionales separados por coma" className="campo w-full px-2 py-1.5" />
+                      {(() => {
+                        const ligado = catalogo.find(p => p.id === it.producto_catalogo_id)
+                        const ya = (ligado?.sinonimos ?? []).filter(Boolean)
+                        return (
+                          <details className="rounded-lg bg-zinc-900/60 px-2 py-1.5">
+                            <summary className="cursor-pointer text-[13px] text-zinc-400">Otros nombres con los que aparece en los tickets{ya.length ? ` (${ya.length} ya ${ya.length === 1 ? 'aprendido' : 'aprendidos'})` : ''} · opcional</summary>
+                            <div className="mt-2 space-y-1.5">
+                              <p className="nota">Lo que dice este ticket se aprende solo al guardar. Aquí agrega otras formas en que lo escriben otros comercios, para que la IA lo reconozca la próxima vez. Ej.: GARRAFON 20L, AGUA BONAFONT. Separa con comas.</p>
+                              {ya.length > 0 && (
+                                <div className="flex flex-wrap gap-1">{ya.slice(0, 20).map(s => <span key={s} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">{s}</span>)}{ya.length > 20 && <span className="text-xs text-zinc-500">+{ya.length - 20}</span>}</div>
+                              )}
+                              <input name="sinonimos" placeholder="Otro nombre, otro más..." className="campo w-full px-2 py-1.5" />
+                            </div>
+                          </details>
+                        )
+                      })()}
                       {needsEquivalence(it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
                         const linkedSubIsBaseItem = Number(linked?.contiene_sub_cantidad) === 1 && !!linked?.contiene_sub_unidad && linked.contiene_sub_unidad.toLowerCase() !== String(linked?.contiene_unidad ?? '').toLowerCase()
