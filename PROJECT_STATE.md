@@ -10,8 +10,16 @@
   sospecha DESCARTADA: el original sigue confirmado, la copia sigue rechazada y ahora cuenta como "duplicado", no "fraude".
 - 2 = FRAUDE confirmado (rechazados, no cuentan): Sonigas $400 de talonario 2024 reutilizado (aed2e314) y "Gas compras
   Aps" $1,350 a mano sin ticket de gasera firmado por Fer Villanueva (07918aae).
-- Siguen abiertos en Fraude WP: mayo 10, junio 17, agosto 4. Pendiente: rediseno de los botones de Fraude (ideas dadas a
-  Alejandro el 05-oct: "Es el mismo gasto" / "Si cuenta" / "Es fraude"; hoy "Es fraude" sobre un ticket confirmado NO lo rechaza).
+- Siguen abiertos en Fraude WP: mayo 10, junio 17, agosto 4.
+- **Botones nuevos de Fraude (rama `rediseno-pistache`, NO en produccion aun) + migracion 097 `resolver_fraude` (ya en la BD):**
+  grupo -> "Es el mismo gasto" (eliges el que se queda; los otros se rechazan como copia, la foto queda de evidencia; NO se
+  borran por la regla "evidencia siempre"), "Contar ambos tickets" (los rechazados vuelven a Por confirmar), "Es fraude"
+  (eliges uno o todos; se rechazan AUNQUE esten confirmados). Suelto -> "No es fraude" / "Es fraude". Aviso amarillo si el
+  grupo tiene el mismo monto (y mismos productos cuando se pueden comparar): sugiere quedarse con la factura y revisar las
+  salidas de efectivo. Cada ticket muestra folio, si hoy cuenta, forma de pago y quien lo subio. Probado: RPC en 5 casos con
+  rollback (incluye no-admin bloqueado) + pantalla en local con junio WP (sin decidir nada).
+- Pendiente idea 6 (aviso al gerente al subir "ya hay una factura con este folio"): necesita leer el ticket ANTES de responder
+  (hoy la IA lee en segundo plano) -> decision de Alejandro sobre la espera.
 
 ## Sesion 2026-10-03 noche b (Claude) -- SEGUNDO REVISOR IA (prueba en seco) -> ver `PLAN_REVISOR_IA.md`
 - Problema de Alejandro: la IA deja demasiado a revision humana (14 dias: 27/63 = 43%; >95% de alertas se cerraban sin

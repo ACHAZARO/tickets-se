@@ -70,6 +70,7 @@ interface Ticket {
   sospecha_origen?: string | null
   sospecha_grupo?: string | null
   sospecha_estado?: string | null
+  folio_ticket?: string | null
   nota?: string | null // nota del gerente al subir: solo para humanos, la IA no la lee
   nota_para_ia?: boolean
   ticket_pagos?: PagoTicket[] // como se pago segun el gerente al subir; vacio = no registrado (antes del 03-oct-2026)
@@ -233,7 +234,7 @@ function emptyItem(ticketId: string): Omit<Item, 'categorias_gasto'> {
   }
 }
 
-const SELECT_TICKET = 'id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)'
+const SELECT_TICKET = 'id, comercio, fecha_ticket, monto, estado, created_at, storage_path_original, storage_path_archivo, sucursal_id, gemini_raw, es_duplicado, duplicado_de, sospechoso, sospecha_motivo, sospecha_origen, sospecha_grupo, sospecha_estado, folio_ticket, nota, nota_para_ia, ticket_pagos(forma_pago_id, monto, formas_pago(nombre, sale_de_caja, orden)), sucursales:sucursal_id(nombre, es_prueba), empleados:empleado_id(nombre)'
 
 export default function TicketsPage() {
   const { sucursalId, sucursales } = useSucursal()
@@ -253,6 +254,10 @@ export default function TicketsPage() {
   const [comercioFiltro, setComercioFiltro] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados' | 'fraude'>('todos')
   const [detectando, setDetectando] = useState(false)
+  // Grupo de Fraude en el que se esta eligiendo ticket: modo + ids elegidos.
+  const [fraudeSel, setFraudeSel] = useState<{ grupo: string; modo: 'mismo' | 'fraude'; ids: string[] } | null>(null)
+  // Renglones de los tickets en Fraude (para decir si un grupo trae los mismos productos).
+  const [firmasFraude, setFirmasFraude] = useState<Record<string, string>>({})
   const [releyendo, setReleyendo] = useState<{ hechos: number; total: number } | null>(null)
   const cancelarLote = useRef(false)
   const montado = useRef(true)
@@ -398,6 +403,27 @@ export default function TicketsPage() {
     if (!error) setNoAut((data as unknown as RenglonNoAut[]) ?? [])
   }, [sucursalId])
   useEffect(() => { cargarNoAut() }, [cargarNoAut, tickets])
+
+  // Firma de productos de cada ticket en un grupo de Fraude abierto: si todas coinciden, el grupo
+  // "trae los mismos productos" (tipico de factura + ticket/remision de la misma compra).
+  useEffect(() => {
+    if (filtroEstado !== 'fraude') return
+    const ids = tickets.filter(t => t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta' && t.sospecha_grupo).map(t => t.id)
+    if (!ids.length) { setFirmasFraude({}); return }
+    let vivo = true
+    supabase.from('ticket_items').select('registro_ticket_id, producto_catalogo_id, descripcion').in('registro_ticket_id', ids)
+      .then(({ data }) => {
+        if (!vivo || !data) return
+        const porTicket: Record<string, string[]> = {}
+        for (const r of data as { registro_ticket_id: string; producto_catalogo_id: string | null; descripcion: string | null }[]) {
+          (porTicket[r.registro_ticket_id] ??= []).push(r.producto_catalogo_id ?? (r.descripcion ?? '').trim().toLowerCase())
+        }
+        const firmas: Record<string, string> = {}
+        for (const [id, arr] of Object.entries(porTicket)) firmas[id] = [...new Set(arr)].sort().join('|')
+        setFirmasFraude(firmas)
+      })
+    return () => { vivo = false }
+  }, [filtroEstado, tickets])
 
   const marcarUso = useMarcarUso()
   async function cambiarUsoProd(prod: CatalogProduct, u: Uso) {
@@ -562,20 +588,42 @@ export default function TicketsPage() {
     fetchTickets()
   }
 
-  async function resolverSospecha(t: Ticket, estado: 'descartada' | 'confirmada') {
-    // Un papel repetido que el sistema rechazo solo: si la sospecha se descarta (era otra compra),
-    // vuelve a "Por confirmar" para contarse. Si es fraude, se queda rechazado.
-    const restaurar = estado === 'descartada' && t.estado === 'rechazado' && !!t.es_duplicado
-      && t.gemini_raw?._rechazo_auto === 'posible_duplicado'
-    const { error } = await supabase.from('registros_tickets').update({
-      sospecha_estado: estado, sospechoso: estado === 'confirmada',
-      ...(restaurar ? { estado: 'pendiente', es_duplicado: false, duplicado_de: null } : {}),
-    }).eq('id', t.id)
-    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
-    toast(estado === 'descartada'
-      ? (restaurar ? 'Sospecha descartada: el ticket vuelve a Por confirmar' : 'Sospecha descartada')
-      : 'Marcado como fraude')
+  // Decisiones de Fraude (RPC resolver_fraude, migracion 097): todo el grupo en una transaccion.
+  //  mismo_gasto: se queda solo `conservar`, los demas se rechazan como copia (la foto queda de evidencia).
+  //  contar_todos: no es fraude, todos cuentan. fraude: se rechazan `rechazar` (aunque esten confirmados).
+  //  no_fraude: ticket suelto que no es fraude.
+  async function resolverFraude(ids: string[], accion: 'mismo_gasto' | 'contar_todos' | 'fraude' | 'no_fraude',
+    opts: { conservar?: string; rechazar?: string[]; grupo?: string | null } = {}) {
+    // Si el grupo tiene tickets fuera del periodo/sucursal que se ve, no se decide a medias.
+    if (opts.grupo) {
+      const { data: todos } = await supabase.from('registros_tickets').select('id')
+        .eq('sospecha_grupo', opts.grupo).eq('sospechoso', true).eq('sospecha_estado', 'abierta')
+      const faltan = (todos ?? []).filter(x => !ids.includes(x.id)).length
+      if (faltan > 0) { toast(`Este grupo tiene ${faltan} ticket(s) fuera del periodo o sucursal que ves. Amplia el periodo y vuelve a decidir.`, 'error'); return false }
+    }
+    await ensureFreshSession()
+    const { data, error } = await supabase.rpc('resolver_fraude', {
+      p_ids: ids, p_accion: accion, p_conservar: opts.conservar ?? null, p_rechazar: opts.rechazar ?? null,
+    })
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return false }
+    const r = (data ?? {}) as { rechazados?: number; a_por_confirmar?: number }
+    const extra = r.a_por_confirmar ? ` ${r.a_por_confirmar} queda(n) en Por confirmar: confirmalo(s) para que cuente(n).` : ''
+    toast((accion === 'mismo_gasto' ? 'Listo: se quedo un solo ticket.'
+      : accion === 'fraude' ? `Marcado como fraude: ${r.rechazados ?? 0} rechazado(s), no cuenta(n).`
+      : 'Listo: no es fraude.') + extra)
+    setFraudeSel(null)
     fetchTickets()
+    return true
+  }
+
+  // Compatibilidad con el detalle del ticket ("Quitar de revision de fraude").
+  async function resolverSospecha(t: Ticket, estado: 'descartada' | 'confirmada') {
+    if (estado === 'confirmada') {
+      if (!(await confirm('Es fraude? Este ticket se rechaza y no cuenta.', { danger: true }))) return
+      await resolverFraude([t.id], 'fraude', { rechazar: [t.id] })
+    } else {
+      await resolverFraude([t.id], 'no_fraude')
+    }
   }
 
   async function guardarMotivo(t: Ticket, motivo: string) {
@@ -1047,7 +1095,9 @@ export default function TicketsPage() {
       if (t.sospecha_grupo) { const a = byGroup.get(t.sospecha_grupo) ?? []; a.push(t); byGroup.set(t.sospecha_grupo, a) }
       else sueltos.push(t)
     }
-    return { grupos: [...byGroup.values()], sueltos }
+    // Un "grupo" que quedo de un solo ticket visible se trata como suelto.
+    for (const [k, g] of [...byGroup]) if (g.length < 2) { sueltos.push(...g); byGroup.delete(k) }
+    return { grupos: [...byGroup.entries()].map(([key, tickets]) => ({ key, tickets })), sueltos }
   })()
   const ticketsFiltrados = baseTickets.filter(t =>
     filtroEstado === 'todos' ? true
@@ -1067,12 +1117,91 @@ export default function TicketsPage() {
       <input defaultValue={t.sospecha_motivo ?? ''} onBlur={e => guardarMotivo(t, e.target.value)} placeholder="motivo de la sospecha…"
         className="campo mt-2 w-full py-1.5" />
       <div className="mt-2 flex items-center gap-2">
-        <button onClick={() => resolverSospecha(t, 'descartada')} className="btn-quieto btn-sm">Descartar</button>
+        <button onClick={() => resolverSospecha(t, 'descartada')} className="btn-quieto btn-sm">No es fraude</button>
         <button onClick={() => resolverSospecha(t, 'confirmada')} className="btn-peligro btn-sm">Es fraude</button>
         <button onClick={() => abrirDetalle(t)} className="btn-texto btn-sm ml-auto">Abrir →</button>
       </div>
     </div>
   )
+
+  // Tarjeta de un grupo de Fraude: 3 decisiones. "Es el mismo gasto" y "Es fraude" piden elegir ticket(s).
+  const tarjetaGrupo = (key: string, g: Ticket[]) => {
+    const ids = g.map(t => t.id)
+    const n = g.length
+    const mismoMonto = g.every(t => t.monto != null && Number(t.monto) === Number(g[0].monto))
+    const firmas = g.map(t => firmasFraude[t.id])
+    const mismosProductos = firmas.every(f => !!f && f === firmas[0])
+    // Las copias rechazadas no guardan renglones: sin con que comparar, basta el mismo monto para sugerir.
+    const sinRenglones = firmas.some(f => !f)
+    const sel = fraudeSel?.grupo === key ? fraudeSel : null
+    const ambos = n === 2 ? 'ambos' : `los ${n}`
+    const elegir = (id: string) => setFraudeSel(s => {
+      if (!s || s.grupo !== key) return s
+      if (s.modo === 'mismo') return { ...s, ids: [id] }
+      return { ...s, ids: s.ids.includes(id) ? s.ids.filter(x => x !== id) : [...s.ids, id] }
+    })
+    return (
+      <div key={key} className="rounded-xl bg-red-900/40 p-3 space-y-2">
+        <p className="text-sm font-medium text-red-300">{n} tickets relacionados</p>
+        <p className="nota">{g[0]?.sospecha_motivo ?? 'sospecha'}</p>
+        {mismoMonto && (mismosProductos || sinRenglones) && (
+          <div className="rounded-lg bg-amber-900/40 p-2 text-sm text-amber-200 space-y-1">
+            <p><strong>Mismo monto ({fmt(g[0].monto)}){mismosProductos ? ' y mismos productos' : ''}:</strong> parece la misma compra subida dos veces (por ejemplo factura + ticket). Sugerencia: «Es el mismo gasto» y quedarte con la factura.</p>
+            <p className="text-amber-300/80">Antes revisa tus salidas de efectivo: si salió dinero para {ambos}, puede ser una nota inflada (fraude real).</p>
+          </div>
+        )}
+        {g.map(t => (
+          <div key={t.id} className={`tarjeta p-3 ${sel?.ids.includes(t.id) ? (sel.modo === 'mismo' ? 'ring-2 ring-emerald-500' : 'ring-2 ring-red-500') : ''}`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              {sel && (
+                <input type={sel.modo === 'mismo' ? 'radio' : 'checkbox'} name={'sel-' + key} checked={sel.ids.includes(t.id)}
+                  onChange={() => elegir(t.id)} aria-label={'Elegir ' + (t.comercio ?? 'ticket')} className="h-5 w-5 accent-emerald-500" />
+              )}
+              <button onClick={() => abrirDetalle(t)} className="text-sm font-medium text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
+              <span className="text-xs text-zinc-500">{t.fecha_ticket ?? 's/fecha'}{t.folio_ticket ? ` · folio ${t.folio_ticket}` : ''}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''}</span>
+              <span className="ml-auto text-sm text-zinc-200">{fmt(t.monto)}</span>
+            </div>
+            <p className="text-xs text-zinc-500 mt-1">
+              {t.estado === 'confirmado' ? 'Hoy cuenta' : t.estado === 'rechazado' ? 'Hoy no cuenta (rechazado)' : 'Por confirmar'}
+              {textoPagos(t.ticket_pagos) ? ` · pagado con ${textoPagos(t.ticket_pagos)}` : ''}
+              {t.empleados?.nombre ? ` · subió ${t.empleados.nombre}` : ''}
+            </p>
+          </div>
+        ))}
+        {!sel ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setFraudeSel({ grupo: key, modo: 'mismo', ids: [] })} className="btn-secundario btn-sm">Es el mismo gasto</button>
+            <button onClick={async () => {
+              if (!(await confirm(`¿Contar ${ambos} tickets? No es fraude: ${n === 2 ? 'los dos cuentan' : 'todos cuentan'} como gasto.`))) return
+              resolverFraude(ids, 'contar_todos', { grupo: key })
+            }} className="btn-quieto btn-sm">Contar {ambos} tickets</button>
+            <button onClick={() => setFraudeSel({ grupo: key, modo: 'fraude', ids: [] })} className="btn-peligro btn-sm">Es fraude</button>
+          </div>
+        ) : sel.modo === 'mismo' ? (
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-200">Marca el ticket que <strong>se queda</strong>. {n === 2 ? 'El otro ticket se borrará' : 'Los otros se borrarán'} de la cuenta (la foto se guarda como evidencia).</p>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={sel.ids.length !== 1} onClick={() => resolverFraude(ids, 'mismo_gasto', { conservar: sel.ids[0], grupo: key })}
+                className="btn-primario btn-sm">Dejar solo este ticket</button>
+              <button onClick={() => setFraudeSel(null)} className="btn-texto btn-sm">Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-200">¿Rechazar {ambos} tickets o solo uno? Marca cuál(es) son fraude: se rechazan y no cuentan. Los que no marques sí cuentan.</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setFraudeSel({ ...sel, ids })} className="btn-quieto btn-sm">Marcar {ambos}</button>
+              <button disabled={sel.ids.length === 0} onClick={async () => {
+                if (!(await confirm(`¿Rechazar ${sel.ids.length} ticket(s) como fraude? No contarán.`, { danger: true }))) return
+                resolverFraude(ids, 'fraude', { rechazar: sel.ids, grupo: key })
+              }} className="btn-peligro btn-sm">Rechazar{sel.ids.length === 0 ? '' : sel.ids.length === n ? ' ' + ambos : sel.ids.length === 1 ? ' solo este' : ' ' + sel.ids.length}</button>
+              <button onClick={() => setFraudeSel(null)} className="btn-texto btn-sm">Cancelar</button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -1238,12 +1367,7 @@ export default function TicketsPage() {
             <p className="text-sm text-zinc-500 text-center py-12">Sin tickets sospechosos. Usa &quot;Buscar sospechas&quot; o marca uno desde su detalle.</p>
           ) : (
             <div className="space-y-4">
-              {fraudeGrupos.grupos.map((g, i) => (
-                <div key={i} className="rounded-xl bg-red-900/40 p-3 space-y-2">
-                  <p className="text-sm font-medium text-red-300">Grupo relacionado · {g.length} tickets · {g[0]?.sospecha_motivo ?? 'sospecha'}</p>
-                  {g.map(filaSosp)}
-                </div>
-              ))}
+              {fraudeGrupos.grupos.map(({ key, tickets: g }) => tarjetaGrupo(key, g))}
               {fraudeGrupos.sueltos.length > 0 && (
                 <div className="space-y-2">
                   {fraudeGrupos.grupos.length > 0 && <h3 className="text-sm font-semibold text-zinc-300">Individuales</h3>}
