@@ -255,8 +255,8 @@ export default function TicketsPage() {
   const [comercioFiltro, setComercioFiltro] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados' | 'fraude'>('todos')
   const [detectando, setDetectando] = useState(false)
-  // Grupo de Fraude en el que se esta eligiendo ticket: modo + ids elegidos.
-  const [fraudeSel, setFraudeSel] = useState<{ grupo: string; modo: 'mismo' | 'fraude'; ids: string[] } | null>(null)
+  // Grupo de Fraude en el que se esta decidiendo: ticket que se queda y si se pregunta cual es fraude.
+  const [fraudeSel, setFraudeSel] = useState<{ grupo: string; quedar: string | null; preguntaFraude: boolean } | null>(null)
   // Renglones de los tickets en Fraude (para decir si un grupo trae los mismos productos).
   const [firmasFraude, setFirmasFraude] = useState<Record<string, string>>({})
   const [releyendo, setReleyendo] = useState<{ hechos: number; total: number } | null>(null)
@@ -1162,29 +1162,28 @@ export default function TicketsPage() {
     const sinRenglones = firmas.some(f => !f)
     const sel = fraudeSel?.grupo === key ? fraudeSel : null
     const ambos = n === 2 ? 'ambos' : `los ${n}`
-    const elegir = (id: string) => setFraudeSel(s => {
-      if (!s || s.grupo !== key) return s
-      if (s.modo === 'mismo') return { ...s, ids: [id] }
-      return { ...s, ids: s.ids.includes(id) ? s.ids.filter(x => x !== id) : [...s.ids, id] }
-    })
+    // Como se nombra un ticket en los botones: el folio es lo que distingue los papeles.
+    const nombre = (t: Ticket) => t.folio_ticket ? `folio ${t.folio_ticket}` : `${t.comercio ?? 'ticket'} ${fmt(t.monto)}`
     return (
       <div key={key} className="rounded-xl bg-red-900/40 p-3 space-y-2">
-        <p className="text-sm font-medium text-red-300">{n} tickets relacionados</p>
-        <p className="nota">{g[0]?.sospecha_motivo ?? 'sospecha'}</p>
+        <div>
+          <p className="text-sm font-medium text-red-300">Posible ticket duplicado</p>
+          <p className="nota">Son tickets que parecen ser de la misma compra subidos {n} veces.</p>
+        </div>
         {mismoMonto && (mismosProductos || sinRenglones) && (
           <div className="rounded-lg bg-amber-900/40 p-2 text-sm text-amber-200 space-y-1">
-            <p><strong>Mismo monto ({fmt(g[0].monto)}){mismosProductos ? ' y mismos productos' : ''}:</strong> parece la misma compra subida dos veces (por ejemplo factura + ticket). Sugerencia: «Es el mismo gasto» y quedarte con la factura.</p>
+            <p><strong>Mismo monto ({fmt(g[0].monto)}){mismosProductos ? ' y mismos productos' : ''}.</strong> Sugerencia: marca la factura y «Dejar solo este ticket».</p>
             <p className="text-amber-300/80">Antes revisa tus salidas de efectivo: si salió dinero para {ambos}, puede ser una nota inflada (fraude real).</p>
           </div>
         )}
+        <p className="text-sm text-zinc-200">Marca el ticket que <strong>se queda</strong>. {n === 2 ? 'El otro ticket se borrará' : 'Los otros se borrarán'} de la cuenta (la foto se guarda como evidencia).</p>
         {g.map(t => (
-          <div key={t.id} className={`tarjeta p-3 ${sel?.ids.includes(t.id) ? (sel.modo === 'mismo' ? 'ring-2 ring-emerald-500' : 'ring-2 ring-red-500') : ''}`}>
+          <label key={t.id} className={`tarjeta p-3 block cursor-pointer ${sel?.quedar === t.id ? 'ring-2 ring-emerald-500' : ''}`}>
             <div className="flex items-center gap-2 flex-wrap">
-              {sel && (
-                <input type={sel.modo === 'mismo' ? 'radio' : 'checkbox'} name={'sel-' + key} checked={sel.ids.includes(t.id)}
-                  onChange={() => elegir(t.id)} aria-label={'Elegir ' + (t.comercio ?? 'ticket')} className="h-5 w-5 accent-emerald-500" />
-              )}
-              <button onClick={() => abrirDetalle(t)} className="text-sm font-medium text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
+              <input type="radio" name={'sel-' + key} checked={sel?.quedar === t.id}
+                onChange={() => setFraudeSel({ grupo: key, quedar: t.id, preguntaFraude: false })}
+                aria-label={'Se queda ' + nombre(t)} className="h-5 w-5 accent-emerald-500" />
+              <button type="button" onClick={e => { e.preventDefault(); abrirDetalle(t) }} className="text-sm font-medium text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
               <span className="text-xs text-zinc-500">{t.fecha_ticket ?? 's/fecha'}{t.folio_ticket ? ` · folio ${t.folio_ticket}` : ''}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''}</span>
               <span className="ml-auto text-sm text-zinc-200">{fmt(t.monto)}</span>
             </div>
@@ -1193,37 +1192,35 @@ export default function TicketsPage() {
               {textoPagos(t.ticket_pagos) ? ` · pagado con ${textoPagos(t.ticket_pagos)}` : ''}
               {t.empleados?.nombre ? ` · subió ${t.empleados.nombre}` : ''}
             </p>
-          </div>
+          </label>
         ))}
-        {!sel ? (
+        {sel?.preguntaFraude ? (
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-200"><strong>¿Cuál es fraude?</strong> Se rechaza y no cuenta; queda marcado para hablarlo con el gerente.</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={async () => {
+                if (!(await confirm(`¿Rechazar ${ambos} tickets como fraude? Ninguno contará.`, { danger: true }))) return
+                resolverFraude(ids, 'fraude', { rechazar: ids, grupo: key })
+              }} className="btn-peligro btn-sm">{n === 2 ? 'Los dos' : 'Todos'}</button>
+              {g.map(t => (
+                <button key={t.id} onClick={async () => {
+                  if (!(await confirm(`¿Rechazar solo ${nombre(t)} como fraude? ${n === 2 ? 'El otro sí cuenta.' : 'Los demás sí cuentan.'}`, { danger: true }))) return
+                  resolverFraude(ids, 'fraude', { rechazar: [t.id], grupo: key })
+                }} className="btn-peligro btn-sm">Solo {nombre(t)}</button>
+              ))}
+              <button onClick={() => setFraudeSel(sel.quedar ? { ...sel, preguntaFraude: false } : null)} className="btn-texto btn-sm">Cancelar</button>
+            </div>
+          </div>
+        ) : (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setFraudeSel({ grupo: key, modo: 'mismo', ids: [] })} className="btn-secundario btn-sm">Es el mismo gasto</button>
+            <button disabled={!sel?.quedar} onClick={() => sel?.quedar && resolverFraude(ids, 'mismo_gasto', { conservar: sel.quedar, grupo: key })}
+              title={sel?.quedar ? '' : 'Primero marca el ticket que se queda'}
+              className="btn-primario btn-sm">Dejar solo este ticket</button>
             <button onClick={async () => {
               if (!(await confirm(`¿Contar ${ambos} tickets? No es fraude: ${n === 2 ? 'los dos cuentan' : 'todos cuentan'} como gasto.`))) return
               resolverFraude(ids, 'contar_todos', { grupo: key })
             }} className="btn-quieto btn-sm">Contar {ambos} tickets</button>
-            <button onClick={() => setFraudeSel({ grupo: key, modo: 'fraude', ids: [] })} className="btn-peligro btn-sm">Es fraude</button>
-          </div>
-        ) : sel.modo === 'mismo' ? (
-          <div className="space-y-2">
-            <p className="text-sm text-zinc-200">Marca el ticket que <strong>se queda</strong>. {n === 2 ? 'El otro ticket se borrará' : 'Los otros se borrarán'} de la cuenta (la foto se guarda como evidencia).</p>
-            <div className="flex flex-wrap gap-2">
-              <button disabled={sel.ids.length !== 1} onClick={() => resolverFraude(ids, 'mismo_gasto', { conservar: sel.ids[0], grupo: key })}
-                className="btn-primario btn-sm">Dejar solo este ticket</button>
-              <button onClick={() => setFraudeSel(null)} className="btn-texto btn-sm">Cancelar</button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-sm text-zinc-200">¿Rechazar {ambos} tickets o solo uno? Marca cuál(es) son fraude: se rechazan y no cuentan. Los que no marques sí cuentan.</p>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setFraudeSel({ ...sel, ids })} className="btn-quieto btn-sm">Marcar {ambos}</button>
-              <button disabled={sel.ids.length === 0} onClick={async () => {
-                if (!(await confirm(`¿Rechazar ${sel.ids.length} ticket(s) como fraude? No contarán.`, { danger: true }))) return
-                resolverFraude(ids, 'fraude', { rechazar: sel.ids, grupo: key })
-              }} className="btn-peligro btn-sm">Rechazar{sel.ids.length === 0 ? '' : sel.ids.length === n ? ' ' + ambos : sel.ids.length === 1 ? ' solo este' : ' ' + sel.ids.length}</button>
-              <button onClick={() => setFraudeSel(null)} className="btn-texto btn-sm">Cancelar</button>
-            </div>
+            <button onClick={() => setFraudeSel({ grupo: key, quedar: sel?.quedar ?? null, preguntaFraude: true })} className="btn-peligro btn-sm">Es fraude</button>
           </div>
         )}
       </div>
