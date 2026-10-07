@@ -1,7 +1,32 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-10-06.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-10-06 (Claude) -- SEPTIEMBRE Wings Palace: limpieza del lote + IA entiende faltas de ortografia
+
+**Lote:** el gerente subio 186 tickets el 05-oct 7:30-9:30 pm (110 se aprobaron solos). Limpieza por SQL (sin fotos: no habia sesion admin):
+- 38 renglones ligados al catalogo (17 articulos nuevos de WP: Pepino, Mandarina, Canela, Endulzante, Molleja/Higado de pollo,
+  Harina Cuspide 25 kg, Ciel 1 L 12 pack, MINERAL 12/1L, Carton biod #3, Caja pizza 35x35, Vela magica, Concentrado Deiman,
+  Aromatizante Glade, Espatula, Chile jalapeno, Ablandador; + Tablet para operar y Destilado de agave) con sinonimos.
+- Barriles XX 20L venian como cantidad 1 lt (alerta de precio x20) -> cantidad 20; hielo 5 kg -> 5. Bolsas papel #16/#35 estaban
+  mal ligadas a "BOLSA X24 GRANDE" (el matcher liga cualquier "bolsa" a ese articulo de una sola palabra util: PENDIENTE renombrarlo).
+- PIAYS x2: renglones sin IVA/IEPS (subtotal+IVA+IEPS = total) -> impuesto repartido proporcional (pulpa mango $210, jarabe $249 = historial).
+  Cervezas 03 y 08-sep: renglon "Descuento" ya venia aplicado en precios (doble) -> borrado + IVA repartido (barril = $810, historial).
+- Decisiones de Alejandro: Tablet Empeno Facil $2,169.99 = Extras (para operar); YouTube $419 = suscripcion; "Gas compras" $1,200 =
+  Gasolina para compras OK; Chedraui 27-sep OK (Bacardi + destilado de agave son de carta); Farmacia Guadalajara 18-sep -> Fraude
+  (galleta $7; aromatizantes OK; lo gestiona Alejandro). Folio 1331940 (X24 29-may) en Fraude: jamon/queso/tortilla/yogurt $106.50.
+- **FALTA:** aprobar con confirmar-admin los ~49 pendientes ya limpios (no hubo sesion admin en el navegador; Claude no teclea contrasenas).
+  Siguen para foto/gerente: nota 01-sep $172 (renglones suman $222), Ana Claudia 02-sep x2 y nota 05-oct (sin fecha), elberjas, Salsas Kitch.
+  $496, plastico $110, bolsa Bodegon $2, WELCH gomitas Costco $244.49 (preguntar), + 11 en Fraude (2023, Sam's $0 ano 2028, totales a mano...).
+- **RECORDATORIO ALEJANDRO:** revisar si en septiembre (y agosto) se VENDIO Bacardi y destilado de agave (ticket Chedraui 27-sep).
+
+**IA:** `matchProductInCatalog` (`_shared/catalog.ts`) corrige faltas de ortografia: palabra que no existe en el catalogo, 5+ letras, a 1 letra
+(2 si 8+) de UNA palabra conocida (o varias del mismo articulo) -> se corrige ("zanaboria", "xanahoria", "huebo", "mandrina", "Tomte").
+Regresion con 718 renglones reales WP: 0 cambios con el catalogo actual; sin sinonimos +13 aciertos, 0 errores. Publicado procesar-ticket v58
+y reprocesar-ticket v26 **desde lo que ya estaba en produccion + solo catalog.ts**: el procesar-ticket publicado trae el MODO ENTRENAMIENTO
+de otra sesion que NO esta commiteado (PLAN_MODO_ENTRENAMIENTO.md sin trackear). Quien commitee ese trabajo debe incluir este catalog.ts.
+Siguiente mejora posible: que Gemini devuelva `producto_catalogo` (el articulo que cree que es) para notas abreviadas ("Hvo", "Hgdo").
 
 ## Sesion 2026-10-05 b (Claude) -- Renglones del ticket mas claros (rama `rediseno-pistache`, NO en produccion)
 - Un solo campo "Articulo" (se quito "Producto correcto" + "Articulo del catalogo"): si es del catalogo se ve como pastilla
