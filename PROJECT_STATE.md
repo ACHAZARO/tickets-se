@@ -25,6 +25,19 @@
   "1 pz", "1 kg" o "5 kg"; el articulo es por kg y el historial $7.20/kg -> "1 kg $36" daba alerta x5. Ahora la cantidad se pasa a la unidad
   del articulo con la presentacion del nombre (1 pz = 5 kg; 1 kg de algo de 5 kg = 1 bolsa). Aplica a alerta de precio e historial.
   confirmar-admin ahora carga `nombre`. Publicados procesar-ticket, reprocesar-ticket, confirmar-admin y revisor-ia (desde produccion + estos archivos).
+- **Fraude de septiembre WP:** Alejandro descarto 9 de 10 sospechas de la IA. Causas: (a) otro papel en la foto (Guiot: debajo estaba
+  la nota de molleja $496; X24 06-sep; Xallapan); (b) ano mal leido (Sam's tomo "Vigencia 09/2028" de la encuesta; Adan 14/Sep/2026
+  con el 6 desvanecido -> "2023"; nota "4 9 2" -> 1992); (c) correcciones en notas de mercado cuyos renglones SI suman el total.
+  **Prompt (`_shared/gemini.ts`):** reglas nuevas VARIOS PAPELES EN LA FOTO, fecha = la de compra (no vigencias/encuestas/recompensas;
+  ano dudoso se corrige y NO es sospecha), RECOMPENSAS Y BONIFICACIONES de tiendas grandes = renglon Descuento (total $0 no es sospecha),
+  CORRECCIONES EN NOTAS A MANO solo son sospecha si ya corregido no cuadra o si lo corregido es el total. Prueba A/B en las fotos reales
+  (funcion temporal de solo lectura, ya borrada): viejo 4 falsas alarmas de 10, nuevo 0; el fraude real Sonigas 2024 lo sigue cachando.
+  Publicado en procesar-ticket v60, reprocesar-ticket v28, revisar-precio v3, revisor-ia v7.
+- Farmacia Guadalajara 18-sep: renglon galleta $7 `autorizacion='rechazado'` (por justificar, no cuenta) + sospecha 'confirmada';
+  el resto ($158.50) cuenta. Sam's 04-sep: RECOMPENSA/DESCUENTO PAGO ligados a DESCUENTO (+ sinonimos). Adan y Sam's: fecha verificada.
+- **OJO Alejandro:** "Gas compras" $1,200 del 30-sep se aprobo; en julio una remision a mano "Gas compras Aps" $1,350 (Fer Villanueva)
+  se confirmo como FRAUDE por no traer ticket de gasera. Confirmar que el de septiembre si tiene respaldo.
+- Mejoras de la app (rama, antes del push): ver `PENDIENTES_APP.md` (confirmar cierra Fraude, rechazar renglon, una foto por ticket, ...).
 - **RECORDATORIO ALEJANDRO:** revisar si en septiembre (y agosto) se VENDIO Bacardi y destilado de agave (ticket Chedraui 27-sep).
 
 **IA:** `matchProductInCatalog` (`_shared/catalog.ts`) corrige faltas de ortografia: palabra que no existe en el catalogo, 5+ letras, a 1 letra
