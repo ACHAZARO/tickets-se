@@ -73,9 +73,23 @@
   "proveedor de confianza" que pase solo (misma regla que el 18-sep: sin proveedores de confianza).
 - **Problema real:** las notas de verduleria llegan "sin comercio" (talonario generico), asi no se puede comparar por proveedor
   ni ver su historial. Y la misma verdura viene en "pz" o "kg" segun quien escribe (ruido en alertas de precio).
-- **Hacer:** (a) pedir al gerente que el vendedor escriba su nombre o el de la verduleria en la nota (o un sello); la IA ya lo
-  lee como comercio. (b) En la app, si la nota no trae comercio, que el gerente lo elija al subir de una lista corta de sus
-  proveedores (ojo: dato para humanos y para agrupar, NO se manda a la IA como instruccion). (c) Pedir que anoten kg.
+- **Wings Palace:** las notas de verduleria se aceptan COMO VIENEN (no se le pide al gerente ni al vendedor cambiar nada: ni nombre,
+  ni sello, ni kilos).
+- **DISENO ACORDADO (07-oct):**
+  1. Si la nota no trae comercio, el gerente lo ELIGE al subir de la lista de proveedores de la cuenta; el admin puede crear
+     proveedores (ej. "Verduleria"). Guardar aparte `comercio_leido` (del papel) y `comercio_declarado` (lo eligio el gerente);
+     en revision y reportes se ve cual es cual. El declarado es dato para humanos y para agrupar: NUNCA prueba nada y no se manda a
+     la IA como instruccion.
+  2. Lo que decide si se revisa es el TIPO DE PAPEL, no el nombre: ticket impreso de caja / factura puede aprobarse solo si cuadra;
+     **nota a mano o remision de talonario SIEMPRE a revision** (traiga o no comercio, aunque el gerente lo elija).
+  3. Senales de fraude con proveedor declarado (contra el historial de ESE proveedor): productos que no son los suyos (elige
+     "Verduleria" y trae jamon), precio por kg fuera de rango vs ese proveedor y los demas, frecuencia/montos raros (3 notas el mismo
+     dia, montos redondos, mes al doble del promedio), mas lo de hoy (suma vs total, total corregido, foto repetida).
+  4. Configuracion por cuenta: (a) "Notas a mano siempre a revision" ENCENDIDA por defecto; (b) "Aprobar solas notas a mano de un
+     proveedor elegido si monto < $X, productos de siempre y precios en rango" APAGADA (prenderla con 2-3 meses de historial);
+     (c) "Tope mensual por proveedor elegido" APAGADA. NO ofrecer "no revisar tickets con comercio" (en nota a mano se inventa).
+  5. Unidades: cada articulo del catalogo define su unidad (jitomate/cebolla/zanahoria kg; lechuga/aguacate/pina pz); importa la
+     consistencia, no que todo sea kg. La conversion por presentacion del 06-oct no cubre verdura suelta (pz <-> kg).
 
 ### 14. Renglones sin cantidad no entran a inventario (07-oct-2026)
 - **Caso:** Sam's 04-sep: 5 de 6 productos con `cantidad` vacia (el ticket no imprime "1") -> no sumaban a Stock/Entradas. Corregido.
