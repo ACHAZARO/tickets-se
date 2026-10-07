@@ -31,8 +31,9 @@
 - **Caso:** Sam's 04-sep: RECOMPENSA -$1,071.99 + DESCUENTO PAGO -$24.65 -> total $0 (se pago con recompensas). Fue a Fraude.
 - **Ya se hizo (IA):** regla en el prompt (recompensa, bonificacion, monedero, puntos, cupon = renglon Descuento; total $0 por
   recompensas no es sospecha) + sinonimos en el articulo DESCUENTO de WP.
-- **Pendiente (decision de negocio):** ¿un ticket pagado con recompensas cuenta $0 de gasto (hoy) o el valor de lo comprado?
-  La recompensa es dinero que el negocio ya gano antes. Preguntar a Alejandro.
+- **Decidido (Alejandro, 07-oct):** el ticket cuenta **$0** en el total, pero las **entradas a inventario si cuentan** (con su
+  precio real). Asi funciona ya: cada producto conserva su monto y cantidad, y la recompensa va en un renglon Descuento aparte
+  (gasto neto $0). Requisito: que cada renglon tenga cantidad (ver punto 14).
 
 ### 5. Renombrar "BOLSA X24 GRANDE 1 PZ" (06-oct-2026)
 - El buscador de productos lo liga a CUALQUIER renglon que diga "bolsa" (es su unica palabra util): "bolsa N. 16" de papel
@@ -58,10 +59,6 @@
   "Descuento" -$44.29. Senal: subtotal impreso = suma de renglones + descuento.
 - **Hacer:** regla en prompt o en codigo: si la suma de renglones (sin el descuento) + IVA = total, el renglon de descuento sobra.
 
-### 10. Aprobar en lote los tickets ya limpios (06-oct-2026)
-- **Caso:** 48 tickets de septiembre sin alertas quedaron "Por revisar" (se limpiaron por fuera); no hay boton para aprobarlos juntos.
-- **Hacer:** en Tickets, "Aprobar todos los que ya no tienen alertas (N)" con confirmacion; usa `confirmar-admin` uno por uno.
-
 ### 11. Abreviaturas en notas a mano ("Hvo", "Hgdo") (06-oct-2026)
 - Las faltas de ortografia ya se corrigen solas (hecho, abajo); las abreviaturas no. Idea: que Gemini devuelva tambien
   `producto_catalogo` (el articulo que cree que es) y usarlo solo si el buscador no encontro nada. Probar A/B como se hizo con el prompt.
@@ -71,9 +68,20 @@
   correcta" que quite la marca (hoy se hizo por SQL: `gemini_raw._fecha_verificada`). Y si la fecha esta tachada (nota "1 Gal Tamar"),
   pedirla al gerente en lugar de usar la de subida.
 
-### 13. Precios de mercado (verduras) con mucho ruido (06-oct-2026)
-- Cebolla, jitomate, lechuga en notas a mano vienen en "pz" o "kg" segun quien escribe y su precio varia; generan alertas de precio que
-  siempre se aprueban. Hacer: tolerancia mayor (o sin alerta) para montos chicos de mercado, o comparar solo cuando la unidad es kg.
+### 13. Notas a mano de mercado: que se SIGAN revisando, pero con proveedor identificado (07-oct-2026, Alejandro)
+- **Decidido:** NO bajar las alertas de las notas a mano; esta bien que la IA sospeche de la escritura a mano. Nada de
+  "proveedor de confianza" que pase solo (misma regla que el 18-sep: sin proveedores de confianza).
+- **Problema real:** las notas de verduleria llegan "sin comercio" (talonario generico), asi no se puede comparar por proveedor
+  ni ver su historial. Y la misma verdura viene en "pz" o "kg" segun quien escribe (ruido en alertas de precio).
+- **Hacer:** (a) pedir al gerente que el vendedor escriba su nombre o el de la verduleria en la nota (o un sello); la IA ya lo
+  lee como comercio. (b) En la app, si la nota no trae comercio, que el gerente lo elija al subir de una lista corta de sus
+  proveedores (ojo: dato para humanos y para agrupar, NO se manda a la IA como instruccion). (c) Pedir que anoten kg.
+
+### 14. Renglones sin cantidad no entran a inventario (07-oct-2026)
+- **Caso:** Sam's 04-sep: 5 de 6 productos con `cantidad` vacia (el ticket no imprime "1") -> no sumaban a Stock/Entradas. Corregido.
+- **Quedan:** 22 renglones confirmados en WP ($~7k, may-sep) y 3 en SE con cantidad vacia. Revisar contra foto (no siempre es 1).
+- **Hacer:** regla en el prompt: en tickets impresos, si el renglon no muestra cantidad, es 1. Y alerta si un renglon ligado a un
+  articulo de inventario queda sin cantidad.
 
 ## Hecho
 - 06-oct: la IA corrige faltas de ortografia ("zanaboria", "xanahoria", "huebo") -> `_shared/catalog.ts`.
