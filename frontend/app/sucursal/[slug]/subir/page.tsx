@@ -22,6 +22,17 @@ const pesos = (n: number) => '$' + n.toLocaleString('es-MX', { minimumFractionDi
 
 const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
 
+// Ticket ya subido que parece la misma compra (lo encuentra revisar-antes-de-subir).
+interface PosibleDuplicado {
+  motivo: 'misma_foto' | 'mismo_gasto'
+  comercio: string | null; fecha: string | null; monto: number | null; folio: string | null; es_factura: boolean
+}
+const fechaCorta = (f: string | null) => {
+  if (!f) return ''
+  const d = new Date(f + 'T12:00:00')
+  return isNaN(d.getTime()) ? f : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
+}
+
 // Reduce la foto antes de subir sin destruir texto chico del ticket. Mantener
 // mas resolucion que antes es clave para OCR; el timeout evita que se cuelgue.
 async function comprimirImagen(file: File, maxLado = 2400, calidad = 0.86): Promise<Blob> {
@@ -56,6 +67,13 @@ export default function SubirPage({ params }: PageProps) {
   const [enviadas, setEnviadas] = useState(0)
   const [duplicadas, setDuplicadas] = useState(0)
   const [fallidas, setFallidas] = useState(0)
+  const [descartadas, setDescartadas] = useState(0)
+  // Revision previa de cada foto (empieza al elegirla, mientras el gerente escoge la forma de pago).
+  // Guarda la foto ya comprimida para no comprimir dos veces.
+  const revisiones = useRef(new Map<File, { imagen: Promise<Blob>; dup: Promise<PosibleDuplicado | null> }>())
+  const [revisando, setRevisando] = useState(false)
+  const [pregunta, setPregunta] = useState<{ dup: PosibleDuplicado; n: number; total: number } | null>(null)
+  const responder = useRef<((subir: boolean) => void) | null>(null)
   const [progreso, setProgreso] = useState({ actual: 0, total: 0 })
   const [errorMsg, setErrorMsg] = useState<string>('')
   // Nota opcional para quien revisa (solo humanos): el servidor la guarda aparte y NUNCA se la pasa a la IA.
@@ -156,6 +174,47 @@ export default function SubirPage({ params }: PageProps) {
   }, [sessionToken, slug, router])
   useEffect(() => { cargarFormas() }, [cargarFormas])
 
+  // Pregunta a revisar-antes-de-subir si cada foto ya se subio (misma foto, mismo folio o factura + ticket).
+  // Nunca frena: si tarda o falla, cuenta como "sin duplicado".
+  const revisarAntes = useCallback((files: File[]) => {
+    revisiones.current = new Map()
+    let cadena: Promise<unknown> = Promise.resolve()
+    for (const file of files) {
+      const imagen = Promise.race<Blob>([
+        comprimirImagen(file),
+        new Promise<Blob>(resolve => setTimeout(() => resolve(file), 8000)),
+      ])
+      const dup = (cadena = cadena.then(async () => {
+        if (!sessionToken) return null
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), 25000)
+        try {
+          const fd = new FormData()
+          fd.append('imagen', await imagen, 'ticket.jpg')
+          const res = await fetch(`${EDGE_FUNCTIONS_URL}/revisar-antes-de-subir`, {
+            method: 'POST', headers: { Authorization: `Bearer ${sessionToken}` }, body: fd, signal: ctrl.signal,
+          })
+          const data = await res.json().catch(() => ({}))
+          return (res.ok && data?.duplicado ? data.duplicado : null) as PosibleDuplicado | null
+        } catch {
+          return null
+        } finally {
+          clearTimeout(t)
+        }
+      })) as Promise<PosibleDuplicado | null>
+      revisiones.current.set(file, { imagen, dup })
+    }
+  }, [sessionToken])
+
+  // Abre la pregunta "¿es la misma compra?" y espera la respuesta del gerente.
+  const preguntarDuplicado = (dup: PosibleDuplicado, n: number, total: number) =>
+    new Promise<boolean>(resolve => { responder.current = resolve; setPregunta({ dup, n, total }) })
+  function contestar(subir: boolean) {
+    setPregunta(null)
+    responder.current?.(subir)
+    responder.current = null
+  }
+
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     if (files.length === 0) return
@@ -163,6 +222,7 @@ export default function SubirPage({ params }: PageProps) {
     setImageFiles(files)
     setImageFile(files[0])
     setErrorMsg('')
+    revisarAntes(files)
 
     const reader = new FileReader()
     // onload SOLO en exito. onloadend tambien dispara al fallar/abortar con
@@ -183,15 +243,35 @@ export default function SubirPage({ params }: PageProps) {
       setState('error')
     }
     reader.readAsDataURL(files[0])
-  }, [])
+  }, [revisarAntes])
 
   const handleProcess = useCallback(async () => {
     if (!imageFile || !puedeEnviar) return
     setState('processing')
     setErrorMsg('')
 
-    const archivos = imageFiles.length ? imageFiles : (imageFile ? [imageFile] : [])
-    if (archivos.length === 0) return
+    const elegidos = imageFiles.length ? imageFiles : (imageFile ? [imageFile] : [])
+    if (elegidos.length === 0) return
+    // Si alguna foto parece ya subida, se pregunta antes de mandarla. La revision suele terminar mientras se
+    // elige la forma de pago; si no, se espera aqui (cada una tiene su propio limite de tiempo).
+    setRevisando(true)
+    const dups = await Promise.all(elegidos.map(f => revisiones.current.get(f)?.dup ?? Promise.resolve(null)))
+    setRevisando(false)
+    const archivos: File[] = []
+    let descartados = 0
+    const repetidos = dups.filter(Boolean).length
+    let n = 0
+    for (let i = 0; i < elegidos.length; i++) {
+      const dup = dups[i]
+      if (dup && !(await preguntarDuplicado(dup, ++n, repetidos))) { descartados++; continue }
+      archivos.push(elegidos[i])
+    }
+    setDescartadas(descartados)
+    if (archivos.length === 0) {
+      setEnviadas(0); setDuplicadas(0); setFallidas(0)
+      setState('done')
+      return
+    }
     // Con varias fotos, la misma nota va en cada una.
     const notaEnvio = nota.trim()
     const pagosEnvio = elegidas.length
@@ -201,10 +281,10 @@ export default function SubirPage({ params }: PageProps) {
     // Envia UNA foto con reintentos. Devuelve el resultado para contarlo.
     async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail' | 'expired'> {
       // La compresion no puede colgar el envio: si tarda >8s, usa la original.
-      const imagen = await Promise.race<Blob>([
+      const imagen = await (revisiones.current.get(file)?.imagen ?? Promise.race<Blob>([
         comprimirImagen(file),
         new Promise<Blob>(resolve => setTimeout(() => resolve(file), 8000)),
-      ])
+      ]))
       // Hasta 3 intentos por foto (la red movil falla intermitente).
       for (let intento = 1; intento <= 3; intento++) {
         const formData = new FormData()
@@ -281,6 +361,8 @@ export default function SubirPage({ params }: PageProps) {
     setEnviadas(0)
     setDuplicadas(0)
     setFallidas(0)
+    setDescartadas(0)
+    revisiones.current = new Map()
     setProgreso({ actual: 0, total: 0 })
     setImagePreview(null)
     setNota('')
@@ -319,10 +401,17 @@ export default function SubirPage({ params }: PageProps) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">¡Enviado! Gracias</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">{enviadas > 0 ? '¡Enviado! Gracias' : 'Listo, no se envió'}</h2>
         <p className="mt-2 text-sm text-zinc-400">
-          {enviadas > 1 ? `${enviadas} tickets se están` : 'El ticket se está'} procesando. No necesitas hacer nada más.
+          {enviadas > 0
+            ? `${enviadas > 1 ? `${enviadas} tickets se están` : 'El ticket se está'} procesando. No necesitas hacer nada más.`
+            : 'Descartaste el ticket porque ya estaba subido. No necesitas hacer nada más.'}
         </p>
+        {enviadas > 0 && descartadas > 0 && (
+          <p className="mt-3 rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-300">
+            {descartadas === 1 ? '1 foto se descartó' : `${descartadas} fotos se descartaron`} porque ya estaba subida.
+          </p>
+        )}
         {(duplicadas > 0 || fallidas > 0) && (
           <p className="mt-3 rounded-lg bg-amber-900 px-3 py-2 text-sm text-amber-300">
             {duplicadas > 0 && `${duplicadas} ya estaba(n) subido(s). `}
@@ -365,6 +454,31 @@ export default function SubirPage({ params }: PageProps) {
               Para autorizarlo, habla con el administrador.
             </p>
             <button onClick={avisosVistos} className="btn-primario w-full py-3">Entendido</button>
+          </div>
+        </div>
+      )}
+      {pregunta && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/80 p-4 sm:items-center">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="dup-titulo" aria-describedby="dup-texto" className="w-full max-w-md space-y-4 rounded-2xl border border-amber-700 bg-zinc-900 p-5 shadow-xl">
+            <h2 id="dup-titulo" className="text-lg font-semibold text-amber-300">
+              {pregunta.dup.motivo === 'misma_foto' ? 'Esta foto ya se subió' : '¿Es la misma compra?'}
+              {pregunta.total > 1 ? <span className="ml-2 text-sm font-normal text-zinc-500">({pregunta.n} de {pregunta.total})</span> : null}
+            </h2>
+            <div id="dup-texto" className="space-y-3">
+              <p className="rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-100">
+                Ya hay {pregunta.dup.es_factura ? 'una factura' : 'un ticket'} de <b className="font-semibold">{pregunta.dup.comercio ?? 'este comercio'}</b>
+                {pregunta.dup.monto != null ? <> por <b className="font-semibold">{pesos(pregunta.dup.monto)}</b></> : null}
+                {pregunta.dup.fecha ? ` del ${fechaCorta(pregunta.dup.fecha)}` : ''}
+                {pregunta.dup.folio ? ` con folio ${pregunta.dup.folio}` : ''}.
+              </p>
+              <p className="text-sm leading-relaxed text-zinc-300">
+                Si es la misma compra, mejor descarta este ticket. Si lo subes, lo revisará el administrador.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => contestar(false)} className="btn-primario w-full py-3">Descartar este ticket</button>
+              <button onClick={() => contestar(true)} className="btn-quieto w-full py-3">Subir de todos modos</button>
+            </div>
           </div>
         </div>
       )}
@@ -468,7 +582,8 @@ export default function SubirPage({ params }: PageProps) {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
                 <p className="text-sm font-medium text-zinc-100">
-                  {progreso.total > 1 ? `Enviando ${progreso.actual} de ${progreso.total}...` : 'Enviando...'}
+                  {revisando || pregunta ? 'Revisando si ya se subió...'
+                    : progreso.total > 1 ? `Enviando ${progreso.actual} de ${progreso.total}...` : 'Enviando...'}
                 </p>
               </div>
             )}
