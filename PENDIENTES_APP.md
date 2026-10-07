@@ -41,5 +41,41 @@
 ### 6. Modo entrenamiento: no avisar "se creara" por cada articulo (05-oct-2026)
 - Ver `PLAN_MODO_ENTRENAMIENTO.md`.
 
+### 7. Articulos que se aprueban pero NO son frecuentes: siempre a revision (07-oct-2026, Alejandro)
+- **Caso:** "Gas compras" $1,200 (30-sep) se aprobo porque el gerente lo comprobo, pero ese tipo de gasto debe pasar SIEMPRE por un
+  humano (en julio un "Gas compras Aps" $1,350 fue fraude). Igual la tablet de Empeno Facil, pirotecnia, etc.
+- **Ya existe en la BD:** `catalogo_productos.uso = 'ocasional'` (094) -> cuenta como gasto pero cada vez que aparece el ticket va a
+  Por revisar (alerta `articulo_ocasional`). Falta en el remake: que al aprobar un articulo raro la pantalla ofrezca "Aprobar, pero
+  revisarlo siempre" y que la IA lo trate como dudoso. Candidatos en WP: Gasolina para compras, Tablet para operar, Vela magica.
+
+### 8. Impuestos en remisiones (PIAYS) (06-oct-2026)
+- **Caso:** PIAYS 08 y 22-sep: subtotal + IVA + IEPS = total, pero los renglones venian sin impuesto -> "no cuadra". Se repartio a mano.
+- **Hacer:** `impuestosPorRenglon` (procesar-ticket) no se aplico porque `tipo_documento = 'remision'`; aplicarlo tambien a remisiones
+  que traen IVA/IEPS desglosado. (Ojo: `procesar-ticket` publicado trae el modo entrenamiento sin commitear.)
+
+### 9. Descuento contado dos veces en facturas (06-oct-2026)
+- **Caso:** Cervezas y Refrescos 03 y 08-sep: los precios de los renglones YA traian el descuento y la IA ademas puso un renglon
+  "Descuento" -$44.29. Senal: subtotal impreso = suma de renglones + descuento.
+- **Hacer:** regla en prompt o en codigo: si la suma de renglones (sin el descuento) + IVA = total, el renglon de descuento sobra.
+
+### 10. Aprobar en lote los tickets ya limpios (06-oct-2026)
+- **Caso:** 48 tickets de septiembre sin alertas quedaron "Por revisar" (se limpiaron por fuera); no hay boton para aprobarlos juntos.
+- **Hacer:** en Tickets, "Aprobar todos los que ya no tienen alertas (N)" con confirmacion; usa `confirmar-admin` uno por uno.
+
+### 11. Abreviaturas en notas a mano ("Hvo", "Hgdo") (06-oct-2026)
+- Las faltas de ortografia ya se corrigen solas (hecho, abajo); las abreviaturas no. Idea: que Gemini devuelva tambien
+  `producto_catalogo` (el articulo que cree que es) y usarlo solo si el buscador no encontro nada. Probar A/B como se hizo con el prompt.
+
+### 12. Fecha "asumida" que si era correcta (06-oct-2026)
+- **Caso:** Sam's 04-sep y Adan 14-sep salian "fecha asumida" aunque la fecha estaba bien. Hacer: en el detalle, boton "La fecha es
+  correcta" que quite la marca (hoy se hizo por SQL: `gemini_raw._fecha_verificada`). Y si la fecha esta tachada (nota "1 Gal Tamar"),
+  pedirla al gerente en lugar de usar la de subida.
+
+### 13. Precios de mercado (verduras) con mucho ruido (06-oct-2026)
+- Cebolla, jitomate, lechuga en notas a mano vienen en "pz" o "kg" segun quien escribe y su precio varia; generan alertas de precio que
+  siempre se aprueban. Hacer: tolerancia mayor (o sin alerta) para montos chicos de mercado, o comparar solo cuando la unidad es kg.
+
 ## Hecho
-(nada aun)
+- 06-oct: la IA corrige faltas de ortografia ("zanaboria", "xanahoria", "huebo") -> `_shared/catalog.ts`.
+- 06-oct: precios por presentacion ("HIELO 5 KG" leido como 1 pz / 1 kg / 5 kg) -> `_shared/precios.ts`; sin falsas alarmas x5 / x20.
+- 06-oct: prompt con menos falsas alarmas de Fraude (otros papeles, ano mal leido, recompensas, correcciones en notas) -> `_shared/gemini.ts`.
