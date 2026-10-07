@@ -73,8 +73,8 @@
   "proveedor de confianza" que pase solo (misma regla que el 18-sep: sin proveedores de confianza).
 - **Problema real:** las notas de verduleria llegan "sin comercio" (talonario generico), asi no se puede comparar por proveedor
   ni ver su historial. Y la misma verdura viene en "pz" o "kg" segun quien escribe (ruido en alertas de precio).
-- **Wings Palace:** las notas de verduleria se aceptan COMO VIENEN (no se le pide al gerente ni al vendedor cambiar nada: ni nombre,
-  ni sello, ni kilos).
+- **Wings Palace (aclarado 07-oct):** la operacion se queda COMO ESTABA: no se le pide nada nuevo al gerente ni al vendedor, y la IA
+  tampoco las da por buenas: las notas de verduleria siguen yendo a revision como hasta hoy.
 - **DISENO ACORDADO (07-oct):**
   1. Si la nota no trae comercio, el gerente lo ELIGE al subir de la lista de proveedores de la cuenta; el admin puede crear
      proveedores (ej. "Verduleria"). Guardar aparte `comercio_leido` (del papel) y `comercio_declarado` (lo eligio el gerente);
@@ -87,7 +87,10 @@
      dia, montos redondos, mes al doble del promedio), mas lo de hoy (suma vs total, total corregido, foto repetida).
   4. Configuracion por cuenta: (a) "Notas a mano siempre a revision" ENCENDIDA por defecto; (b) "Aprobar solas notas a mano de un
      proveedor elegido si monto < $X, productos de siempre y precios en rango" APAGADA (prenderla con 2-3 meses de historial);
-     (c) "Tope mensual por proveedor elegido" APAGADA. NO ofrecer "no revisar tickets con comercio" (en nota a mano se inventa).
+     (c) "Tope mensual por proveedor elegido" APAGADA; (d) "El gerente puede crear un comercio nuevo escribiendo el nombre" APAGADA
+     por defecto (solo elige de la lista que crea el admin). Si se prende: el comercio creado por el gerente queda marcado "creado
+     por gerente, falta aprobar" hasta que el admin lo acepte, y sus tickets van a revision. NO ofrecer "no revisar tickets con
+     comercio" (en nota a mano se inventa).
   5. Unidades: cada articulo del catalogo define su unidad (jitomate/cebolla/zanahoria kg; lechuga/aguacate/pina pz); importa la
      consistencia, no que todo sea kg. La conversion por presentacion del 06-oct no cubre verdura suelta (pz <-> kg).
 
