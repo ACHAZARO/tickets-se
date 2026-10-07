@@ -16,9 +16,15 @@
 - Decisiones de Alejandro: Tablet Empeno Facil $2,169.99 = Extras (para operar); YouTube $419 = suscripcion; "Gas compras" $1,200 =
   Gasolina para compras OK; Chedraui 27-sep OK (Bacardi + destilado de agave son de carta); Farmacia Guadalajara 18-sep -> Fraude
   (galleta $7; aromatizantes OK; lo gestiona Alejandro). Folio 1331940 (X24 29-may) en Fraude: jamon/queso/tortilla/yogurt $106.50.
-- **FALTA:** aprobar con confirmar-admin los ~49 pendientes ya limpios (no hubo sesion admin en el navegador; Claude no teclea contrasenas).
-  Siguen para foto/gerente: nota 01-sep $172 (renglones suman $222), Ana Claudia 02-sep x2 y nota 05-oct (sin fecha), elberjas, Salsas Kitch.
-  $496, plastico $110, bolsa Bodegon $2, WELCH gomitas Costco $244.49 (preguntar), + 11 en Fraude (2023, Sam's $0 ano 2028, totales a mano...).
+- **Cierre (misma noche, sesion admin de Alejandro en su Chrome):** 54 aprobados con confirmar-admin (48 limpios + 6 revisados contra foto:
+  nota 01-sep = lechugas $18 / apios $30 para cuadrar el total escrito $172; Ana Claudia x2 son del 02-sep (fecha certificado); "Salsas Kitch."
+  4x$124 = Salsa inglesa; plastico 2 m = "Plastico por metro"; bolsa Bodegon $2 = Bolsa reutilizable). Septiembre WP: 165 confirmados
+  $102,372.35 · 8 rechazados (foto repetida) · 11 en Fraude · 2 para el gerente: **Costco 17-sep $4,154.80 (gomitas Welch $244.49, para que?)**
+  y **nota "1 Gal Tamar" $170 (fecha tachada; quedo 05-oct por la subida)**.
+- **Precios por presentacion** (`_shared/precios.ts` `cantidadEnUnidadDelArticulo`): la misma bolsa "HIELO FRESKYHIELO 5 KG" la IA la anota
+  "1 pz", "1 kg" o "5 kg"; el articulo es por kg y el historial $7.20/kg -> "1 kg $36" daba alerta x5. Ahora la cantidad se pasa a la unidad
+  del articulo con la presentacion del nombre (1 pz = 5 kg; 1 kg de algo de 5 kg = 1 bolsa). Aplica a alerta de precio e historial.
+  confirmar-admin ahora carga `nombre`. Publicados procesar-ticket, reprocesar-ticket, confirmar-admin y revisor-ia (desde produccion + estos archivos).
 - **RECORDATORIO ALEJANDRO:** revisar si en septiembre (y agosto) se VENDIO Bacardi y destilado de agave (ticket Chedraui 27-sep).
 
 **IA:** `matchProductInCatalog` (`_shared/catalog.ts`) corrige faltas de ortografia: palabra que no existe en el catalogo, 5+ letras, a 1 letra
