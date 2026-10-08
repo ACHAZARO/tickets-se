@@ -121,7 +121,7 @@ serve(async (req: Request) => {
     const lineas = (itemsData ?? []) as { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[]
     const ids = [...new Set(lineas.map(it => it.producto_catalogo_id).filter(Boolean))] as string[]
     const { data: prods } = ids.length
-      ? await supabase.from('catalogo_productos').select('id, unidad_default, uso').in('id', ids)
+      ? await supabase.from('catalogo_productos').select('id, nombre, unidad_default, uso').in('id', ids)
       : { data: [] }
     await guardarPrecios(supabase, lineas, (prods ?? []) as CatalogProduct[], reg.sucursal_id, registro_id, reg.fecha_ticket ?? null)
 

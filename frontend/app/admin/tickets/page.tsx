@@ -257,8 +257,8 @@ export default function TicketsPage() {
   const [comercioFiltro, setComercioFiltro] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados' | 'fraude'>('todos')
   const [detectando, setDetectando] = useState(false)
-  // Grupo de Fraude en el que se esta eligiendo ticket: modo + ids elegidos.
-  const [fraudeSel, setFraudeSel] = useState<{ grupo: string; modo: 'mismo' | 'fraude'; ids: string[] } | null>(null)
+  // Grupo de Fraude en el que se esta decidiendo: ticket que se queda y si se pregunta cual es fraude.
+  const [fraudeSel, setFraudeSel] = useState<{ grupo: string; quedar: string | null; preguntaFraude: boolean } | null>(null)
   // Renglones de los tickets en Fraude (para decir si un grupo trae los mismos productos).
   const [firmasFraude, setFirmasFraude] = useState<Record<string, string>>({})
   const [releyendo, setReleyendo] = useState<{ hechos: number; total: number } | null>(null)
@@ -270,7 +270,9 @@ export default function TicketsPage() {
   }, [])
   const [editando, setEditando] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
-  const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({})
+  // Formularios de cada renglon y cuales se tocaron: el boton de abajo guarda todos juntos.
+  const formsRenglon = useRef<Record<string, HTMLFormElement | null>>({})
+  const renglonesTocados = useRef<Set<string>>(new Set())
   const [loadError, setLoadError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [itemOrderSupported, setItemOrderSupported] = useState(true)
@@ -713,6 +715,7 @@ export default function TicketsPage() {
   }
 
   function vincularProducto(it: Item, prodId: string) {
+    renglonesTocados.current.add(it.id)
     const prod = catalogo.find(p => p.id === prodId)
     setDetalle(d => d ? {
       ...d,
@@ -839,37 +842,29 @@ export default function TicketsPage() {
     return productoId
   }
 
-  async function guardarItemTicket(it: Item, form: HTMLFormElement) {
-    if (!detalle) return
-    setBusy(it.id)
-    await ensureFreshSession()
+  // Guarda UN renglon en la BD (y ensena al catalogo: liga/crea el articulo y aprende lo que dice el ticket como
+  // sinonimo). No toca la pantalla: devuelve la lista de renglones actualizada. Lanza error si algo falla.
+  async function guardarRenglon(it: Item, form: HTMLFormElement, items: Item[], ticket: Ticket): Promise<Item[]> {
     const fd = new FormData(form)
     const productNameInput = String(fd.get('productoNombre') ?? '').trim()
-    let productoId: string | null = null
-    try {
-      productoId = await ensureProduct(it, {
-        productName: productNameInput,
-        synonymText: String(fd.get('sinonimos') ?? ''),
-        baseQty: String(fd.get('baseQty') ?? ''),
-        baseUnit: String(fd.get('baseUnit') ?? ''),
-        baseItem: String(fd.get('baseItem') ?? ''),
-        subQty: String(fd.get('subQty') ?? ''),
-        subUnit: String(fd.get('subUnit') ?? ''),
-      })
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'No se pudo guardar el producto', 'error')
-      setBusy(null)
-      return
-    }
+    const productoId = await ensureProduct(it, {
+      productName: productNameInput,
+      synonymText: '',
+      baseQty: String(fd.get('baseQty') ?? ''),
+      baseUnit: String(fd.get('baseUnit') ?? ''),
+      baseItem: String(fd.get('baseItem') ?? ''),
+      subQty: String(fd.get('subQty') ?? ''),
+      subUnit: String(fd.get('subUnit') ?? ''),
+    })
     const necesita = !it.categoria_id || !it.unidad || !productoId
-    const itemOrder = it.orden ?? nextTicketItemOrder(detalle.items)
+    const itemOrder = it.orden ?? nextTicketItemOrder(items)
     const descripcionFinal = resolveItemDescription({
       detectedName: originalDesc[it.id] ?? '',
       rowDescription: it.descripcion,
       productName: productNameInput,
     })
     const payload: Record<string, unknown> = {
-      registro_ticket_id: detalle.ticket.id,
+      registro_ticket_id: ticket.id,
       descripcion: descripcionFinal,
       cantidad: it.cantidad,
       unidad: it.unidad || null,
@@ -882,68 +877,84 @@ export default function TicketsPage() {
     if (itemOrderSupported) payload.orden = itemOrder
     let savedId = it.id
     if (it.id.startsWith('nuevo-')) {
-      const insertQ = supabase.from('ticket_items').insert(payload)
-      const { data, error } = itemOrderSupported
-        ? await insertQ.select('id,orden').single()
-        : await insertQ.select('id').single()
-      if (error) { toast(error.message, 'error'); setBusy(null); return }
+      const { data, error } = await supabase.from('ticket_items').insert(payload).select('id').single()
+      if (error) throw new Error(error.message)
       savedId = (data as { id: string }).id
+      setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
     } else {
       const { error } = await supabase.from('ticket_items').update(payload).eq('id', it.id)
-      if (error) { toast(error.message, 'error'); setBusy(null); return }
+      if (error) throw new Error(error.message)
     }
     // Si se ligo a un articulo NO AUTORIZADO, la base lo deja pendiente sola (trigger 096): se lee como quedo.
     const { data: aut } = await supabase.from('ticket_items').select('autorizacion').eq('id', savedId).maybeSingle()
     const autorizacion = (aut as { autorizacion?: string } | null)?.autorizacion ?? it.autorizacion ?? 'normal'
-    await loadCatalogo(detalle.ticket.sucursal_id)
     const nombreCat = cats.find(c => c.id === it.categoria_id)?.nombre ?? null
-    const currentItems = detalle.items.map(x => x.id === it.id ? {
-        ...x,
-        id: savedId,
-        descripcion: payload.descripcion as string,
-        cantidad: payload.cantidad as number | null,
-        unidad: payload.unidad as string | null,
-        monto: payload.monto as number | null,
-        categoria_id: payload.categoria_id as string | null,
-        producto_catalogo_id: productoId,
-        necesita_revision: necesita,
-        motivo_revision: payload.motivo_revision as string | null,
-        autorizacion,
-        orden: itemOrderSupported ? itemOrder : x.orden,
-        categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
-      } : x)
-    const totalTicket = await syncTicketTotal(detalle.ticket, currentItems)
+    return items.map(x => x.id === it.id ? {
+      ...x,
+      id: savedId,
+      descripcion: descripcionFinal,
+      cantidad: it.cantidad,
+      unidad: it.unidad || null,
+      monto: it.monto,
+      categoria_id: it.categoria_id || null,
+      producto_catalogo_id: productoId,
+      necesita_revision: necesita,
+      motivo_revision: payload.motivo_revision as string | null,
+      autorizacion,
+      orden: itemOrderSupported ? itemOrder : x.orden,
+      categorias_gasto: nombreCat ? { nombre: nombreCat } : null,
+    } : x)
+  }
 
-    // Resolver las alertas de renglon que ya no aplican y REFRESCAR el estado de la
-    // lista. Sin esto, la etiqueta "Productos nuevos" y el filtro "Requieren revision"
-    // quedaban viejos y el ticket parecia seguir pendiente aunque ya se guardo.
-    const algunRenglonPendiente = currentItems.some(x => x.necesita_revision)
-    // 'ia_sin_leer' se cierra en cuanto el admin captura renglones a mano: asi el lote
-    // "Releer con IA" ya no pisa esa captura.
-    const tiposAResolver = algunRenglonPendiente
-      ? ['producto_no_reconocido', 'ia_sin_leer']
-      : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria', 'ia_sin_leer']
-    await supabase.from('alertas_tickets').update({ resuelta: true })
-      .eq('registro_ticket_id', detalle.ticket.id).in('tipo', tiposAResolver)
-    const { data: openAlerts } = await supabase.from('alertas_tickets')
-      .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
-      .eq('registro_ticket_id', detalle.ticket.id).eq('resuelta', false)
-    const alertasRestantes = (openAlerts as AlertRow[] | null) ?? []
-    setAlertas(prev => ({ ...prev, [detalle.ticket.id]: alertasRestantes }))
+  // UN solo boton para todo el ticket: guarda los renglones que cambiaron o que faltan por revisar (y ensena al
+  // catalogo) y, si se pide, confirma el ticket. Antes habia "Guardar y ensenar" por renglon y "Confirmar ticket"
+  // NO guardaba lo editado: si no picabas el de cada renglon, la correccion se perdia.
+  async function guardarTicket(confirmar: boolean) {
+    const d = detalle
+    if (!d) return
+    const porGuardar = d.items.filter(it => formsRenglon.current[it.id] && (
+      it.id.startsWith('nuevo-') || renglonesTocados.current.has(it.id) || it.necesita_revision || !it.producto_catalogo_id))
+    // Avisar ANTES que articulos nuevos se van a crear en el catalogo.
+    const nuevos = Array.from(new Set(porGuardar.flatMap(it => {
+      if (it.producto_catalogo_id || !it.categoria_id) return []
+      const nombre = String(new FormData(formsRenglon.current[it.id]!).get('productoNombre') ?? '').trim() || it.descripcion.trim()
+      if (!nombre || catalogo.some(p => p.nombre.toLowerCase() === nombre.toLowerCase())) return []
+      return [nombre]
+    })))
+    if (nuevos.length && !(await confirm(
+      nuevos.length === 1
+        ? `Se creará el artículo nuevo «${nuevos[0]}» en el catálogo. ¿Seguir?`
+        : `Se crearán ${nuevos.length} artículos nuevos en el catálogo: ${nuevos.map(n => `«${n}»`).join(', ')}. ¿Seguir?`))) return
 
-    setDetalle(d => d ? { ...d, ticket: { ...d.ticket, monto: totalTicket }, items: currentItems } : d)
-    setOriginalDesc(prev => ({ ...prev, [savedId]: prev[it.id] ?? it.descripcion }))
-    setBusy(null)
-    // Feedback visible: que SE NOTE que se guardo el renglon.
-    setSavedFlash(prev => ({ ...prev, [savedId]: true }))
-    setTimeout(() => setSavedFlash(prev => { const n = { ...prev }; delete n[savedId]; return n }), 2500)
-
-    // El usuario espera "guardar = listo": si el ticket quedo limpio (todos los
-    // renglones revisados y sin alertas) y aun esta pendiente, lo confirmamos para
-    // que se vaya a Completados de una vez, sin tener que buscar otro boton.
-    if (!algunRenglonPendiente && alertasRestantes.length === 0 && detalle.ticket.estado !== 'confirmado') {
-      await confirmarTicket(detalle.ticket)
+    setBusy('guardar')
+    await ensureFreshSession()
+    let items = d.items
+    let ticket = d.ticket
+    try {
+      for (const it of porGuardar) items = await guardarRenglon(it, formsRenglon.current[it.id]!, items, ticket)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast('No se pudo guardar un renglón: ' + (msg.toLowerCase().includes('row-level') ? 'tu sesión expiró, recarga la página.' : msg), 'error')
+      setDetalle(x => x ? { ...x, items } : x)
+      setBusy(null)
+      return
     }
+    if (porGuardar.length) {
+      renglonesTocados.current.clear()
+      await loadCatalogo(ticket.sucursal_id)
+      ticket = { ...ticket, monto: await syncTicketTotal(ticket, items) }
+      // Cerrar las alertas de renglon que ya no aplican y refrescar la lista (si no, el ticket parecia seguir pendiente).
+      const tiposAResolver = items.some(x => x.necesita_revision)
+        ? ['producto_no_reconocido', 'ia_sin_leer']
+        : ['producto_no_reconocido', 'sin_unidad', 'sin_categoria', 'ia_sin_leer']
+      await supabase.from('alertas_tickets').update({ resuelta: true })
+        .eq('registro_ticket_id', ticket.id).in('tipo', tiposAResolver)
+      await refrescarAlertas(ticket.id)
+      setDetalle(x => x ? { ...x, ticket, items } : x)
+    }
+    setBusy(null)
+    if (confirmar) await confirmarTicket(ticket)
+    else toast(porGuardar.length ? 'Cambios guardados' : 'No había cambios por guardar')
   }
 
   async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
@@ -1153,29 +1164,28 @@ export default function TicketsPage() {
     const sinRenglones = firmas.some(f => !f)
     const sel = fraudeSel?.grupo === key ? fraudeSel : null
     const ambos = n === 2 ? 'ambos' : `los ${n}`
-    const elegir = (id: string) => setFraudeSel(s => {
-      if (!s || s.grupo !== key) return s
-      if (s.modo === 'mismo') return { ...s, ids: [id] }
-      return { ...s, ids: s.ids.includes(id) ? s.ids.filter(x => x !== id) : [...s.ids, id] }
-    })
+    // Como se nombra un ticket en los botones: el folio es lo que distingue los papeles.
+    const nombre = (t: Ticket) => t.folio_ticket ? `folio ${t.folio_ticket}` : `${t.comercio ?? 'ticket'} ${fmt(t.monto)}`
     return (
       <div key={key} className="rounded-xl bg-red-900/40 p-3 space-y-2">
-        <p className="text-sm font-medium text-red-300">{n} tickets relacionados</p>
-        <p className="nota">{g[0]?.sospecha_motivo ?? 'sospecha'}</p>
+        <div>
+          <p className="text-sm font-medium text-red-300">Posible ticket duplicado</p>
+          <p className="nota">Son tickets que parecen ser de la misma compra subidos {n} veces.</p>
+        </div>
         {mismoMonto && (mismosProductos || sinRenglones) && (
           <div className="rounded-lg bg-amber-900/40 p-2 text-sm text-amber-200 space-y-1">
-            <p><strong>Mismo monto ({fmt(g[0].monto)}){mismosProductos ? ' y mismos productos' : ''}:</strong> parece la misma compra subida dos veces (por ejemplo factura + ticket). Sugerencia: «Es el mismo gasto» y quedarte con la factura.</p>
+            <p><strong>Mismo monto ({fmt(g[0].monto)}){mismosProductos ? ' y mismos productos' : ''}.</strong> Sugerencia: marca la factura y «Dejar solo este ticket».</p>
             <p className="text-amber-300/80">Antes revisa tus salidas de efectivo: si salió dinero para {ambos}, puede ser una nota inflada (fraude real).</p>
           </div>
         )}
+        <p className="text-sm text-zinc-200">Marca el ticket que <strong>se queda</strong>. {n === 2 ? 'El otro ticket se borrará' : 'Los otros se borrarán'} de la cuenta (la foto se guarda como evidencia).</p>
         {g.map(t => (
-          <div key={t.id} className={`tarjeta p-3 ${sel?.ids.includes(t.id) ? (sel.modo === 'mismo' ? 'ring-2 ring-emerald-500' : 'ring-2 ring-red-500') : ''}`}>
+          <label key={t.id} className={`tarjeta p-3 block cursor-pointer ${sel?.quedar === t.id ? 'ring-2 ring-emerald-500' : ''}`}>
             <div className="flex items-center gap-2 flex-wrap">
-              {sel && (
-                <input type={sel.modo === 'mismo' ? 'radio' : 'checkbox'} name={'sel-' + key} checked={sel.ids.includes(t.id)}
-                  onChange={() => elegir(t.id)} aria-label={'Elegir ' + (t.comercio ?? 'ticket')} className="h-5 w-5 accent-emerald-500" />
-              )}
-              <button onClick={() => abrirDetalle(t)} className="text-sm font-medium text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
+              <input type="radio" name={'sel-' + key} checked={sel?.quedar === t.id}
+                onChange={() => setFraudeSel({ grupo: key, quedar: t.id, preguntaFraude: false })}
+                aria-label={'Se queda ' + nombre(t)} className="h-5 w-5 accent-emerald-500" />
+              <button type="button" onClick={e => { e.preventDefault(); abrirDetalle(t) }} className="text-sm font-medium text-zinc-100 hover:underline">{t.comercio ?? 'Ticket'}</button>
               <span className="text-xs text-zinc-500">{t.fecha_ticket ?? 's/fecha'}{t.folio_ticket ? ` · folio ${t.folio_ticket}` : ''}{t.sucursales?.nombre ? ` · ${t.sucursales.nombre}` : ''}</span>
               <span className="ml-auto text-sm text-zinc-200">{fmt(t.monto)}</span>
             </div>
@@ -1184,37 +1194,35 @@ export default function TicketsPage() {
               {textoPagos(t.ticket_pagos) ? ` · pagado con ${textoPagos(t.ticket_pagos)}` : ''}
               {t.empleados?.nombre ? ` · subió ${t.empleados.nombre}` : ''}
             </p>
-          </div>
+          </label>
         ))}
-        {!sel ? (
+        {sel?.preguntaFraude ? (
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-200"><strong>¿Cuál es fraude?</strong> Se rechaza y no cuenta; queda marcado para hablarlo con el gerente.</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={async () => {
+                if (!(await confirm(`¿Rechazar ${ambos} tickets como fraude? Ninguno contará.`, { danger: true }))) return
+                resolverFraude(ids, 'fraude', { rechazar: ids, grupo: key })
+              }} className="btn-peligro btn-sm">{n === 2 ? 'Los dos' : 'Todos'}</button>
+              {g.map(t => (
+                <button key={t.id} onClick={async () => {
+                  if (!(await confirm(`¿Rechazar solo ${nombre(t)} como fraude? ${n === 2 ? 'El otro sí cuenta.' : 'Los demás sí cuentan.'}`, { danger: true }))) return
+                  resolverFraude(ids, 'fraude', { rechazar: [t.id], grupo: key })
+                }} className="btn-peligro btn-sm">Solo {nombre(t)}</button>
+              ))}
+              <button onClick={() => setFraudeSel(sel.quedar ? { ...sel, preguntaFraude: false } : null)} className="btn-texto btn-sm">Cancelar</button>
+            </div>
+          </div>
+        ) : (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setFraudeSel({ grupo: key, modo: 'mismo', ids: [] })} className="btn-secundario btn-sm">Es el mismo gasto</button>
+            <button disabled={!sel?.quedar} onClick={() => sel?.quedar && resolverFraude(ids, 'mismo_gasto', { conservar: sel.quedar, grupo: key })}
+              title={sel?.quedar ? '' : 'Primero marca el ticket que se queda'}
+              className="btn-primario btn-sm">Dejar solo este ticket</button>
             <button onClick={async () => {
               if (!(await confirm(`¿Contar ${ambos} tickets? No es fraude: ${n === 2 ? 'los dos cuentan' : 'todos cuentan'} como gasto.`))) return
               resolverFraude(ids, 'contar_todos', { grupo: key })
             }} className="btn-quieto btn-sm">Contar {ambos} tickets</button>
-            <button onClick={() => setFraudeSel({ grupo: key, modo: 'fraude', ids: [] })} className="btn-peligro btn-sm">Es fraude</button>
-          </div>
-        ) : sel.modo === 'mismo' ? (
-          <div className="space-y-2">
-            <p className="text-sm text-zinc-200">Marca el ticket que <strong>se queda</strong>. {n === 2 ? 'El otro ticket se borrará' : 'Los otros se borrarán'} de la cuenta (la foto se guarda como evidencia).</p>
-            <div className="flex flex-wrap gap-2">
-              <button disabled={sel.ids.length !== 1} onClick={() => resolverFraude(ids, 'mismo_gasto', { conservar: sel.ids[0], grupo: key })}
-                className="btn-primario btn-sm">Dejar solo este ticket</button>
-              <button onClick={() => setFraudeSel(null)} className="btn-texto btn-sm">Cancelar</button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-sm text-zinc-200">¿Rechazar {ambos} tickets o solo uno? Marca cuál(es) son fraude: se rechazan y no cuentan. Los que no marques sí cuentan.</p>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setFraudeSel({ ...sel, ids })} className="btn-quieto btn-sm">Marcar {ambos}</button>
-              <button disabled={sel.ids.length === 0} onClick={async () => {
-                if (!(await confirm(`¿Rechazar ${sel.ids.length} ticket(s) como fraude? No contarán.`, { danger: true }))) return
-                resolverFraude(ids, 'fraude', { rechazar: sel.ids, grupo: key })
-              }} className="btn-peligro btn-sm">Rechazar{sel.ids.length === 0 ? '' : sel.ids.length === n ? ' ' + ambos : sel.ids.length === 1 ? ' solo este' : ' ' + sel.ids.length}</button>
-              <button onClick={() => setFraudeSel(null)} className="btn-texto btn-sm">Cancelar</button>
-            </div>
+            <button onClick={() => setFraudeSel({ grupo: key, quedar: sel?.quedar ?? null, preguntaFraude: true })} className="btn-peligro btn-sm">Es fraude</button>
           </div>
         )}
       </div>
@@ -1477,7 +1485,7 @@ export default function TicketsPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-5 mt-4">
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-800/50 p-3">
                   <Field label="Comercio"><input defaultValue={detalle.ticket.comercio ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'comercio', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
                   <Field label="Fecha"><input type="date" defaultValue={detalle.ticket.fecha_ticket ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'fecha_ticket', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
                 </div>
@@ -1510,30 +1518,47 @@ export default function TicketsPage() {
                 <div className="space-y-2">
                   {detalle.items.length === 0 && <p className="rounded-lg bg-zinc-800/50 px-3 py-4 text-sm text-zinc-500">Sin renglones. Agrega los productos o vuelve a leer con IA.</p>}
                   {detalle.items.map(it => editando ? (
-                    <form key={it.id} onSubmit={e => { e.preventDefault(); guardarItemTicket(it, e.currentTarget) }} className={`rounded-lg p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
-                      <div className="flex gap-2">
-                        <input value={it.descripcion} onChange={e => setItemField(it.id, 'descripcion', e.target.value)} placeholder="Producto correcto" className="campo flex-1 min-w-0 px-2 py-1.5" />
-                        <button type="button" onClick={() => borrarRenglon(it)} className="btn-peligro btn-sm">Borrar</button>
-                      </div>
-                      {originalDesc[it.id] && originalDesc[it.id] !== it.descripcion && <p className="text-xs text-zinc-500">Leído originalmente: {originalDesc[it.id]}</p>}
+                    <form key={it.id} ref={el => { formsRenglon.current[it.id] = el }} onInput={() => renglonesTocados.current.add(it.id)} onSubmit={e => e.preventDefault()} className={`rounded-lg p-3 space-y-2 ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
+                      {(() => {
+                        // UN solo campo de nombre: si es del catalogo se ve como pastilla verde; si no, se avisa que se creara.
+                        const ligado = catalogo.find(p => p.id === it.producto_catalogo_id)
+                        const leido = originalDesc[it.id] || ''
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="etiqueta">Artículo</span>
+                              <button type="button" onClick={() => borrarRenglon(it)} className="btn-peligro btn-sm">Borrar</button>
+                            </div>
+                            <ElegirArticulo name="productoNombre" ariaLabel="Artículo"
+                              key={`prod-${it.id}`}
+                              valorInicial={ligado?.nombre ?? it.descripcion ?? ''}
+                              opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined, oculta: usoDe(p.uso) !== 'normal' }))}
+                              onCambio={(texto, elegida) => {
+                                // Escribir otro nombre SUELTA el articulo ligado (no lo renombra): renombrar se hace en Catalogo.
+                                if (elegida) { if (elegida.id !== it.producto_catalogo_id) vincularProducto(it, elegida.id) }
+                                else if (it.producto_catalogo_id) vincularProducto(it, '')
+                              }}
+                              placeholder="Escribe para buscar en el catálogo"
+                              notaNuevo={t => <>«{t}» no está en el catálogo: al guardar se creará como artículo nuevo.</>} />
+                            {leido && leido.toLowerCase() !== (ligado?.nombre ?? it.descripcion ?? '').toLowerCase() && (
+                              <p className="text-xs text-zinc-500">En el ticket dice: «{leido}»</p>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                        <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="cantidad" className="campo min-w-0 px-2 py-1.5" />
-                        <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="Unidad (cono, caja, pz...)" className="campo min-w-0 px-2 py-1.5" />
-                        <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="precio" className="campo min-w-0 px-2 py-1.5" />
-                        <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="campo md:col-span-2 min-w-0 px-2 py-1.5">
-                          <option value="">Categoria</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
+                        <label className="block min-w-0"><span className="etiqueta block mb-1">Cantidad</span>
+                          <input type="number" inputMode="decimal" value={it.cantidad ?? ''} onChange={e => setItemField(it.id, 'cantidad', e.target.value)} placeholder="2" className="campo w-full min-w-0 px-2 py-1.5" /></label>
+                        <label className="block min-w-0"><span className="etiqueta block mb-1">Unidad</span>
+                          <input list="unidades-tickets" value={it.unidad ?? ''} onChange={e => setItemField(it.id, 'unidad', e.target.value)} placeholder="kg, pz, caja..." className="campo w-full min-w-0 px-2 py-1.5" /></label>
+                        <label className="block min-w-0 col-span-2 md:col-span-1"><span className="etiqueta block mb-1">Precio total</span>
+                          <input type="number" inputMode="decimal" value={it.monto ?? ''} onChange={e => setItemField(it.id, 'monto', e.target.value)} placeholder="$ pagado" className="campo w-full min-w-0 px-2 py-1.5" /></label>
+                        <label className="block min-w-0 col-span-2"><span className="etiqueta block mb-1">Categoría</span>
+                          <select value={it.categoria_id ?? ''} onChange={e => setItemField(it.id, 'categoria_id', e.target.value)} className="campo w-full min-w-0 px-2 py-1.5">
+                            <option value="">Elige categoría</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          </select></label>
                       </div>
-                      <ElegirArticulo name="productoNombre" ariaLabel="Artículo del catálogo"
-                        key={`prod-${it.id}-${it.producto_catalogo_id ?? 'new'}`}
-                        valorInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.nombre ?? ''}
-                        opciones={catalogo.map(p => ({ id: p.id, nombre: p.nombre, detalle: p.unidad_default ?? undefined, oculta: usoDe(p.uso) !== 'normal' }))}
-                        onCambio={(texto, elegida) => {
-                          if (!texto.trim()) { vincularProducto(it, ''); return }
-                          if (elegida && elegida.id !== it.producto_catalogo_id) vincularProducto(it, elegida.id)
-                        }}
-                        placeholder="Artículo del catálogo (escribe para buscar)"
-                        notaNuevo={t => <>«{t}» es nuevo: se creará al guardar el renglón.</>} />
+                      <p className="nota">Precio total: lo que se pagó por todas las unidades de este renglón. Es el mismo número que ves en ese renglón del ticket.</p>
                       <BloqueAutorizacion it={it} cats={cats} otros={detalle.items.length - 1}
                         categoriaInicial={catalogo.find(p => p.id === it.producto_catalogo_id)?.categoria_id ?? null}
                         busy={busy === 'aut-' + it.id} onDecidir={(a, cat) => decidirRenglon(it.id, detalle.ticket, a, cat, detalle.items.length - 1)} />
@@ -1547,7 +1572,6 @@ export default function TicketsPage() {
                           </div>
                         )
                       })()}
-                      <input name="sinonimos" placeholder="Sinónimos/códigos adicionales separados por coma" className="campo w-full px-2 py-1.5" />
                       {needsEquivalence(it.unidad) && (() => {
                         const linked = catalogo.find(p => p.id === it.producto_catalogo_id)
                         const linkedSubIsBaseItem = Number(linked?.contiene_sub_cantidad) === 1 && !!linked?.contiene_sub_unidad && linked.contiene_sub_unidad.toLowerCase() !== String(linked?.contiene_unidad ?? '').toLowerCase()
@@ -1573,9 +1597,6 @@ export default function TicketsPage() {
                           </div>
                         )
                       })()}
-                      <div className="flex items-center gap-2">
-                        <button type="submit" disabled={busy === it.id} className={`btn-secundario btn-sm flex-1 ${savedFlash[it.id] ? 'border-emerald-500 text-emerald-400' : ''}`}>{busy === it.id ? 'Guardando...' : savedFlash[it.id] ? '✓ Guardado' : 'Guardar y enseñar'}</button>
-                      </div>
                     </form>
                   ) : (
                     <div key={it.id} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${it.necesita_revision ? TONE_BOX[alertTone(it.motivo_revision ?? '')] : 'bg-zinc-800/50'}`}>
@@ -1589,8 +1610,10 @@ export default function TicketsPage() {
                   <span className="text-zinc-500">Total ticket</span>
                   <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
                 </div>
-                {detalle.ticket.estado !== 'confirmado' && (
-                  <button onClick={() => confirmarTicket(detalle.ticket)} disabled={busy === 'confirmar'} className="btn-primario w-full py-2.5">{busy === 'confirmar' ? 'Confirmando...' : 'Confirmar ticket'}</button>
+                {detalle.ticket.estado !== 'confirmado' ? (
+                  <button onClick={() => guardarTicket(true)} disabled={busy === 'guardar' || busy === 'confirmar'} className="btn-primario w-full py-2.5">{busy === 'guardar' ? 'Guardando...' : busy === 'confirmar' ? 'Confirmando...' : 'Guardar y confirmar ticket'}</button>
+                ) : editando && (
+                  <button onClick={() => guardarTicket(false)} disabled={busy === 'guardar'} className="btn-primario w-full py-2.5">{busy === 'guardar' ? 'Guardando...' : 'Guardar cambios'}</button>
                 )}
                 {sePuedeEliminar(detalle.ticket)
                   ? <button onClick={() => eliminarTicket(detalle.ticket)} className="btn-peligro w-full">Eliminar ticket</button>

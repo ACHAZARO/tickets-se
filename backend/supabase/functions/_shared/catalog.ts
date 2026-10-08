@@ -253,6 +253,60 @@ function medidas(s: string): Set<string> {
   return new Set(m.map(x => x.replace(/\s+/g, '').replace(/lts?$/, 'l').replace(/kgs$/, 'kg').replace(/grs?$/, 'g').replace(/pack$/, 'pk')))
 }
 
+// Distancia de edicion (Levenshtein) con tope: si pasa de `max` corta y devuelve max + 1.
+function distancia(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    let minFila = i
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      if (cur[j] < minFila) minFila = cur[j]
+    }
+    if (minFila > max) return max + 1
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+// Vocabulario del catalogo: palabra (de nombres y sinonimos) -> productos que la usan. Cacheado por lista de productos.
+const vocabCache = new WeakMap<CatalogProduct[], Map<string, Set<string>>>()
+function vocabulario(products: CatalogProduct[]): Map<string, Set<string>> {
+  let v = vocabCache.get(products)
+  if (!v) {
+    v = new Map()
+    for (const p of products) for (const w of [p.nombre, ...p.sinonimos].flatMap(palabras)) {
+      if (!v.has(w)) v.set(w, new Set())
+      v.get(w)!.add(p.id)
+    }
+    vocabCache.set(products, v)
+  }
+  return v
+}
+
+// Faltas de ortografia de las notas a mano: "zanaboria", "xanahoria", "zanahorria" -> zanahoria; "huebo" -> huevo.
+// Solo corrige palabras que NO existen en el catalogo, de 5+ letras, a 1 letra de distancia (2 si tiene 8+),
+// y solo si hay UNA palabra candidata a esa distancia, o todas las candidatas son de un mismo producto
+// ("zanaboria" esta a 1 de "zanahoria" y del sinonimo "zanaoria": ambos son Zanahoria). Asi "polvo" no se vuelve "pollo".
+function corregirPalabra(t: string, vocab: Map<string, Set<string>>): string {
+  if (t.length < 5 || vocab.has(t)) return t
+  const max = t.length >= 8 ? 2 : 1
+  let mejorD = max + 1
+  let mejores: string[] = []
+  for (const w of vocab.keys()) {
+    if (w.length < 5) continue
+    // Ya coincide por el inicio (tickets cortados: "MEZQUI" -> "MEZQUITE"): no se toca, `aparece` lo liga.
+    if (t.startsWith(w) || w.startsWith(t)) return t
+    const d = distancia(t, w, max)
+    if (d < mejorD) { mejorD = d; mejores = [w] }
+    else if (d === mejorD && d <= max) mejores.push(w)
+  }
+  if (mejores.length <= 1) return mejores[0] ?? t
+  const productos = new Set(mejores.flatMap(w => [...vocab.get(w)!]))
+  return productos.size === 1 ? mejores[0] : t
+}
+
 // Liga un renglon a un producto del catalogo. Antes bastaba UNA palabra en comun ("queso"
 // ligaba "Queso americano" con "Dedos de queso Farm Rich"); ahora:
 // 1) igual al nombre o a un sinonimo (sin acentos ni signos) -> ese producto;
@@ -260,6 +314,7 @@ function medidas(s: string): Set<string> {
 //    candidato debe explicar mas de la mitad de las palabras del renglon (una presentacion
 //    igual cuenta como una palabra) y si ambos traen presentacion (325ml vs 1.18L) debe coincidir;
 // 3) gana el de mayor proporcion de palabras en comun, no el primero de la lista.
+// Antes de comparar, las palabras del renglon con falta de ortografia se corrigen (corregirPalabra).
 // Candidatos solo con numeros o codigos ("730", "61") solo cuentan como exactos.
 export function matchProductInCatalog(
   producto: string | null,
@@ -268,7 +323,8 @@ export function matchProductInCatalog(
   if (!producto) return null
   const d = normaliza(producto)
   if (!d) return null
-  const dPal = new Set(palabras(producto))
+  const vocab = vocabulario(products)
+  const dPal = new Set(palabras(producto).map(t => corregirPalabra(t, vocab)))
   const dMed = medidas(producto)
   let mejor: CatalogProduct | null = null
   let mejorPuntos = 0

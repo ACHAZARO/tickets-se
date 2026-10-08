@@ -10,6 +10,49 @@ export function esEnvio(texto: string | null | undefined): boolean {
   return /\benvios?\b/.test(s) || /^\s*moto\b/.test(s)
 }
 
+// Unidades de medida equivalentes (como las escribe la IA o el nombre del articulo).
+const BASE: Record<string, string> = { kg: 'kg', kgs: 'kg', kilo: 'kg', kilos: 'kg', g: 'g', gr: 'g', grs: 'g', gramos: 'g',
+  l: 'l', lt: 'l', lts: 'l', litro: 'l', litros: 'l', ml: 'ml' }
+const base = (u: string | null | undefined) => BASE[(u ?? '').toLowerCase().trim()] ?? null
+
+// Cantidad del renglon en la unidad del articulo. Si el nombre trae la presentacion ("HIELO FRESKYHIELO 5 KG",
+// "XX Lager barril 20L") y el articulo se mide en esa unidad, la misma bolsa puede venir como "1 pz", "1 kg" o "5 kg":
+// - en piezas/paquetes/barriles: cantidad x presentacion (2 pz = 10 kg);
+// - 1 en la unidad de medida de algo que viene de N (1 kg de una bolsa de 5 kg no existe): es 1 bolsa = N.
+// Devuelve null si no se puede comparar (otra unidad sin presentacion conocida).
+export function cantidadEnUnidadDelArticulo(
+  it: { cantidad: number | null; unidad: string | null }, prod: CatalogProduct | undefined,
+): number | null {
+  const cant = Number(it.cantidad)
+  if (!Number.isFinite(cant) || cant <= 0) return null
+  const uProd = prod?.unidad_default ?? null
+  if (!uProd || !it.unidad || it.unidad === uProd) {
+    const bProd = base(uProd)
+    if (bProd && cant === 1) {
+      const pres = presentacion(prod?.nombre ?? '', bProd)
+      if (pres && pres !== 1) return pres
+    }
+    return cant
+  }
+  const bProd = base(uProd)
+  if (!bProd) return null
+  // El renglon viene en la misma medida escrita distinto (lt vs l): igual que arriba.
+  if (base(it.unidad) === bProd) {
+    const pres = presentacion(prod?.nombre ?? '', bProd)
+    return cant === 1 && pres && pres !== 1 ? pres : cant
+  }
+  if (base(it.unidad)) return null // otra medida (g vs kg): no se adivina
+  const pres = presentacion(prod?.nombre ?? '', bProd)
+  return pres ? cant * pres : null
+}
+
+// "HIELO 5 KG" -> 5 (kg); "barril 20L" -> 20 (l). Solo si la medida del nombre es la unidad del articulo.
+function presentacion(nombre: string, bUnidad: string): number | null {
+  const m = nombre.toLowerCase().replace(/,/g, '.').matchAll(/(\d+(?:\.\d+)?)\s*(kgs?|kilos?|grs?|g|gramos|lts?|litros?|l|ml)(?![a-z])/g)
+  for (const x of m) if (base(x[2]) === bUnidad) { const n = Number(x[1]); if (n > 0) return n }
+  return null
+}
+
 // Mediana: una compra mal capturada en el historial no mueve la referencia (el promedio si).
 export function mediana(nums: number[]): number {
   const s = [...nums].sort((a, b) => a - b)
@@ -31,10 +74,11 @@ export async function guardarPrecios(
   for (const it of items) {
     const pid = it.producto_catalogo_id
     const monto = Number(it.monto)
-    const cant = Number(it.cantidad)
-    if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+    if (!pid || vistos.has(pid) || !Number.isFinite(monto) || monto <= 0) continue
     const prod = productos.find(p => p.id === pid)
-    if (prod?.unidad_default && it.unidad && it.unidad !== prod.unidad_default) continue
+    // En la unidad del articulo (2 pz de "HIELO 5 KG" = 10 kg); sin forma de convertir, no se guarda.
+    const cant = cantidadEnUnidadDelArticulo(it, prod)
+    if (cant == null) continue
     // Ocasionales y no autorizados no llevan historial de precios (migracion 094).
     if (prod && (prod.uso ?? 'normal') !== 'normal') continue
     vistos.add(pid)
@@ -60,14 +104,14 @@ export async function hayPrecioAnomalo(
   for (const it of items) {
     const pid = it.producto_catalogo_id
     const monto = Number(it.monto)
-    const cant = Number(it.cantidad)
-    if (!pid || !Number.isFinite(monto) || monto <= 0 || !Number.isFinite(cant) || cant <= 0) continue
+    if (!pid || !Number.isFinite(monto) || monto <= 0) continue
     const prod = productos.find(p => p.id === pid)
     // Los envios se comparan por proveedor (envioMuyAlto), no contra todas las motos de la sucursal.
     if (prod && esEnvio(prod.nombre)) continue
     if (prod && (prod.uso ?? 'normal') !== 'normal') continue
-    const mismaUnidad = !prod?.unidad_default || !it.unidad || it.unidad === prod.unidad_default
-    if (!mismaUnidad) continue
+    // Misma bolsa leida como "1 pz", "1 kg" o "5 kg": se compara en la unidad del articulo (no da falsa alarma x5).
+    const cant = cantidadEnUnidadDelArticulo(it, prod)
+    if (cant == null) continue
     try {
       const { data: previos } = await supabase.from('precio_historial')
         .select('precio_unitario').eq('producto_catalogo_id', pid)

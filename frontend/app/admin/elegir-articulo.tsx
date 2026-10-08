@@ -124,8 +124,7 @@ export function ElegirArticulo({
 
       {elegida && notaExistente && <p className="text-[13px] text-emerald-400">{notaExistente(elegida)}</p>}
       {!elegida && texto.trim() && notaNuevo && (
-        <p className="flex items-center gap-1.5 text-[13px] text-zinc-400">
-          <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+        <p className="text-[13px] text-zinc-400">
           {notaNuevo(texto.trim())}
         </p>
       )}

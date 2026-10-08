@@ -1,7 +1,69 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-10-03.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-10-06.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-10-06 (Claude) -- SEPTIEMBRE Wings Palace: limpieza del lote + IA entiende faltas de ortografia
+
+**Lote:** el gerente subio 186 tickets el 05-oct 7:30-9:30 pm (110 se aprobaron solos). Limpieza por SQL (sin fotos: no habia sesion admin):
+- 38 renglones ligados al catalogo (17 articulos nuevos de WP: Pepino, Mandarina, Canela, Endulzante, Molleja/Higado de pollo,
+  Harina Cuspide 25 kg, Ciel 1 L 12 pack, MINERAL 12/1L, Carton biod #3, Caja pizza 35x35, Vela magica, Concentrado Deiman,
+  Aromatizante Glade, Espatula, Chile jalapeno, Ablandador; + Tablet para operar y Destilado de agave) con sinonimos.
+- Barriles XX 20L venian como cantidad 1 lt (alerta de precio x20) -> cantidad 20; hielo 5 kg -> 5. Bolsas papel #16/#35 estaban
+  mal ligadas a "BOLSA X24 GRANDE" (el matcher liga cualquier "bolsa" a ese articulo de una sola palabra util: PENDIENTE renombrarlo).
+- PIAYS x2: renglones sin IVA/IEPS (subtotal+IVA+IEPS = total) -> impuesto repartido proporcional (pulpa mango $210, jarabe $249 = historial).
+  Cervezas 03 y 08-sep: renglon "Descuento" ya venia aplicado en precios (doble) -> borrado + IVA repartido (barril = $810, historial).
+- Decisiones de Alejandro: Tablet Empeno Facil $2,169.99 = Extras (para operar); YouTube $419 = suscripcion; "Gas compras" $1,200 =
+  Gasolina para compras OK; Chedraui 27-sep OK (Bacardi + destilado de agave son de carta); Farmacia Guadalajara 18-sep -> Fraude
+  (galleta $7; aromatizantes OK; lo gestiona Alejandro). Folio 1331940 (X24 29-may) en Fraude: jamon/queso/tortilla/yogurt $106.50.
+- **Cierre (misma noche, sesion admin de Alejandro en su Chrome):** 54 aprobados con confirmar-admin (48 limpios + 6 revisados contra foto:
+  nota 01-sep = lechugas $18 / apios $30 para cuadrar el total escrito $172; Ana Claudia x2 son del 02-sep (fecha certificado); "Salsas Kitch."
+  4x$124 = Salsa inglesa; plastico 2 m = "Plastico por metro"; bolsa Bodegon $2 = Bolsa reutilizable). Septiembre WP: 165 confirmados
+  $102,372.35 · 8 rechazados (foto repetida) · 11 en Fraude · 2 para el gerente: **Costco 17-sep $4,154.80 (gomitas Welch $244.49, para que?)**
+  y **nota "1 Gal Tamar" $170 (fecha tachada; quedo 05-oct por la subida)**.
+- **Precios por presentacion** (`_shared/precios.ts` `cantidadEnUnidadDelArticulo`): la misma bolsa "HIELO FRESKYHIELO 5 KG" la IA la anota
+  "1 pz", "1 kg" o "5 kg"; el articulo es por kg y el historial $7.20/kg -> "1 kg $36" daba alerta x5. Ahora la cantidad se pasa a la unidad
+  del articulo con la presentacion del nombre (1 pz = 5 kg; 1 kg de algo de 5 kg = 1 bolsa). Aplica a alerta de precio e historial.
+  confirmar-admin ahora carga `nombre`. Publicados procesar-ticket, reprocesar-ticket, confirmar-admin y revisor-ia (desde produccion + estos archivos).
+- **Fraude de septiembre WP:** Alejandro descarto 9 de 10 sospechas de la IA. Causas: (a) otro papel en la foto (Guiot: debajo estaba
+  la nota de molleja $496; X24 06-sep; Xallapan); (b) ano mal leido (Sam's tomo "Vigencia 09/2028" de la encuesta; Adan 14/Sep/2026
+  con el 6 desvanecido -> "2023"; nota "4 9 2" -> 1992); (c) correcciones en notas de mercado cuyos renglones SI suman el total.
+  **Prompt (`_shared/gemini.ts`):** reglas nuevas VARIOS PAPELES EN LA FOTO, fecha = la de compra (no vigencias/encuestas/recompensas;
+  ano dudoso se corrige y NO es sospecha), RECOMPENSAS Y BONIFICACIONES de tiendas grandes = renglon Descuento (total $0 no es sospecha),
+  CORRECCIONES EN NOTAS A MANO solo son sospecha si ya corregido no cuadra o si lo corregido es el total. Prueba A/B en las fotos reales
+  (funcion temporal de solo lectura, ya borrada): viejo 4 falsas alarmas de 10, nuevo 0; el fraude real Sonigas 2024 lo sigue cachando.
+  Publicado en procesar-ticket v60, reprocesar-ticket v28, revisar-precio v3, revisor-ia v7.
+- Farmacia Guadalajara 18-sep: renglon galleta $7 `autorizacion='rechazado'` (por justificar, no cuenta) + sospecha 'confirmada';
+  el resto ($158.50) cuenta. Sam's 04-sep: RECOMPENSA/DESCUENTO PAGO ligados a DESCUENTO (+ sinonimos). Adan y Sam's: fecha verificada.
+- **OJO Alejandro:** "Gas compras" $1,200 del 30-sep se aprobo; en julio una remision a mano "Gas compras Aps" $1,350 (Fer Villanueva)
+  se confirmo como FRAUDE por no traer ticket de gasera. Confirmar que el de septiembre si tiene respaldo.
+- Mejoras de la app (rama, antes del push): ver `PENDIENTES_APP.md` (confirmar cierra Fraude, rechazar renglon, una foto por ticket, ...).
+- **RECORDATORIO ALEJANDRO:** revisar si en septiembre (y agosto) se VENDIO Bacardi y destilado de agave (ticket Chedraui 27-sep).
+
+**IA:** `matchProductInCatalog` (`_shared/catalog.ts`) corrige faltas de ortografia: palabra que no existe en el catalogo, 5+ letras, a 1 letra
+(2 si 8+) de UNA palabra conocida (o varias del mismo articulo) -> se corrige ("zanaboria", "xanahoria", "huebo", "mandrina", "Tomte").
+Regresion con 718 renglones reales WP: 0 cambios con el catalogo actual; sin sinonimos +13 aciertos, 0 errores. Publicado procesar-ticket v58
+y reprocesar-ticket v26 **desde lo que ya estaba en produccion + solo catalog.ts**: el procesar-ticket publicado trae el MODO ENTRENAMIENTO
+de otra sesion que NO esta commiteado (PLAN_MODO_ENTRENAMIENTO.md sin trackear). Quien commitee ese trabajo debe incluir este catalog.ts.
+Siguiente mejora posible: que Gemini devuelva `producto_catalogo` (el articulo que cree que es) para notas abreviadas ("Hvo", "Hgdo").
+
+## Sesion 2026-10-05 b (Claude) -- Renglones del ticket mas claros (rama `rediseno-pistache`, NO en produccion)
+- Un solo campo "Articulo" (se quito "Producto correcto" + "Articulo del catalogo"): si es del catalogo se ve como pastilla
+  verde "ya existe"; si no, avisa "no esta en el catalogo: al guardar se creara" y al guardar sale aviso "Se creo el articulo".
+  Abajo, gris: "En el ticket dice: «...»" (lo que leyo la IA).
+- CAMBIO de comportamiento: escribir otro nombre SUELTA el articulo ligado (antes lo RENOMBRABA en el catalogo sin avisar).
+  Renombrar se hace en Catalogo.
+- Titulos Cantidad / Unidad / Precio total / Categoria + nota fija "Precio total: lo que se pago por todas las unidades de
+  este renglon (el mismo numero que ves en ese renglon del ticket)". Sin icono "+" en el aviso de articulo nuevo.
+- Se QUITO el campo manual de sinonimos: lo que dice el ticket se aprende solo al guardar y el Cerebro (090) agrega el resto.
+- Se QUITO "Guardar y ensenar" por renglon. Un solo boton abajo: "Guardar y confirmar ticket" (pendiente/rechazado) o
+  "Guardar cambios" (confirmado). Guarda los renglones tocados, nuevos o por revisar, ensena al catalogo y confirma.
+  Antes "Confirmar ticket" NO guardaba lo editado (se perdia sin aviso). Si se van a crear articulos, primero pregunta
+  "Se crearan N articulos nuevos: ... ¿Seguir?".
+- "Corregir" (forma de pago) ahora dice "Cambiar forma de pago" / "Registrar forma de pago". Comercio y Fecha en recuadro.
+- Verificado en local: ticket PRUEBA $134 (0e20a53f) guardado y confirmado de punta a punta (creo "Frijol negro" y "Arroz"
+  en el catalogo de PRUEBA, renglones ligados, estado confirmado) + "Guardar cambios" en confirmado OK; tsc OK.
+- Pendiente: en modo entrenamiento (PLAN_MODO_ENTRENAMIENTO.md) no avisar "se creara" por cada articulo.
 
 ## Sesion 2026-10-05 (Claude) -- Fraude de JULIO Wings Palace cerrado
 - 21 tickets abiertos en Fraude (jul WP). Respaldo `respaldo.r097_fraude_wp_jul`. Ningun monto contado cambio.
@@ -11,15 +73,11 @@
 - 2 = FRAUDE confirmado (rechazados, no cuentan): Sonigas $400 de talonario 2024 reutilizado (aed2e314) y "Gas compras
   Aps" $1,350 a mano sin ticket de gasera firmado por Fer Villanueva (07918aae).
 - Siguen abiertos en Fraude WP: mayo 10, junio 17, agosto 4.
-- **Botones nuevos de Fraude (rama `rediseno-pistache`, NO en produccion aun) + migracion 097 `resolver_fraude` (ya en la BD):**
-  grupo -> "Es el mismo gasto" (eliges el que se queda; los otros se rechazan como copia, la foto queda de evidencia; NO se
-  borran por la regla "evidencia siempre"), "Contar ambos tickets" (los rechazados vuelven a Por confirmar), "Es fraude"
-  (eliges uno o todos; se rechazan AUNQUE esten confirmados). Suelto -> "No es fraude" / "Es fraude". Aviso amarillo si el
-  grupo tiene el mismo monto (y mismos productos cuando se pueden comparar): sugiere quedarse con la factura y revisar las
-  salidas de efectivo. Cada ticket muestra folio, si hoy cuenta, forma de pago y quien lo subio. Probado: RPC en 5 casos con
-  rollback (incluye no-admin bloqueado) + pantalla en local con junio WP (sin decidir nada).
-- Pendiente idea 6 (aviso al gerente al subir "ya hay una factura con este folio"): necesita leer el ticket ANTES de responder
-  (hoy la IA lee en segundo plano) -> decision de Alejandro sobre la espera.
+- **Fraude por grupo (EN PRODUCCION 07-oct, main = e3683ce) + migracion 097 `resolver_fraude`:** recuadro "Posible ticket
+  duplicado"; se marca el ticket que se queda -> "Dejar solo este ticket" (los otros se rechazan como copia; la foto queda de
+  evidencia), "Contar ambos tickets" (rechazados vuelven a Por confirmar), "Es fraude" -> "¿Cual es fraude?" Los dos / Solo
+  folio X (se rechaza aunque este confirmado). Ticket suelto: "No es fraude" / "Es fraude". Aviso amarillo si mismo monto:
+  quedarse con la factura y revisar salidas de efectivo. El 07-oct se publico a main toda la rama (34 commits).
 
 ## Sesion 2026-10-03 noche b (Claude) -- SEGUNDO REVISOR IA (prueba en seco) -> ver `PLAN_REVISOR_IA.md`
 - Problema de Alejandro: la IA deja demasiado a revision humana (14 dias: 27/63 = 43%; >95% de alertas se cerraban sin
