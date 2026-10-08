@@ -22,7 +22,7 @@ export interface OpcionesCuenta {
 }
 
 /** Pasos del entrenamiento que se palomean a mano (los demas se revisan en la base). */
-export interface PasosEntrenamiento { articulos?: 'A' | 'B'; tickets?: boolean; cerebro?: boolean }
+export interface PasosEntrenamiento { articulos?: 'A' | 'B'; tickets?: boolean; cerebro?: boolean; pin_admin?: string }
 
 type Editables = Omit<OpcionesCuenta, 'cuenta_id' | 'nombre'>
 // Avisa a las demas pantallas abiertas (menu, franja de entrenamiento) que una opcion cambio.

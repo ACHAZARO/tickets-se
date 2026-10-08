@@ -98,7 +98,8 @@ export default function PinPage({ params }: PageProps) {
           `auth_${slug}`,
           JSON.stringify({ empleadoId: data.empleado_id, sessionToken: data.session_token, timestamp: Date.now() })
         )
-        router.push(`/sucursal/${slug}/subir`)
+        // "?varias=1" (desde Entrenamiento: subir varias fotos de golpe) se pasa a la pantalla de subir.
+        router.push(`/sucursal/${slug}/subir${new URLSearchParams(window.location.search).has('varias') ? '?varias=1' : ''}`)
         return
       }
       // Distinguir el caso real para no confundir al gerente:
