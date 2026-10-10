@@ -1,7 +1,32 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-10-06.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-10-10.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-10-10 (Claude) -- ARTICULOS VIGILADOS (idea Alejandro: "mandar siempre a revision")
+- **Que es:** interruptor por articulo en Catalogo > Editar > "Opciones avanzadas": "Vigilar: mandar siempre a revision" + motivo
+  opcional ("¿Por que lo vigilas?", solo para humanos, nunca a la IA). Para articulos que SI se compran seguido (siguen contando en
+  gasto, Stock, Entradas y precios) pero que se quieren ver cada vez (ej. "Gas compras": en julio hubo fraude con ese concepto).
+  Es aparte de `uso` (Ocasional saca de Stock/precios; No autorizado va a Fraude). Decision Alejandro: va a **Por revisar**, no a Fraude.
+- **Regla (servidor):** `_shared/uso-articulos.ts` crea la alerta `articulo_vigilado` (con nombre, monto y motivo de cada articulo) y el
+  ticket no se aprueba solo. `revisor-ia`: `articulo_vigilado` en ALERTAS_AUTO y SIEMPRE_HUMANO (la IA nunca lo aprueba).
+  En MODO ENTRENAMIENTO se salta (igual que ocasional/no autorizado: el admin sube tickets ya verificados).
+- **BD (EN PRODUCCION):** migracion `099_articulos_vigilados` (`catalogo_productos.vigilar` default false + `vigilar_motivo`; tipo de alerta
+  nuevo). **Edge functions publicadas desde la copia de produccion + solo los archivos cambiados** (se conserva el modo entrenamiento
+  sin commitear): procesar-ticket v61, reprocesar-ticket v29, revisor-ia v8. Dormido: 0 articulos vigilados.
+- **Pantallas (rama `rediseno-pistache`, NO en produccion):** chip "Vigilado" y filtro "Vigilado (N)" en Catalogo; en el detalle del
+  ticket, aviso ambar "Articulo vigilado" (articulo, monto, motivo) con "Lo revise, esta bien" (cierra la alerta y confirma si no queda
+  nada) y "Dejar de vigilar"; interruptor "Vigilar" junto a "se compra:" en cada renglon.
+- **Arreglo de paso (Tickets):** un ticket abierto por enlace directo (?abrir=) fuera del periodo no mostraba sus alertas (fetchTickets
+  reemplazaba el mapa). Ahora abrirDetalle carga sus alertas y fetchTickets mezcla. Afectaba tambien a Ocasional, precios, etc.
+- **Probado de punta a punta** con PRUEBA ENTRENAMIENTO: marcar "355 PECHUGA ENTERA" vigilado + motivo -> releer ticket 4f311ca7 ->
+  alerta creada con monto $234 y motivo, ticket pendiente -> aviso en pantalla -> "Lo revise" -> alerta resuelta y ticket confirmado.
+  Articulo de prueba regresado a no vigilado. tsc OK. El candado del revisor IA se verifico leyendo el codigo (no se corrio para no
+  ensuciar la bitacora de su prueba).
+- **Revision independiente del diff (verificador):** ningun camino aprueba solo un ticket vigilado. Corregido: refrescarAlertas ahora
+  falla cerrado (si no puede leer, no confirma ni borra lo que se ve), doble clic en el interruptor, la seccion ya no se pliega al
+  apagar, el motivo se guarda al salir del campo. Escrita (NO aplicada) la migracion 100: unificar conserva "Vigilar".
+- **Falta:** subir la pantalla a `main` + aplicar la 100, cuando Alejandro lo autorice. Ver PENDIENTES_APP.md (#7 y #15).
 
 ## Sesion 2026-10-06 (Claude) -- SEPTIEMBRE Wings Palace: limpieza del lote + IA entiende faltas de ortografia
 

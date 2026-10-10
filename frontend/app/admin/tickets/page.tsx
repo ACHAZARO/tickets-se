@@ -8,12 +8,12 @@ import { useSucursal } from '@/lib/sucursal-context'
 import { toCanonical } from '@/lib/units.mjs'
 import { detectarSospechas } from '@/lib/fraude.mjs'
 import { buildEquivalenceUpdate, hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription, ticketFilterLabel, ticketStatusLabel } from '@/lib/ticket-workflow.mjs'
-import { useToast, useConfirm } from '../ui'
+import { useToast, useConfirm, Interruptor } from '../ui'
 import { SelectorPeriodo, rangoMesActual } from '../periodo'
 import { ElegirArticulo } from '../elegir-articulo'
 import type { TicketReporte } from '@/lib/export-xlsx'
 import PagosTicket, { textoPagos, type PagoTicket } from './pagos-ticket'
-import { ChipUso, SelectorUso, useMarcarUso, usoDe, type Uso } from '../uso-articulo'
+import { AYUDA_VIGILAR, ChipUso, SelectorUso, useMarcarUso, useMarcarVigilar, usoDe, type Uso } from '../uso-articulo'
 
 interface Item {
   id: string
@@ -39,6 +39,8 @@ interface CatalogProduct {
   contiene_sub_cantidad: number | null
   contiene_sub_unidad: string | null
   uso?: string
+  vigilar?: boolean
+  vigilar_motivo?: string | null
 }
 // Renglon de un articulo NO AUTORIZADO esperando decision (sale en Fraude), con su ticket para abrirlo.
 interface RenglonNoAut {
@@ -128,6 +130,7 @@ const ALERT_LABEL: Record<string, string> = {
   pagos_no_cuadran: 'Pagos no cuadran',
   articulo_no_autorizado: 'Artículo no autorizado',
   articulo_ocasional: 'Compra ocasional',
+  articulo_vigilado: 'Artículo vigilado',
 }
 // Que tan grave es cada alerta, para pintarla: rojo = dinero/duplicado en riesgo (revisar ya),
 // naranja = falta clasificar el producto, ambar = informativo o leve (ej. cambio de precio).
@@ -146,6 +149,7 @@ const ALERT_TONE: Record<string, AlertTone> = {
   producto_nuevo: 'naranja',
   sin_categoria: 'naranja',
   envio_alto: 'naranja',
+  articulo_vigilado: 'naranja',
   sin_sucursal: 'naranja',
   sin_unidad: 'ambar',
   sin_fecha: 'ambar',
@@ -329,7 +333,7 @@ export default function TicketsPage() {
 
   const loadCatalogo = useCallback(async (sucId: string | null) => {
     let q = supabase.from('catalogo_productos')
-      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso')
+      .select('id, nombre, categoria_id, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, uso, vigilar, vigilar_motivo')
       .eq('activo', true).order('nombre')
     q = sucId ? q.or(`sucursal_id.is.null,sucursal_id.eq.${sucId}`) : q
     const { data } = await q
@@ -366,7 +370,7 @@ export default function TicketsPage() {
     // Alertas en tandas: con cientos de ids la URL del .in() pasa el limite del gateway
     // (~640 ids) y la consulta fallaba en silencio (cola "Requieren revision" vacia).
     const ids = rows.map(t => t.id)
-    const map: Record<string, AlertRow[]> = {}
+    const map: Record<string, AlertRow[]> = Object.fromEntries(ids.map(id => [id, []]))
     for (let i = 0; i < ids.length; i += 300) {
       const { data: alerts, error: alertErr } = await supabase.from('alertas_tickets')
         .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
@@ -377,7 +381,8 @@ export default function TicketsPage() {
         map[a.registro_ticket_id] = [...(map[a.registro_ticket_id] ?? []), a]
       }
     }
-    setAlertas(map)
+    // Se MEZCLA: un ticket abierto por enlace directo (?abrir=) fuera del periodo conserva sus alertas.
+    setAlertas(prev => ({ ...prev, ...map }))
 
     const byBucket: Record<string, string[]> = { archivo: [], 'por-revisar': [] }
     for (const t of rows) { const pb = pathBucket(t); if (pb) byBucket[pb.bucket].push(pb.path) }
@@ -451,10 +456,24 @@ export default function TicketsPage() {
     cargarNoAut()
   }
 
-  async function refrescarAlertas(ticketId: string): Promise<AlertRow[]> {
-    const { data } = await supabase.from('alertas_tickets')
+  const marcarVigilar = useMarcarVigilar()
+  const vigilarEnCurso = useRef(new Set<string>())   // evita doble clic mientras se guarda
+  async function cambiarVigilarProd(prod: CatalogProduct, vigilar: boolean) {
+    if (vigilarEnCurso.current.has(prod.id)) return
+    vigilarEnCurso.current.add(prod.id)
+    const ok = await marcarVigilar(prod, vigilar)
+    vigilarEnCurso.current.delete(prod.id)
+    if (!ok || !detalle) return
+    // Solo cambia el articulo (sus tickets futuros); la alerta de este ticket sigue hasta que digas "Lo revise".
+    setCatalogo(prev => prev.map(x => x.id === prod.id ? { ...x, vigilar } : x))
+  }
+
+  // null = no se pudo leer: no se toca lo que ya se ve y quien llama NO debe confirmar (falla cerrado).
+  async function refrescarAlertas(ticketId: string): Promise<AlertRow[] | null> {
+    const { data, error } = await supabase.from('alertas_tickets')
       .select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion')
       .eq('registro_ticket_id', ticketId).eq('resuelta', false)
+    if (error) { toast('No se pudieron leer las alertas del ticket: ' + error.message, 'error'); return null }
     const rows = (data as AlertRow[] | null) ?? []
     setAlertas(prev => ({ ...prev, [ticketId]: rows }))
     return rows
@@ -477,22 +496,23 @@ export default function TicketsPage() {
     const pendientes = Number((data as { pendientes?: number } | null)?.pendientes ?? 0)
     const restantes = await refrescarAlertas(ticket.id)
     // Igual que al guardar un renglon: si el ticket ya quedo limpio y seguia pendiente, se confirma.
-    if (pendientes === 0 && restantes.length === 0 && ticket.estado === 'pendiente' && !(ticket.sospechoso && (ticket.sospecha_estado ?? 'abierta') !== 'descartada')) {
+    if (pendientes === 0 && restantes?.length === 0 && ticket.estado === 'pendiente' && !(ticket.sospechoso && (ticket.sospecha_estado ?? 'abierta') !== 'descartada')) {
       const { data: its } = await supabase.from('ticket_items').select('id').eq('registro_ticket_id', ticket.id).eq('necesita_revision', true).limit(1)
       if (!its?.length) await confirmarTicket(ticket)
     }
   }
 
-  // Compra ocasional: un clic para decir "esta bien" (cierra la alerta y, si ya no hay nada mas, confirma).
-  async function okOcasional(t: Ticket) {
+  // Compra ocasional / articulo vigilado: un clic para decir "esta bien" (cierra esa alerta y, si ya no hay nada
+  // mas, confirma).
+  async function okAlertaArticulo(t: Ticket, tipo: 'articulo_ocasional' | 'articulo_vigilado') {
     const { error } = await supabase.from('alertas_tickets').update({ resuelta: true })
-      .eq('registro_ticket_id', t.id).eq('tipo', 'articulo_ocasional').eq('resuelta', false)
+      .eq('registro_ticket_id', t.id).eq('tipo', tipo).eq('resuelta', false)
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     const restantes = await refrescarAlertas(t.id)
-    toast('Listo: compra ocasional aceptada')
+    toast(tipo === 'articulo_vigilado' ? 'Listo: revisado' : 'Listo: compra ocasional aceptada')
     const pendienteRenglon = detalle?.ticket.id === t.id && detalle.items.some(x => x.necesita_revision || x.autorizacion === 'pendiente')
     const enFraude = !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
-    if (restantes.length === 0 && t.estado === 'pendiente' && !pendienteRenglon && !enFraude) await confirmarTicket(t)
+    if (restantes?.length === 0 && t.estado === 'pendiente' && !pendienteRenglon && !enFraude) await confirmarTicket(t)
   }
 
   // Enlace directo desde otras pantallas (p.ej. Precios > Ver tickets): /admin/tickets?abrir=<id> abre ese
@@ -555,7 +575,8 @@ export default function TicketsPage() {
   async function abrirDetalle(t: Ticket) {
     setBusy('abrir')
     setEditando(true)
-    await loadCatalogo(t.sucursal_id)
+    // Sus alertas, aunque el ticket no caiga en el periodo elegido (enlace directo ?abrir=).
+    await Promise.all([loadCatalogo(t.sucursal_id), refrescarAlertas(t.id)])
     const selectBase = 'id, descripcion, cantidad, unidad, monto, categoria_id, producto_catalogo_id, necesita_revision, motivo_revision, autorizacion, categorias_gasto:categoria_id(nombre)'
     let items: Item[] = []
     if (itemOrderSupported) {
@@ -1462,8 +1483,13 @@ export default function TicketsPage() {
                 <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={TONE_PILL[alertTone(b.tipo)]}>{b.label}</span>)}</div>
                 {(alertas[detalle.ticket.id] ?? []).some(a => a.tipo === 'articulo_ocasional') && (
                   <AvisoOcasional items={detalle.items} catalogo={catalogo}
-                    onListo={() => okOcasional(detalle.ticket)} onNormal={p => cambiarUsoProd(p, 'normal')} />
+                    onListo={() => okAlertaArticulo(detalle.ticket, 'articulo_ocasional')} onNormal={p => cambiarUsoProd(p, 'normal')} />
                 )}
+                {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'articulo_vigilado').map((a, i) => (
+                  <AvisoVigilado key={i} alerta={a} items={detalle.items} catalogo={catalogo}
+                    onListo={() => okAlertaArticulo(detalle.ticket, 'articulo_vigilado')}
+                    onDejar={p => cambiarVigilarProd(p, false)} />
+                ))}
                 {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
                   <p key={i} className="mt-2 text-[13px] text-amber-400">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
                 ))}
@@ -1566,6 +1592,8 @@ export default function TicketsPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-[13px] text-zinc-400">«{prod.nombre}» se compra:</span>
                             <SelectorUso uso={prod.uso} onElegir={u => cambiarUsoProd(prod, u)} />
+                            <Interruptor compacto encendido={!!prod.vigilar} onCambiar={() => cambiarVigilarProd(prod, !prod.vigilar)}
+                              etiqueta="Vigilar" ayuda={AYUDA_VIGILAR} />
                           </div>
                         )
                       })()}
@@ -1701,6 +1729,39 @@ function AvisoOcasional({ items, catalogo, onListo, onNormal }: {
         </p>
       ))}
       <button type="button" onClick={onListo} className="btn-secundario btn-sm">Está bien</button>
+    </div>
+  )
+}
+
+// Articulo vigilado (099): dice que articulos son, cuanto se pago y por que se vigilan. "Lo revise" cierra la alerta.
+function AvisoVigilado({ alerta, items, catalogo, onListo, onDejar }: {
+  alerta: AlertRow; items: Item[]; catalogo: CatalogProduct[]; onListo: () => void; onDejar: (p: CatalogProduct) => void
+}) {
+  type Art = { nombre: string; monto: number | null; motivo: string | null }
+  const guardados = ((alerta.correccion as { articulos?: Art[] } | null)?.articulos ?? [])
+  const enCatalogo = catalogo.filter(p => items.some(i => i.producto_catalogo_id === p.id))
+  const vigilados = enCatalogo.filter(p => p.vigilar)
+  // Lo que se guardo al leer el ticket; si no hay (alerta vieja), lo del catalogo de hoy.
+  const lista: Art[] = guardados.length ? guardados
+    : vigilados.map(p => ({ nombre: p.nombre, monto: null, motivo: p.vigilar_motivo ?? null }))
+  return (
+    <div className="mt-2 max-w-xl space-y-2 rounded-lg bg-amber-900 px-3 py-2">
+      <p className="text-[13px] text-amber-300"><b className="font-semibold">Artículo vigilado:</b> revisa esta compra antes de aprobarla.</p>
+      <ul className="space-y-1">
+        {!lista.length && <li className="text-[13px] text-zinc-100">Un artículo de este ticket está vigilado.</li>}
+        {lista.map((a, i) => (
+          <li key={i} className="text-[13px] text-zinc-100">
+            «{a.nombre}»{a.monto != null && <> · ${Number(a.monto).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
+            {a.motivo && <span className="block text-amber-300">Motivo: {a.motivo}</span>}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onListo} className="btn-secundario btn-sm">Lo revisé, está bien</button>
+        {vigilados.map(p => (
+          <button key={p.id} type="button" onClick={() => onDejar(p)} className="btn-texto btn-sm">Dejar de vigilar «{p.nombre}»</button>
+        ))}
+      </div>
     </div>
   )
 }

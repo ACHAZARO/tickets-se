@@ -2,19 +2,22 @@
 //  * no_autorizado -> la BASE (trigger de ticket_items, 096) deja el renglon 'pendiente' y pone la alerta
 //    articulo_no_autorizado (sale en Fraude). Aqui solo se le agrega a la alerta que articulos son.
 //  * ocasional     -> el ticket lleva la alerta articulo_ocasional (Por revisar, se acepta con un clic).
+//  * vigilar       -> (migracion 099, aparte del uso) el ticket lleva la alerta articulo_vigilado (Por revisar): el
+//                     articulo sigue contando normal en Stock y precios, pero un humano ve cada compra.
 // FALLA CERRADO: si no se puede revisar, devuelve 'error_uso' para que el ticket NO se apruebe solo.
 // deno-lint-ignore no-explicit-any
 type SB = any
 
 export async function revisarUsoArticulos(supabase: SB, registroId: string): Promise<string[]> {
   const { data, error } = await supabase.from('ticket_items')
-    .select('id, monto, autorizacion, catalogo_productos:producto_catalogo_id(nombre, uso)')
+    .select('id, monto, autorizacion, catalogo_productos:producto_catalogo_id(nombre, uso, vigilar, vigilar_motivo)')
     .eq('registro_ticket_id', registroId)
   if (error) { console.error('revisarUsoArticulos:', error.message); return ['error_uso'] }
-  type Fila = { id: string; monto: number | null; autorizacion: string; catalogo_productos: { nombre: string; uso: string | null } | null }
+  type Fila = { id: string; monto: number | null; autorizacion: string; catalogo_productos: { nombre: string; uso: string | null; vigilar: boolean | null; vigilar_motivo: string | null } | null }
   const filas = (data ?? []) as Fila[]
   const noAut = filas.filter(f => f.catalogo_productos?.uso === 'no_autorizado')
   const ocas = filas.filter(f => f.catalogo_productos?.uso === 'ocasional')
+  const vig = filas.filter(f => f.catalogo_productos?.vigilar === true)
   const creadas: string[] = []
   const articulos = (l: Fila[]) => ({ articulos: l.map(f => ({ nombre: f.catalogo_productos!.nombre, monto: f.monto })) })
   if (noAut.length) {
@@ -38,6 +41,16 @@ export async function revisarUsoArticulos(supabase: SB, registroId: string): Pro
     })
     if (e3) { console.error('alerta ocasional fallo:', e3.message); creadas.push('error_uso') }
     creadas.push('articulo_ocasional')
+  }
+  if (vig.length) {
+    const correccion = { articulos: vig.map(f => ({ nombre: f.catalogo_productos!.nombre, monto: f.monto, motivo: f.catalogo_productos!.vigilar_motivo })) }
+    const { data: ya } = await supabase.from('alertas_tickets').select('id')
+      .eq('registro_ticket_id', registroId).eq('tipo', 'articulo_vigilado').eq('resuelta', false).limit(1)
+    const { error: e4 } = ya?.length
+      ? await supabase.from('alertas_tickets').update({ correccion }).eq('id', ya[0].id)
+      : await supabase.from('alertas_tickets').insert({ registro_ticket_id: registroId, tipo: 'articulo_vigilado', correccion })
+    if (e4) { console.error('alerta vigilado fallo:', e4.message); creadas.push('error_uso') }
+    creadas.push('articulo_vigilado')
   }
   return creadas
 }

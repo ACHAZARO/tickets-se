@@ -1,7 +1,8 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useToast, useConfirm } from './ui'
+import { useToast, useConfirm, Interruptor } from './ui'
 
 // Uso de un articulo (migracion 094, decision Alejandro 05-oct-2026). Normal = sin etiqueta.
 //  Ocasional     -> cuenta como gasto; no entra a Stock ni a alertas de precio; no sale en sugerencias;
@@ -82,4 +83,81 @@ export function useMarcarUso() {
       : uso === 'ocasional' ? 'Listo: marcado como ocasional' : 'Listo: vuelve a ser normal. Revisa su categoría por si la quieres cambiar')
     return r
   }
+}
+
+// ---------- Vigilar (migracion 099, Alejandro 10-oct-2026) ----------
+// Aparte del uso: el articulo sigue contando normal (gasto, Stock, precios), pero cada ticket que lo trae va a
+// Por revisar y nunca se aprueba solo. El motivo es para quien revisa; nunca se manda a la IA.
+
+export const AYUDA_VIGILAR = 'Cada ticket que lo traiga va a Por revisar y nunca se aprueba solo (tampoco la IA lo aprueba). Sigue contando en gasto, Stock y precios como siempre.'
+
+export function ChipVigilado({ vigilar, motivo }: { vigilar: boolean | null | undefined; motivo?: string | null }) {
+  if (!vigilar) return null
+  return <span className="chip-revisar" title={motivo ? `Vigilado: ${motivo}` : AYUDA_VIGILAR}>Vigilado</span>
+}
+
+/** Guarda si el articulo se vigila y su motivo. Devuelve true si se guardo. */
+export function useMarcarVigilar() {
+  const toast = useToast()
+  return async (p: { id: string; nombre: string }, vigilar: boolean, motivo?: string | null): Promise<boolean> => {
+    const cambios: { vigilar: boolean; vigilar_motivo?: string | null } = { vigilar }
+    if (motivo !== undefined) cambios.vigilar_motivo = motivo?.trim() || null
+    const { error } = await supabase.from('catalogo_productos').update(cambios).eq('id', p.id)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return false }
+    toast(motivo !== undefined && vigilar
+      ? 'Listo: motivo guardado'
+      : vigilar ? `Listo: cada ticket con «${p.nombre}» irá a Por revisar` : `Listo: «${p.nombre}» ya no se vigila`)
+    return true
+  }
+}
+
+/**
+ * Seccion plegable "Opciones avanzadas" del articulo: interruptor Vigilar + motivo. El interruptor se guarda al
+ * tocarlo; el motivo con su boton. `onCambio` avisa a la pantalla para que pinte lo guardado.
+ */
+export function OpcionesAvanzadas({ p, onCambio }: {
+  p: { id: string; nombre: string; vigilar?: boolean | null; vigilar_motivo?: string | null }
+  onCambio: (vigilar: boolean, motivo: string | null) => void
+}) {
+  const marcar = useMarcarVigilar()
+  const vigilar = !!p.vigilar
+  const [motivo, setMotivo] = useState(p.vigilar_motivo ?? '')
+  const [abierto, setAbierto] = useState(vigilar)
+  const [guardando, setGuardando] = useState(false)
+  const enCurso = useRef(false)   // un guardado a la vez (el campo se guarda al salir y tambien con su boton)
+  const motivoCambio = motivo.trim() !== (p.vigilar_motivo ?? '').trim()
+  async function guardar(fn: () => Promise<void>) {
+    if (enCurso.current) return
+    enCurso.current = true; setGuardando(true)
+    try { await fn() } finally { enCurso.current = false; setGuardando(false) }
+  }
+  const cambiar = (nuevo: boolean) => guardar(async () => {
+    if (await marcar(p, nuevo)) onCambio(nuevo, p.vigilar_motivo ?? null)
+  })
+  const guardarMotivo = () => guardar(async () => {
+    if (!motivoCambio) return
+    if (await marcar(p, true, motivo)) onCambio(true, motivo.trim() || null)
+  })
+  return (
+    <details className="rounded-lg bg-zinc-900/60 px-3 py-2" open={abierto} onToggle={e => setAbierto(e.currentTarget.open)}>
+      <summary className="cursor-pointer text-[13px] font-medium text-zinc-300">Opciones avanzadas</summary>
+      <div className="mt-2 space-y-2">
+        <Interruptor encendido={vigilar} onCambiar={() => cambiar(!vigilar)}
+          etiqueta="Vigilar: mandar siempre a revisión" ayuda={AYUDA_VIGILAR} />
+        <p className="nota">{AYUDA_VIGILAR} Se guarda al tocarlo.</p>
+        {vigilar && (
+          <div className="space-y-1">
+            <label className="etiqueta block" htmlFor={`vig-${p.id}`}>¿Por qué lo vigilas? (opcional)</label>
+            <div className="flex gap-2">
+              <input id={`vig-${p.id}`} value={motivo} onChange={e => setMotivo(e.target.value)} maxLength={300}
+                onBlur={guardarMotivo} onKeyDown={e => { if (e.key === 'Enter') guardarMotivo() }}
+                placeholder="Ej. en julio hubo un fraude con este gasto" className="campo min-w-0 flex-1 px-2 py-1.5" />
+              {motivoCambio && <button type="button" onClick={guardarMotivo} disabled={guardando} className="btn-secundario btn-sm">Guardar motivo</button>}
+            </div>
+            <p className="nota">Se guarda al salir del campo. Lo ve quien revisa el ticket; la IA no lo lee.</p>
+          </div>
+        )}
+      </div>
+    </details>
+  )
 }

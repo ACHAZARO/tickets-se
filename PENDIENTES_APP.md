@@ -48,6 +48,8 @@
 - **Ya existe en la BD:** `catalogo_productos.uso = 'ocasional'` (094) -> cuenta como gasto pero cada vez que aparece el ticket va a
   Por revisar (alerta `articulo_ocasional`). Falta en el remake: que al aprobar un articulo raro la pantalla ofrezca "Aprobar, pero
   revisarlo siempre" y que la IA lo trate como dudoso. Candidatos en WP: Gasolina para compras, Tablet para operar, Vela magica.
+- **10-oct:** para lo que SI es frecuente ya existe "Vigilar" (punto 15): "Gasolina para compras" se puede marcar Vigilado y sigue
+  contando normal. Falta aun el atajo "Aprobar, pero revisarlo siempre" al aprobar un articulo raro.
 
 ### 8. Impuestos en remisiones (PIAYS) (06-oct-2026)
 - **Caso:** PIAYS 08 y 22-sep: subtotal + IVA + IEPS = total, pero los renglones venian sin impuesto -> "no cuadra". Se repartio a mano.
@@ -99,6 +101,16 @@
 - **Quedan:** 22 renglones confirmados en WP ($~7k, may-sep) y 3 en SE con cantidad vacia. Revisar contra foto (no siempre es 1).
 - **Hacer:** regla en el prompt: en tickets impresos, si el renglon no muestra cantidad, es 1. Y alerta si un renglon ligado a un
   articulo de inventario queda sin cantidad.
+
+### 15. Articulos vigilados: falta subir la pantalla a produccion (10-oct-2026, Alejandro)
+- **Hecho (rama + BD y lector en produccion, dormidos):** ver PROJECT_STATE 2026-10-10. Falta el push de la pantalla a `main` con OK.
+- **AL SUBIR A MAIN: aplicar `supabase/migrations/100_unificar_conserva_vigilar.sql`** (escrita, NO aplicada): al UNIFICAR un
+  articulo vigilado dentro de otro, el destino hereda "Vigilar" y su motivo. Sin ella la vigilancia se pierde al unificar.
+- **Huecos conocidos (no urgentes):** (a) la regla vive en las edge functions (procesar/reprocesar), no en un trigger: si el admin
+  liga a mano un renglon a un articulo vigilado no sale el aviso (no se aprueba solo: confirmar es manual); (b) el revisor IA no
+  considera la alerta `articulo_ocasional` (no esta en ALERTAS_AUTO; existia antes); (c) `api-cuentas` no traduce los tipos
+  `articulo_vigilado` / `articulo_ocasional` / `articulo_no_autorizado` (salen con su id crudo); (d) idea: al aprobar un renglon,
+  atajo "Aprobar y vigilar este articulo".
 
 ## Hecho
 - 06-oct: la IA corrige faltas de ortografia ("zanaboria", "xanahoria", "huebo") -> `_shared/catalog.ts`.
