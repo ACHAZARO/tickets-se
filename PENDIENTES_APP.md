@@ -102,10 +102,8 @@
 - **Hacer:** regla en el prompt: en tickets impresos, si el renglon no muestra cantidad, es 1. Y alerta si un renglon ligado a un
   articulo de inventario queda sin cantidad.
 
-### 15. Articulos vigilados: falta subir la pantalla a produccion (10-oct-2026, Alejandro)
-- **Hecho (rama + BD y lector en produccion, dormidos):** ver PROJECT_STATE 2026-10-10. Falta el push de la pantalla a `main` con OK.
-- **AL SUBIR A MAIN: aplicar `supabase/migrations/100_unificar_conserva_vigilar.sql`** (escrita, NO aplicada): al UNIFICAR un
-  articulo vigilado dentro de otro, el destino hereda "Vigilar" y su motivo. Sin ella la vigilancia se pierde al unificar.
+### 15. Articulos vigilados: huecos menores (10-oct-2026, Alejandro)
+- **EN PRODUCCION desde 16-oct** (pantalla + migraciones 099 y 100). Ver PROJECT_STATE 2026-10-10.
 - **Huecos conocidos (no urgentes):** (a) la regla vive en las edge functions (procesar/reprocesar), no en un trigger: si el admin
   liga a mano un renglon a un articulo vigilado no sale el aviso (no se aprueba solo: confirmar es manual); (b) el revisor IA no
   considera la alerta `articulo_ocasional` (no esta en ALERTAS_AUTO; existia antes); (c) `api-cuentas` no traduce los tipos

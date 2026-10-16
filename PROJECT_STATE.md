@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-10-10.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-10-16.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
 
 ## Sesion 2026-10-10 (Claude) -- ARTICULOS VIGILADOS (idea Alejandro: "mandar siempre a revision")
@@ -14,7 +14,7 @@
 - **BD (EN PRODUCCION):** migracion `099_articulos_vigilados` (`catalogo_productos.vigilar` default false + `vigilar_motivo`; tipo de alerta
   nuevo). **Edge functions publicadas desde la copia de produccion + solo los archivos cambiados** (se conserva el modo entrenamiento
   sin commitear): procesar-ticket v61, reprocesar-ticket v29, revisor-ia v8. Dormido: 0 articulos vigilados.
-- **Pantallas (rama `rediseno-pistache`, NO en produccion):** chip "Vigilado" y filtro "Vigilado (N)" en Catalogo; en el detalle del
+- **Pantallas (EN PRODUCCION desde 16-oct, push a main con OK de Alejandro):** chip "Vigilado" y filtro "Vigilado (N)" en Catalogo; en el detalle del
   ticket, aviso ambar "Articulo vigilado" (articulo, monto, motivo) con "Lo revise, esta bien" (cierra la alerta y confirma si no queda
   nada) y "Dejar de vigilar"; interruptor "Vigilar" junto a "se compra:" en cada renglon.
 - **Arreglo de paso (Tickets):** un ticket abierto por enlace directo (?abrir=) fuera del periodo no mostraba sus alertas (fetchTickets
@@ -26,7 +26,9 @@
 - **Revision independiente del diff (verificador):** ningun camino aprueba solo un ticket vigilado. Corregido: refrescarAlertas ahora
   falla cerrado (si no puede leer, no confirma ni borra lo que se ve), doble clic en el interruptor, la seccion ya no se pliega al
   apagar, el motivo se guarda al salir del campo. Escrita (NO aplicada) la migracion 100: unificar conserva "Vigilar".
-- **Falta:** subir la pantalla a `main` + aplicar la 100, cuando Alejandro lo autorice. Ver PENDIENTES_APP.md (#7 y #15).
+- **16-oct (OK de Alejandro):** aplicada la **100** (unificar conserva Vigilar; antes se comprobo que la funcion en produccion era
+  identica byte a byte a la base de la 100, y se probo en una transaccion que se deshace sola: el destino hereda vigilar y motivo)
+  y pantalla publicada en `main`. Huecos menores que quedan: PENDIENTES_APP.md #15.
 
 ## Sesion 2026-10-06 (Claude) -- SEPTIEMBRE Wings Palace: limpieza del lote + IA entiende faltas de ortografia
 
