@@ -42,6 +42,12 @@ App móvil para que los gerentes de los restaurantes de Alejandro (Santa Elena y
 
 ## 2. Dónde nos quedamos (a 2026-09-19)
 
+> **Actualización 2026-10-16:** en producción (`main` = `ffe3b63`) ya están: artículos Ocasional / No autorizado (094-096), Fraude por
+> grupo (097), modo entrenamiento (098, publicado en `procesar-ticket` pero su código NO está commiteado: ver PROJECT_STATE 06-oct) y
+> **artículos vigilados** (099-100: interruptor "Vigilar" en Catálogo, siempre a Por revisar). Funciones: `procesar-ticket` v61,
+> `reprocesar-ticket` v29, `revisor-ia` v8. Ojo: los previews de Vercel de las ramas fallan desde el 07-oct (faltan las variables de
+> Supabase en el entorno Preview); producción construye bien.
+
 > **Actualización 2026-09-26 (lo posterior al 19-sep está detallado sesión por sesión en `PROJECT_STATE.md`, que manda):**
 > desde el 19-sep se agregaron: API `api-cuentas` por cuenta (+ `/desglose`, `/tickets` ticket por ticket, `/bandeja`, `/ticket`
 > y conector MCP de solo lectura), aislamiento multi-negocio (`MULTI_NEGOCIO.md`), unificar productos e insumos, blindaje contra

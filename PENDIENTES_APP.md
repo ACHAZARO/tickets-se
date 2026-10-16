@@ -110,6 +110,12 @@
   `articulo_vigilado` / `articulo_ocasional` / `articulo_no_autorizado` (salen con su id crudo); (d) idea: al aprobar un renglon,
   atajo "Aprobar y vigilar este articulo".
 
+### 16. Previews de Vercel de las ramas fallan (16-oct-2026)
+- **Desde el 07-oct** todo build de rama (Preview) falla con `supabaseUrl is required` al prerenderizar /admin: las variables
+  NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY solo estan en el entorno Production de Vercel. Produccion construye bien.
+- **Hacer (con OK de Alejandro, es configuracion de Vercel):** copiar esas dos variables al entorno Preview, o ignorar los
+  previews. No urge: no afecta a usuarios.
+
 ## Hecho
 - 06-oct: la IA corrige faltas de ortografia ("zanaboria", "xanahoria", "huebo") -> `_shared/catalog.ts`.
 - 06-oct: precios por presentacion ("HIELO 5 KG" leido como 1 pz / 1 kg / 5 kg) -> `_shared/precios.ts`; sin falsas alarmas x5 / x20.
