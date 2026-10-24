@@ -9,6 +9,7 @@ import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
 import { BotonTema } from '@/lib/tema'
 import { AdminUIProvider } from './ui'
 import { CerebroBadge } from './unificar'
+import { BienvenidaEntrenamiento, FranjaEntrenamiento, useEntrenamientoActivo } from './entrenamiento/avisos'
 
 // Menu en 3 grupos: GENERAL (numeros del negocio), lo que hay que REVISAR y la CONFIGURACION.
 const GRUPOS = [
@@ -29,6 +30,8 @@ const GRUPOS = [
     { href: '/admin/sucursales', label: 'Sucursales' },
     { href: '/admin/formas-pago', label: 'Formas de pago' },
     { href: '/admin/opciones', label: 'Opciones' },
+    // Solo se ve mientras alguna cuenta tiene el modo entrenamiento prendido.
+    { href: '/admin/entrenamiento', label: 'Entrenamiento' },
   ] },
 ]
 
@@ -37,6 +40,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const { activo: entrenamientoActivo, cuentas: cuentasOpciones, guardar: guardarOpciones } = useEntrenamientoActivo(!!user)
   // En celular la fila de pantallas se desliza: que la pantalla activa siempre quede a la vista.
   const filaPantallas = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -90,7 +94,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (!user) return null
 
-  const grupoActivo = GRUPOS.find(g => g.paginas.some(p => pathname.startsWith(p.href))) ?? GRUPOS[0]
+  const grupos = GRUPOS.map(g => ({ ...g, paginas: g.paginas.filter(p =>
+    p.href !== '/admin/entrenamiento' || entrenamientoActivo || pathname.startsWith(p.href)) }))
+  const grupoActivo = grupos.find(g => g.paginas.some(p => pathname.startsWith(p.href))) ?? grupos[0]
 
   return (
     <SucursalProvider>
@@ -115,7 +121,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Grupo arriba, sus pantallas abajo */}
           <nav aria-label="Secciones" className="space-y-1.5">
             <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
-              {GRUPOS.map(g => {
+              {grupos.map(g => {
                 const activo = g === grupoActivo
                 return (
                   <Link key={g.nombre} href={g.paginas[0].href} aria-current={activo ? 'true' : undefined}
@@ -144,6 +150,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
+      {entrenamientoActivo && !pathname.startsWith('/admin/entrenamiento') && <FranjaEntrenamiento />}
+      <BienvenidaEntrenamiento cuentas={cuentasOpciones} guardar={guardarOpciones} />
       <main id="contenido" className="mx-auto w-full max-w-[1920px] flex-1 px-4 py-5 sm:px-6 md:py-6 lg:px-8 2xl:px-12">
         {children}
       </main>

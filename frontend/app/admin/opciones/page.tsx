@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOpciones } from '@/lib/opciones'
-import { Interruptor, useToast } from '../ui'
+import { Interruptor, useConfirm, useToast } from '../ui'
 
 // Configuracion > Opciones: ajustes de cada negocio. Aqui se prenden funciones (Stock) y se decide que puede
 // hacer el gerente desde su celular. Mas opciones del gerente se agregaran aqui mismo.
 export default function OpcionesPage() {
   const { cuentas, guardar } = useOpciones()
   const toast = useToast()
+  const confirmar = useConfirm()
   // Categorias de cada cuenta (las globales + las de sus sucursales) para elegir la de "gasto extra".
   const [cats, setCats] = useState<{ id: string; nombre: string; sucursal_id: string | null }[]>([])
   const [sucCuenta, setSucCuenta] = useState<Record<string, string>>({})
@@ -47,6 +48,24 @@ export default function OpcionesPage() {
       ) : cuentas.map(c => (
         <section key={c.cuenta_id} className="tarjeta divide-y divide-zinc-800">
           {cuentas.length > 1 && <h3 className="px-4 py-3 text-base font-semibold text-zinc-100">{c.nombre}</h3>}
+
+          <div className="space-y-2 px-4 py-4">
+            <h4 className="text-sm font-semibold text-zinc-300">Modo entrenamiento</h4>
+            <div className="-ml-2">
+              <Interruptor encendido={c.entrenamiento} etiqueta="Modo entrenamiento"
+                onCambiar={async () => {
+                  if (!c.entrenamiento && !await confirmar('Mientras esté prendido, la IA acepta TODOS los tickets de este negocio (también los de tus gerentes) sin mandar nada a revisión ni a fraude.\n\nPréndelo solo para empezar, y sube tú los tickets que ya revisaste.', { si: 'Prender', no: 'Cancelar' })) return
+                  cambiar(c.cuenta_id, { entrenamiento: !c.entrenamiento, bienvenida_vista: true },
+                  c.entrenamiento ? 'Modo entrenamiento apagado: la IA vuelve a mandar a revisión lo que no conoce' : 'Modo entrenamiento activo: sigue los pasos en Configuración → Entrenamiento')
+                }}
+                ayuda="Para empezar: la IA acepta los tickets que subes y aprende tus artículos, comercios y categorías." />
+            </div>
+            <p className="nota pl-0.5">
+              {c.entrenamiento
+                ? 'Activo: la IA acepta todo lo que subes y no manda nada a revisión ni a fraude. Cuando termines los pasos, apágalo aquí.'
+                : 'Para empezar con la app: subes tickets ya revisados por ti y la IA aprende cómo es tu negocio. Mientras está prendido no manda nada a revisión ni a fraude.'}
+            </p>
+          </div>
 
           <div className="space-y-2 px-4 py-4">
             <h4 className="text-sm font-semibold text-zinc-300">Inventario</h4>

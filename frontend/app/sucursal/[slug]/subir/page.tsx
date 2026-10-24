@@ -48,6 +48,9 @@ export default function SubirPage({ params }: PageProps) {
   const { slug } = params
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Desde Entrenamiento ("Subir varias de golpe"): se invita a elegir muchas fotos de la galeria a la vez.
+  const [varias, setVarias] = useState(false)
+  useEffect(() => { setVarias(new URLSearchParams(window.location.search).has('varias')) }, [])
 
   const [state, setState] = useState<UploadState>('idle')
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -432,8 +435,8 @@ export default function SubirPage({ params }: PageProps) {
               </svg>
             </div>
             <div>
-              <p className="text-lg font-semibold text-zinc-100">Tomar foto</p>
-              <p className="nota mt-1">o elegir de la galería</p>
+              <p className="text-lg font-semibold text-zinc-100">{varias ? 'Elegir fotos de tu carrete' : 'Tomar foto'}</p>
+              <p className="nota mt-1">{varias ? 'Selecciona todas las que quieras: se suben juntas' : 'o elegir de la galería'}</p>
             </div>
           </button>
           {puedeContar && (
