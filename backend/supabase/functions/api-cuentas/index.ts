@@ -128,12 +128,13 @@ async function opDesglose(ctx: Ctx, a: {
   const { desde, hasta } = periodo(a.desde, a.hasta)
   const pedida = (a.categoria ?? '').trim()
   if (!pedida) throw new ErrorApi(400, { error: 'Falta la categoria, por ejemplo Bodega. Los nombres salen en el resumen (oficiales_por_categoria).' })
-  // Solo categorias que esta cuenta puede ver: las globales y las de sus sucursales (+ "Sin categoria").
+  // Solo categorias que esta cuenta puede ver: las de toda la cuenta y las de sus sucursales (+ "Sin categoria").
+  // Desde la migracion 101 las de toda la cuenta llevan cuenta_id; antes (undefined) eran generales.
   const idsCuenta = new Set(ctx.reales.map(s => s.id))
-  const { data: cats, error: catErr } = await ctx.supabase.from('categorias_gasto').select('nombre, sucursal_id')
+  const { data: cats, error: catErr } = await ctx.supabase.from('categorias_gasto').select('*')
   if (catErr) throw new Error(catErr.message)
-  const visibles = [...new Set(((cats ?? []) as { nombre: string; sucursal_id: string | null }[])
-    .filter(c => c.sucursal_id === null || idsCuenta.has(c.sucursal_id))
+  const visibles = [...new Set(((cats ?? []) as { nombre: string; sucursal_id: string | null; cuenta_id?: string }[])
+    .filter(c => (c.sucursal_id === null && (c.cuenta_id === undefined || c.cuenta_id === ctx.cuentaId)) || (c.sucursal_id !== null && idsCuenta.has(c.sucursal_id)))
     .map(c => c.nombre))].concat('Sin categoria')
   const canonica = visibles.find(n => n.toLowerCase() === pedida.toLowerCase())
   if (!canonica) throw new ErrorApi(404, { error: `Categoria desconocida: ${pedida}`, disponibles: visibles })

@@ -48,8 +48,8 @@ export interface Catalog {
 // deno-lint-ignore no-explicit-any
 type AnyRow = Record<string, any>
 
-// Carga el catalogo aplicable a una sucursal: lo global (sucursal_id NULL)
-// mas lo especifico de esa sucursal. Sin sucursalId, solo lo global.
+// Carga el catalogo aplicable a una sucursal: lo de toda su cuenta (sucursal_id NULL) mas lo especifico de esa
+// sucursal. Sin sucursalId, solo lo general.
 export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -57,9 +57,20 @@ export async function loadCatalog(sucursalId?: string | null): Promise<Catalog> 
   )
   const scope = sucursalId ? `sucursal_id.is.null,sucursal_id.eq.${sucursalId}` : null
 
-  let catQ = supabase.from('categorias_gasto').select('id, nombre').eq('activa', true).order('orden')
+  // Desde la migracion 101 las categorias "generales" (sucursal_id NULL) son de UNA cuenta (cuenta_id): solo valen las
+  // de la cuenta de la sucursal. Antes de la 101 no existe cuenta_id (undefined) y valen todas, como siempre.
+  let cuentaId: string | null = null
+  if (sucursalId) {
+    const { data: suc } = await supabase.from('sucursales').select('cuenta_id').eq('id', sucursalId).maybeSingle()
+    cuentaId = (suc?.cuenta_id as string | null) ?? null
+  }
+  let catQ = supabase.from('categorias_gasto').select('*').eq('activa', true).order('orden')
   catQ = scope ? catQ.or(scope) : catQ.is('sucursal_id', null)
-  const { data: categories } = await catQ
+  const { data: catRows } = await catQ
+  const categories = ((catRows ?? []) as AnyRow[])
+    .filter(c => (sucursalId && c.sucursal_id === sucursalId)
+      || (c.sucursal_id == null && (c.cuenta_id === undefined || (cuentaId !== null && c.cuenta_id === cuentaId))))
+    .map(c => ({ id: c.id as string, nombre: c.nombre as string }))
 
   let prodQ = supabase.from('catalogo_productos')
     .select('id, nombre, sinonimos, unidad_default, precio_referencia, veces_matched, uso, categorias_gasto:categoria_id(nombre)')
