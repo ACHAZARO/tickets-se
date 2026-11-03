@@ -162,6 +162,16 @@ test('la huella distingue tiendas', () => {
   assert.deepEqual(r.map(x => x.tienda), ['A', 'B'])
 })
 
+test('el resultado no depende del orden de las filas y el ticket va a la salida mas cercana', () => {
+  const salidas = [s('a', '2026-10-01', 'Hielo', 210), s('b', '2026-10-06', 'Hielo', 210), s('c', '2026-10-20', 'Taxi', 95)]
+  const tickets = [t('1', '2026-10-06', 210), t('2', '2026-10-02', 210)]
+  const fotos = [salidas, [...salidas].reverse(), [salidas[1], salidas[2], salidas[0]]].map(l => cotejar(l, tickets))
+  for (const r of fotos) {
+    assert.deepEqual(Object.fromEntries(r.conTicket.map(x => [x.id, x.tickets[0].id])), { a: '2', b: '1' })
+    assert.deepEqual(r.faltan.map(x => x.id), ['c'])
+  }
+})
+
 test('cuenta a mano: dice cuanto no se comprueba', () => {
   const r = cuentasIncompletas([
     t('1', '2026-10-08', 226.84, { compraMano: 1332.56, envioMano: 171.44 }),

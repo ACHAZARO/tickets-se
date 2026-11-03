@@ -165,15 +165,21 @@ export function cotejar(salidas, tickets, conceptosSinTicket = []) {
   const libres = (s, margen) => tickets.filter(t => !usados.has(t.id) && !t.otroPago && !(s.no_es ?? []).includes(t.id) && t.fecha && Math.abs(dias(t.fecha, s.fecha)) <= margen)
   const lejania = (t, s) => Math.abs(dias(t.fecha, s.fecha))
 
-  // 1) Mismo monto, en pasadas: lo mas seguro primero para que una coincidencia no le gane su ticket a la salida correcta. Los montos grandes primero: son los que menos se confunden.
-  let pendientes = [...porBuscar].sort((a, b) => b.monto - a.monto)
+  // 1) Mismo monto, en pasadas: lo mas seguro primero para que una coincidencia no le gane su ticket a la salida correcta. En cada pasada se juntan primero
+  // las parejas mas cercanas en fecha, asi el resultado no depende del orden en que llegan las filas.
+  let pendientes = [...porBuscar].sort((a, b) => (b.monto - a.monto) || a.fecha.localeCompare(b.fecha) || String(a.hora ?? '').localeCompare(String(b.hora ?? '')) || String(a.id).localeCompare(String(b.id)))
   const pasada = acepta => {
-    const quedan = []
-    for (const s of pendientes) {
-      const t = libres(s, 5).filter(x => acepta(s, x)).sort((a, b) => (Math.abs(Number(a.monto) - s.monto) - Math.abs(Number(b.monto) - s.monto)) || ((b.deCaja ? 1 : 0) - (a.deCaja ? 1 : 0)) || (lejania(a, s) - lejania(b, s)))[0]
-      if (t) { usados.add(t.id); conTicket.push({ ...s, tickets: [t], como: 'monto' }) } else quedan.push(s)
+    const parejas = []
+    for (const s of pendientes) for (const t of libres(s, 5)) if (acepta(s, t)) parejas.push([s, t])
+    parejas.sort(([a, x], [b, y]) => (lejania(x, a) - lejania(y, b)) || (Math.abs(Number(x.monto) - a.monto) - Math.abs(Number(y.monto) - b.monto)) || ((y.deCaja ? 1 : 0) - (x.deCaja ? 1 : 0))
+      || a.fecha.localeCompare(b.fecha) || String(a.hora ?? '').localeCompare(String(b.hora ?? '')) || String(x.id).localeCompare(String(y.id)))
+    const listas = new Set()
+    for (const [s, t] of parejas) {
+      if (listas.has(s) || usados.has(t.id)) continue
+      listas.add(s); usados.add(t.id)
+      conTicket.push({ ...s, tickets: [t], como: 'monto' })
     }
-    pendientes = quedan
+    pendientes = pendientes.filter(s => !listas.has(s))
   }
   // Un monto con centavos que coincide exacto casi no se da por casualidad (.50 es redondo).
   const alCentavo = (s, t) => Math.round(s.monto * 100) % 50 !== 0 && Math.abs(Number(t.monto) - s.monto) < 0.01
