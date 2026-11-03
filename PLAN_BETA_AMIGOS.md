@@ -5,7 +5,7 @@
 > diseño (instrucciones claras, pocos cambios de pantalla, Cerebro intuitivo), pruebas masivas, y al final "los tickets
 > faltantes". Rama de trabajo: `beta-amigos` (= main + modo entrenamiento). Estado vivo: `PROJECT_STATE.md`.
 
-**Operación sin navegador:** la CLI de Supabase tiene sesión. `npx supabase@latest functions deploy <fn> --project-ref dlmqqmvrgkilptawllep --use-api --workdir backend --yes` (`--no-verify-jwt` en procesar-ticket, api-cuentas, revisor-ia, verificar-pin, conteo-gerente, avisos-gerente). Las llaves se piden a la CLI dentro de los scripts (`_trabajo_beta/scripts/lib_ops.py`) y nunca se imprimen. Los resultados de trabajo van en `_trabajo_beta/` (gitignored): Windows borró la carpeta temporal el 1-nov.
+**Operación sin navegador:** la CLI de Supabase tiene sesión. `npx supabase@latest functions deploy <fn> --project-ref dlmqqmvrgkilptawllep --use-api --workdir backend --yes` (`--no-verify-jwt` en procesar-ticket, api-cuentas, revisor-ia, verificar-pin, conteo-gerente, avisos-gerente, enviar-alerta-email, crear-cuenta). Las llaves se piden a la CLI dentro de los scripts (`_trabajo_beta/scripts/lib_ops.py`) y nunca se imprimen. Los resultados de trabajo van en `_trabajo_beta/` (gitignored): Windows borró la carpeta temporal el 1-nov.
 
 ## Fases y estado (03-nov)
 

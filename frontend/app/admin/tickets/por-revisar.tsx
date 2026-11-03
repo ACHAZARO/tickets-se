@@ -32,10 +32,11 @@ export interface TicketRevisar {
 }
 
 // Una alerta suave no pide decidir nada: ese tipo de papel siempre lo ve una persona, o trae articulos nuevos que la IA ya acomodo.
-const SUAVES = new Set(['nota_a_mano', 'producto_no_reconocido', 'sin_unidad'])
+export const SUAVES = new Set(['nota_a_mano', 'producto_no_reconocido', 'sin_unidad'])
+const PAPELES = ['ticket', 'factura', 'nota_a_mano', 'remision']
 
 export function seVeBien(t: TicketRevisar): boolean {
-  if (t.leyendo || !t.fecha || t.tipo === 'otro' || !t.renglones.length) return false
+  if (t.leyendo || !t.fecha || !PAPELES.includes(t.tipo ?? '') || !t.renglones.length) return false
   return t.alertas.every(a => SUAVES.has(a.tipo)) && t.renglones.every(r => r.producto_catalogo_id || r.categoria_id)
 }
 
@@ -63,7 +64,7 @@ const PREGUNTAS: Record<string, string> = {
 }
 
 /** Lo que hay que resolver en cada ticket, en palabras claras. El motivo especifico manda sobre el texto general. */
-export function preguntasDe(t: { alertas: AlertaRevisar[]; fecha: string | null }): string[] {
+export function preguntasDe(t: { alertas: AlertaRevisar[]; fecha: string | null; tipo?: string | null }): string[] {
   const vistas = new Set<string>()
   for (const a of t.alertas) {
     if (a.tipo === 'nota_a_mano' || a.tipo === 'sin_unidad') continue
@@ -71,6 +72,7 @@ export function preguntasDe(t: { alertas: AlertaRevisar[]; fecha: string | null 
     vistas.add(motivo || PREGUNTAS[a.tipo] || 'Revisa este ticket.')
   }
   if (!t.fecha) vistas.add('Falta la fecha del ticket.')
+  if (t.tipo !== undefined && !PAPELES.includes(t.tipo ?? '')) vistas.add('Este papel no parece ticket ni factura: revisa qué es.')
   return [...vistas]
 }
 
@@ -152,7 +154,7 @@ export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, 
                     <span className="whitespace-nowrap text-sm font-medium text-zinc-200">{fmt(t.monto)}</span>
                   </span>
                   <span className="block truncate text-xs text-zinc-500">{[t.sucursal, t.fecha, t.subio && `subió ${t.subio}`].filter(Boolean).join(' · ')}</span>
-                  {preguntasDe(t).map(p => <span key={p} className="mt-1 block text-[13px] leading-snug text-amber-300">{p}</span>)}
+                  {(preguntasDe(t).length ? preguntasDe(t) : ['Revisa este ticket.']).map(p => <span key={p} className="mt-1 block text-[13px] leading-snug text-amber-300">{p}</span>)}
                   {t.nota && <span className="mt-1 block truncate text-xs text-blue-400">Nota: {t.nota}</span>}
                   <span className="mt-1.5 block text-[13px] font-medium text-emerald-500">Ver y decidir ›</span>
                 </button>
@@ -190,6 +192,9 @@ export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, 
                   <span className="mt-0.5 block truncate text-xs text-zinc-400">
                     {t.renglones.slice(0, 3).map(r => r.descripcion).join(' · ')}{t.renglones.length > 3 ? ` y ${t.renglones.length - 3} más` : ''}
                   </span>
+                  {t.alertas.some(a => typeof a.correccion?.motivo === 'string' && a.correccion.motivo.includes('sin fecha')) && (
+                    <span className="mt-0.5 block text-xs text-amber-400">No trae fecha: se usó el día en que se subió.</span>
+                  )}
                   {nuevosDe(t).length > 0 && (
                     <span className="mt-0.5 block truncate text-xs text-emerald-400">Aprenderá: {nuevosDe(t).map(r => r.descripcion).join(', ')}</span>
                   )}

@@ -10,7 +10,7 @@ import { buildGeminiPrompt, fechaMexico, fechaPideRevision, leerTicketConGemini,
 import { detectSmartDuplicate, esCopiaSegura, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { noCuadra, sinTotal } from '../_shared/montos.ts'
-import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, motivoMesCerrado, papelPideRevision } from '../_shared/renglones.ts'
+import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, motivoMesCerrado, papelPideRevision, segundaLecturaSirve } from '../_shared/renglones.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
@@ -211,7 +211,7 @@ async function procesarEnSegundoPlano(opts: {
     // Los renglones no suman el total: se lee otra vez antes de molestar al dueno. Si tampoco cuadra, se queda la primera.
     if (lectura.datos && lecturaNoCuadra(lectura.datos, catalog)) {
       const otra = await leerTicketConGemini({ imagenBase64: encodeBase64(imageBytes), mimeType: mime, prompt: prompt + AVISO_NO_CUADRO })
-      if (otra.datos && !lecturaNoCuadra(otra.datos, catalog)) lectura = { ...otra, intentos: [...lectura.intentos, ...otra.intentos] }
+      if (otra.datos && segundaLecturaSirve(lectura.datos, otra.datos, catalog)) lectura = { ...otra, intentos: [...lectura.intentos, ...otra.intentos] }
     }
     if (!lectura.datos) {
       // La IA NO leyo el ticket (sin cuota, saturada, etc.). No es "ilegible" ni se inventa
@@ -349,8 +349,11 @@ async function procesarEnSegundoPlano(opts: {
       datos.tipo_documento ?? null, propias,
     )
     if (dupId && entrenamiento) {
-      if (await rechazarCopiaEntrenamiento(supabase, registroId, dupId)) return
-      await createAlert(supabase, registroId, 'posible_duplicado', dupId); hayAlerta = true
+      // Solo se quita lo que seguro es copia; dos notas parecidas sin folio pueden ser dos compras y en entrenamiento se aceptan.
+      if (await esCopiaSegura(supabase, dupId, montoTotal, fechaTicket, datos.tipo_documento)) {
+        if (await rechazarCopiaEntrenamiento(supabase, registroId, dupId)) return
+        await createAlert(supabase, registroId, 'posible_duplicado', dupId); hayAlerta = true
+      }
     } else if (dupId) {
       // Papel repetido (factura + ticket de la misma compra, reimpresion, mismo folio). Decision Alejandro
       // 18-sep: no se cuenta ni se deja para revisar; se RECHAZA solo y va a la revision de fraude junto

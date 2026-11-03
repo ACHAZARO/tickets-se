@@ -13,7 +13,7 @@ import { SelectorPeriodo, rangoMesActual } from '../periodo'
 import { ElegirArticulo } from '../elegir-articulo'
 import type { TicketReporte } from '@/lib/export-xlsx'
 import PagosTicket, { textoPagos, type PagoTicket } from './pagos-ticket'
-import { PorRevisar, preguntasDe, type RenglonRevisar, type TicketRevisar } from './por-revisar'
+import { PorRevisar, preguntasDe, SUAVES, type RenglonRevisar, type TicketRevisar } from './por-revisar'
 import { AYUDA_VIGILAR, ChipUso, SelectorUso, useMarcarUso, useMarcarVigilar, usoDe, type Uso } from '../uso-articulo'
 
 interface Item {
@@ -428,7 +428,8 @@ export default function TicketsPage() {
       const tanda = ids.slice(i, i + 300)
       const [{ data: al }, { data: its }] = await Promise.all([
         supabase.from('alertas_tickets').select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion').in('registro_ticket_id', tanda).eq('resuelta', false),
-        supabase.from('ticket_items').select('id, registro_ticket_id, descripcion, monto, unidad, categoria_id, producto_catalogo_id').in('registro_ticket_id', tanda).order('orden', { ascending: true }),
+        // En tandas: con muchos renglones un corte a 1000 dejaria tickets incompletos, y el lote decide con estos renglones.
+        traerTodo(() => supabase.from('ticket_items').select('id, registro_ticket_id, descripcion, monto, unidad, categoria_id, producto_catalogo_id').in('registro_ticket_id', tanda).order('orden', { ascending: true }).order('id', { ascending: true })),
       ])
       for (const a of (al as AlertRow[] | null) ?? []) mapa[a.registro_ticket_id] = [...(mapa[a.registro_ticket_id] ?? []), a]
       for (const r of (its as (RenglonRevisar & { registro_ticket_id: string })[] | null) ?? []) (rengs[r.registro_ticket_id] ??= []).push(r)
@@ -448,6 +449,13 @@ export default function TicketsPage() {
   }, [sucursalId])
 
   useEffect(() => { fetchPendientes() }, [fetchPendientes])
+  // Mientras la IA lee algo recien subido, la lista se pone al dia sola.
+  useEffect(() => {
+    const leyendoAlgo = pendientes.some(t => typeof t.gemini_raw?._ia_en_proceso === 'string' || Date.now() - Date.parse(t.created_at) <= 3 * 60_000)
+    if (!leyendoAlgo) return
+    const reloj = setInterval(fetchPendientes, 15_000)
+    return () => clearInterval(reloj)
+  }, [pendientes, fetchPendientes])
   // Al cerrar un ticket abierto (confirmado, rechazado o corregido) se actualiza la cola.
   const habiaDetalle = useRef(false)
   useEffect(() => {
@@ -455,10 +463,20 @@ export default function TicketsPage() {
     habiaDetalle.current = !!detalle
   }, [detalle, fetchPendientes])
 
-  async function aprobarLote(ids: string[], avance: (hechos: number) => void): Promise<number> {
+  async function aprobarLote(elegidos: string[], avance: (hechos: number) => void): Promise<number> {
     await ensureFreshSession()
     let hechos = 0
     let fallos = 0
+    // Pudo cambiar desde que se pinto la lista (la IA seguia leyendo, otro lo decidio): se vuelve a revisar justo antes de aprobar.
+    const [{ data: frescos }, { data: abiertas }] = await Promise.all([
+      supabase.from('registros_tickets').select('id, estado, fecha_ticket, sospechoso, sospecha_estado, en_proceso:gemini_raw->_ia_en_proceso').in('id', elegidos),
+      supabase.from('alertas_tickets').select('registro_ticket_id, tipo').in('registro_ticket_id', elegidos).eq('resuelta', false),
+    ])
+    const duras = new Set(((abiertas as { registro_ticket_id: string; tipo: string }[] | null) ?? []).filter(a => !SUAVES.has(a.tipo)).map(a => a.registro_ticket_id))
+    const ids = ((frescos as { id: string; estado: string; fecha_ticket: string | null; sospechoso: boolean | null; sospecha_estado: string | null; en_proceso: unknown }[] | null) ?? [])
+      .filter(t => t.estado === 'pendiente' && !!t.fecha_ticket && !t.en_proceso && !(t.sospechoso && t.sospecha_estado === 'abierta') && !duras.has(t.id))
+      .map(t => t.id)
+    const cambiaron = elegidos.length - ids.length
     // Primero los articulos nuevos, uno por uno: dos tickets pueden traer el mismo.
     const fallaron = new Set<string>()
     for (const id of ids) {
@@ -467,7 +485,7 @@ export default function TicketsPage() {
         const leido = r.descripcion.trim()
         const nombre = leido === leido.toLowerCase() ? leido.charAt(0).toUpperCase() + leido.slice(1) : leido
         const { data: ya } = await supabase.from('catalogo_productos').select('id').eq('sucursal_id', t?.sucursal_id ?? '').eq('activo', true)
-          .ilike('nombre', nombre.replace(/[\\%_]/g, m => '\\' + m)).limit(1)
+          .ilike('nombre', nombre.replace(/[\\%_]/g, m => '\\' + m).replace(/\*/g, '_')).limit(1)
         let pid = (ya as { id: string }[] | null)?.[0]?.id
         if (!pid) {
           const { data: creado, error } = await supabase.from('catalogo_productos').insert({
@@ -493,7 +511,8 @@ export default function TicketsPage() {
       }))
     }
     await Promise.all([fetchPendientes(), fetchTickets()])
-    toast(fallos ? `${hechos} aprobados; ${fallos} no se pudieron, siguen en la lista` : `Listo: ${hechos} ${hechos === 1 ? 'aprobado' : 'aprobados'}`, fallos ? 'error' : 'ok')
+    const aviso = cambiaron ? ` ${cambiaron} ${cambiaron === 1 ? 'cambió' : 'cambiaron'} mientras tanto: revísalos.` : ''
+    toast(fallos ? `${hechos} aprobados; ${fallos} no se pudieron, siguen en la lista.${aviso}` : `Listo: ${hechos} ${hechos === 1 ? 'aprobado' : 'aprobados'}.${aviso}`, fallos || cambiaron ? 'error' : 'ok')
     return fallos
   }
 
@@ -1284,7 +1303,9 @@ export default function TicketsPage() {
     subio: t.empleados?.nombre ?? null, url: urlDe(t), nota: t.nota ?? null,
     alertas: (alertas[t.id] ?? []).map(a => ({ tipo: a.tipo, correccion: a.correccion })),
     renglones: renglonesPend[t.id] ?? [],
-    leyendo: typeof t.gemini_raw?._ia_en_proceso === 'string' && Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) <= 10 * 60_000,
+    // Recien leido y sin alertas todavia: un momento, se estan creando (o se aprobara solo).
+    leyendo: (typeof t.gemini_raw?._ia_en_proceso === 'string' && Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) <= 10 * 60_000)
+      || ((alertas[t.id] ?? []).length === 0 && Date.now() - Date.parse(t.created_at) <= 3 * 60_000),
   }))
 
   // Cuanto papel repetido subio cada persona: la copia ya no cuenta, pero si se reporto dos veces se le cobra.
@@ -1650,7 +1671,8 @@ export default function TicketsPage() {
                     onDejar={p => cambiarVigilarProd(p, false)} />
                 ))}
                 {detalle.ticket.estado === 'pendiente' && (() => {
-                  const claras = preguntasDe({ alertas: alertas[detalle.ticket.id] ?? [], fecha: detalle.ticket.fecha_ticket })
+                  const tipo = detalle.ticket.gemini_raw?.tipo_documento
+                  const claras = preguntasDe({ alertas: alertas[detalle.ticket.id] ?? [], fecha: detalle.ticket.fecha_ticket, tipo: typeof tipo === 'string' ? tipo : null })
                   return claras.length > 0 && (
                     <ul className="mt-2 max-w-xl space-y-1 rounded-lg bg-amber-900/40 px-3 py-2 text-[13px] leading-snug text-amber-300">
                       {claras.map(p => <li key={p}>{p}</li>)}

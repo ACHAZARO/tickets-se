@@ -9,7 +9,7 @@ import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { noCuadra, sinTotal } from '../_shared/montos.ts'
-import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, motivoMesCerrado, papelPideRevision } from '../_shared/renglones.ts'
+import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, motivoMesCerrado, papelPideRevision, segundaLecturaSirve } from '../_shared/renglones.ts'
 import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
 import { pagoDistinto, revisarPagos } from '../_shared/pagos.ts'
 import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
@@ -137,7 +137,7 @@ serve(async (req: Request) => {
           imagenBase64: encodeBase64(imageBytes), mimeType: fileData.type || 'image/jpeg', prompt: prompt + AVISO_NO_CUADRO,
           modelos: modelo ? [modelo] : undefined,
         })
-        if (otra.datos && !lecturaNoCuadra(otra.datos, catalog)) lectura = { ...otra, intentos: [...lectura.intentos, ...otra.intentos] }
+        if (otra.datos && segundaLecturaSirve(lectura.datos, otra.datos, catalog)) lectura = { ...otra, intentos: [...lectura.intentos, ...otra.intentos] }
       }
     }
     if (solo_leer) {
@@ -163,7 +163,7 @@ serve(async (req: Request) => {
     const rawItems = (Array.isArray(datos.items) ? datos.items : []).filter(it => it && (it.descripcion || it.monto != null))
     // No destruir los renglones existentes si la IA no devolvio renglones utiles.
     if (rawItems.length === 0) {
-      if (solo_si_sin_leer) {
+      if (solo_si_sin_leer && !simular) {
         // En el lote: la IA SI leyo pero no hay renglones (foto ilegible). Sale de la cola de
         // "sin leer" como 'ilegible' para no volver a gastar Gemini en cada corrida.
         await supabase.from('alertas_tickets').update({ resuelta: true })

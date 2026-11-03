@@ -21,9 +21,11 @@ export interface Renglon {
 
 // Decision de Alejandro (07-oct): lo que manda a revision es el TIPO DE PAPEL, no el nombre del comercio. Una nota a mano o
 // una remision de talonario las ve siempre una persona, aunque todo se vea bien; en la pantalla se aprueban en lote.
+// Solo un ticket impreso o una factura pueden pasar solos: si la IA no dijo que tipo de papel es, tambien lo ve una persona.
 export function papelPideRevision(tipo: string | null | undefined, sinFecha?: boolean): string | null {
-  const papel = tipo === 'nota_a_mano' ? 'Nota escrita a mano' : tipo === 'remision' ? 'Remisión de proveedor' : null
-  if (!papel) return null
+  const t = String(tipo ?? '').trim().toLowerCase()
+  if (t === 'ticket' || t === 'factura') return null
+  const papel = t.startsWith('nota') ? 'Nota escrita a mano' : t.startsWith('remisi') ? 'Remisión de proveedor' : 'No es ticket ni factura'
   return sinFecha ? `${papel}, sin fecha: se usó el día en que se subió.` : `${papel}.`
 }
 
@@ -69,6 +71,15 @@ export function lecturaNoCuadra(datos: GeminiResult, catalog: Catalog): boolean 
   const total = copia.monto_total ?? (raw.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null)
   const { items } = construirRenglones('prueba', raw, catalog, copia, total)
   return sinTotal(items, total) || noCuadra(items, total, copia.tipo_documento)
+}
+
+// La segunda lectura solo reemplaza a la primera si cuadra Y dice el mismo total: si la IA baja el total para que le cuadre, el
+// faltante se esconderia y el ticket hasta se aprobaria solo.
+export function segundaLecturaSirve(primera: GeminiResult, otra: GeminiResult, catalog: Catalog): boolean {
+  if (lecturaNoCuadra(otra, catalog)) return false
+  const a = Number(primera.monto_total), b = Number(otra.monto_total)
+  if (!(a > 0)) return true
+  return Math.abs(a - b) <= Math.max(1, a * 0.005)
 }
 
 export function construirRenglones(
