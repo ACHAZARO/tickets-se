@@ -42,7 +42,7 @@ App móvil para que los gerentes de los restaurantes de Alejandro (Santa Elena y
 
 ## 2. Dónde nos quedamos (a 2026-09-19)
 
-> **Actualización 2026-11-03 (beta para negocios de amigos, detalle en `PROJECT_STATE.md`):** en producción (`main` = `7c23a05`) ya están el aislamiento por negocio (101 a 111), alta por invitación (`crear-cuenta`), Por revisar con lote, asistente de inicio, Cerebro nuevo, Negocios, Tickets faltantes, cerrar mes y sugerencias de precios. Funciones publicadas el 03-nov: `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin`, `revisor-ia`, `revisar-precio`, `api-cuentas`, `enviar-alerta-email`, `crear-cuenta`. Scripts de operación y medición en `_trabajo_beta/scripts` (fuera de git, sí va a Drive).
+> **Actualización 2026-11-03 (beta para negocios de amigos, detalle en `PROJECT_STATE.md`):** en producción (`main` = `ea2cbc0`) ya están el aislamiento por negocio (101 a 111), alta por invitación (`crear-cuenta`), Por revisar con lote, asistente de inicio, Cerebro nuevo, Negocios, Tickets faltantes, cerrar mes y sugerencias de precios. Funciones publicadas el 03-nov: `procesar-ticket`, `reprocesar-ticket`, `confirmar-admin`, `revisor-ia`, `revisar-precio`, `api-cuentas`, `enviar-alerta-email`, `crear-cuenta`. Migraciones hasta la **114**. Tickets faltantes ya tiene cargados 6 reportes reales. Scripts de operación y medición en `_trabajo_beta/scripts` (fuera de git, sí va a Drive).
 
 > **Actualización 2026-10-16:** en producción (`main` = `ffe3b63`) ya están: artículos Ocasional / No autorizado (094-096), Fraude por
 > grupo (097), modo entrenamiento (098, publicado en `procesar-ticket` pero su código NO está commiteado: ver PROJECT_STATE 06-oct) y
@@ -81,7 +81,7 @@ App móvil para que los gerentes de los restaurantes de Alejandro (Santa Elena y
 
 ## 3. Estado verificado en vivo hoy (2026-09-19)
 
-> **Verificado en vivo 2026-11-03:** Vercel READY en `7c23a05`; todas las páginas responden 200; página del gerente lee con `sucursal_publica` y sin sesión no se lista ninguna sucursal; como Alejandro (simulado en SQL): cuenta principal activa, 2,029 tickets, 3 sucursales, 74 pendientes. Las cuentas de QA y sus fotos se borraron.
+> **Verificado en vivo 2026-11-03:** Vercel READY en `ea2cbc0`; todas las páginas responden 200; página del gerente lee con `sucursal_publica` y sin sesión no se lista ninguna sucursal; como Alejandro (simulado en SQL): cuenta principal activa, 2,029 tickets, 3 sucursales, 74 pendientes. Las cuentas de QA y sus fotos se borraron.
 
 | Qué | Resultado | Fuente |
 |---|---|---|
@@ -102,7 +102,9 @@ App móvil para que los gerentes de los restaurantes de Alejandro (Santa Elena y
 
 ## 4. Pendientes (en orden de importancia)
 
-**Nuevos del 03-nov (Alejandro):** (a) probar Tickets faltantes y dar su veredicto; (b) resolver Por revisar: un toque para el lote, "Conozco la tarjeta" por cada tarjeta y unas 26 preguntas; (c) primera invitación real desde Configuración → Negocios, que además prueba el registro tecleado y el correo de "Olvidé mi contraseña"; (d) para que los correos de alerta lleguen a otros negocios: verificar un dominio en Resend y poner el secret `ALERTAS_REMITENTE`.
+**Decisión pendiente de Alejandro (03-nov):** `respaldo-config-claude/` no está en GitHub porque el permiso automático de Claude Code bloqueó subirla; sigue en disco y en Drive. Falta también prender la protección de contraseñas filtradas en Supabase Auth.
+
+**Nuevos del 03-nov (Alejandro):** (a) probar Tickets faltantes (ya tiene cargados Santa Elena de agosto a octubre y Wings de julio a septiembre; falta octubre de Wings) y dar su veredicto; (b) resolver Por revisar: un toque para el lote, "Conozco la tarjeta" por cada tarjeta y unas 26 preguntas; (c) primera invitación real desde Configuración → Negocios, que además prueba el registro tecleado y el correo de "Olvidé mi contraseña"; (d) para que los correos de alerta lleguen a otros negocios: verificar un dominio en Resend y poner el secret `ALERTAS_REMITENTE`.
 
 **De Alejandro (solo él puede):**
 1. Decir si **toda** la cinta de empaque es de Bodega. La de El Fenix del 17-sep ya se pasó a Bodega; las otras tres (El Fenix 11-ago $339.60, El Iris 21-ago y 7-sep $385.20) siguen en Desechables hasta que responda.

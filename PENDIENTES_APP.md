@@ -6,6 +6,7 @@
 ## Pendientes
 
 > **03-nov-2026:** hechos en la rama `beta-amigos` #1 (confirmar pregunta si esta en Fraude), #2, #3, #5, #6, #7, #8, #9, #11, #12 y #14, y "Cerrar mes" y sugerencias de precios. Quedan: #13 (proveedor declarado, no urge para la beta), #16 (previews de Vercel: copiar variables), y correos a otros negocios: hace falta verificar un dominio en Resend y poner el secret `ALERTAS_REMITENTE`. Prender en Supabase (Authentication) la proteccion de contrasenas filtradas: lo tiene que hacer Alejandro.
+> **Tickets faltantes (03-nov):** publicada con 6 reportes reales cargados (SE ago-oct, WP jul-sep). Falta el veredicto de Alejandro y subir octubre de Wings, que no estaba en el Escritorio.
 
 ### 1. Confirmar un ticket debe cerrar su revision de Fraude (06-oct-2026, Alejandro)
 - **Hoy:** si un ticket esta en Fraude (`sospecha_estado = 'abierta'`) y el admin lo confirma desde Tickets, queda confirmado
