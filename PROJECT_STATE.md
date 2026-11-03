@@ -18,6 +18,12 @@
 
 **Tickets WP/SE:** 116 auditados (100 confirmados, 16 con pregunta) + 56 nuevos releidos: 13 confirmados que pasaron solos (muestra revisada contra foto), el resto en Por revisar. Tres rechazos falsos regresados (Adan 612, Cervezas Rep., Adan 405273). Fraude: no se cerro ningun papel repetido (regla 18-sep).
 
+**Rafaga real de IA:** 30 fotos subidas en 4 s (mediana 1.3 s por subida): las 30 leidas sin fallos, 28 en 37 s y la ultima en 145 s.
+
+**Segundo pase sobre el diff (verificador independiente):** sin hallazgos criticos; corregido: la segunda lectura solo vale con el mismo total, solo ticket impreso o factura pasan solos, en entrenamiento solo se quita lo que seguro es copia, `simular` nunca escribe, el lote se revalida justo antes de aprobar y los recien leidos no entran. Asesor de seguridad de Supabase: revocadas funciones de trigger (112), probado como usuario normal que los disparadores siguen funcionando. Quedan a proposito: `invitacion_valida` y `sucursal_publica` publicas; `api_keys` sin politicas (solo service role); 24 RPC SECURITY DEFINER para usuarios con sesion (validan permisos por dentro y el aislamiento paso QA). Queda uno de configuracion para Alejandro: proteccion de contrasenas filtradas en Supabase Auth.
+
+**Publicado 03-nov:** `main` = `7c23a05` + docs; Vercel READY; migraciones hasta la 112. Como quedo Por revisar de WP y SE: 72 pendientes ($118,742.79): 33 en lote ($11,373.68), 36 uno por uno ($104,599.11; 3 son transferencias grandes por $75,880 y 10 se van al lote con "Conozco la tarjeta", 7 tarjetas distintas) y 3 en Fraude ($2,770). Cuentas de QA, sus fotos y usuarios borrados.
+
 **No probado por mi (se hace con la primera invitacion real):** teclear el registro en el navegador contra produccion (se probo por API) y el correo real de "olvide mi contrasena".
 **Pendiente para Alejandro:** ver `PENDIENTES_APP.md` (dominio en Resend para correos a otros, previews de Vercel).
 
