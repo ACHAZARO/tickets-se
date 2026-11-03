@@ -30,7 +30,7 @@ export default function InsumosPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Artículos por revisar</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Artículos repetidos</h2>
         <p className="nota max-w-2xl">Productos que parecen repetidos. Nada cambia hasta que respondas.</p>
       </div>
 

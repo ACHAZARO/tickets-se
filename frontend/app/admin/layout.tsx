@@ -21,7 +21,7 @@ const GRUPOS = [
   ] },
   { nombre: 'Revisar', paginas: [
     { href: '/admin/tickets', label: 'Tickets' },
-    { href: '/admin/insumos', label: 'Artículos por revisar' },
+    { href: '/admin/insumos', label: 'Artículos repetidos' },
     { href: '/admin/faltantes', label: 'Tickets faltantes' },
   ] },
   { nombre: 'Configuración', paginas: [

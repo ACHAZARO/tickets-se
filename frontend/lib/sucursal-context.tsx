@@ -52,7 +52,8 @@ export function SucursalProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SucursalContext.Provider value={{ sucursalId, setSucursalId, sucursales, loading }}>
+    // Con una sola sucursal, esa es la elegida: no hay nada que preguntar y las pantallas que piden sucursal funcionan solas.
+    <SucursalContext.Provider value={{ sucursalId: sucursalId || (sucursales.length === 1 ? sucursales[0].id : ''), setSucursalId, sucursales, loading }}>
       {children}
     </SucursalContext.Provider>
   )

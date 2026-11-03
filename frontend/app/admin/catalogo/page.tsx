@@ -250,7 +250,7 @@ export default function CatalogoPage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Artículos y categorías</h2>
         <p className="nota mt-1">
-          {sucursalId ? 'Ves lo global + lo de esta sucursal; lo nuevo es de esta sucursal.' : 'Ves lo global; elige una sucursal arriba para algo específico.'}
+          {sucursales.length <= 1 ? 'Tus artículos, ordenados por grupo. Lo que la IA aprende aparece aquí.' : sucursalId ? 'Lo de todo el negocio y lo de esta sucursal; lo nuevo queda en esta sucursal.' : 'Lo de todo el negocio. Elige una sucursal arriba para agregar algo.'}
         </p>
       </div>
 

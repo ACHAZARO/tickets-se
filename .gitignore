@@ -51,3 +51,6 @@ _trabajo_beta/
 
 # QA local: sesion de prueba, nunca a git
 frontend/public/_qa_sesion.json
+frontend/public/_qa_inv.txt
+# Temporales de la CLI de Supabase
+**/supabase/.temp/

@@ -1287,6 +1287,19 @@ export default function TicketsPage() {
     leyendo: typeof t.gemini_raw?._ia_en_proceso === 'string' && Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) <= 10 * 60_000,
   }))
 
+  // Cuanto papel repetido subio cada persona: la copia ya no cuenta, pero si se reporto dos veces se le cobra.
+  const repetidosPorPersona = (() => {
+    const m = new Map<string, { n: number; monto: number }>()
+    for (const { tickets: g } of fraudeGrupos.grupos) for (const t of g) {
+      if (t.estado !== 'rechazado') continue
+      const k = t.empleados?.nombre ?? 'Sin nombre'
+      const a = m.get(k) ?? { n: 0, monto: 0 }
+      a.n++; a.monto += Number(t.monto) || 0
+      m.set(k, a)
+    }
+    return [...m.entries()].sort((a, b) => b[1].monto - a[1].monto)
+  })()
+
   const filaSosp = (t: Ticket) => (
     <div key={t.id} className="tarjeta p-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -1314,7 +1327,9 @@ export default function TicketsPage() {
     const mismosProductos = firmas.every(f => !!f && f === firmas[0])
     // Las copias rechazadas no guardan renglones: sin con que comparar, basta el mismo monto para sugerir.
     const sinRenglones = firmas.some(f => !f)
-    const sel = fraudeSel?.grupo === key ? fraudeSel : null
+    // El que ya cuenta va marcado de una vez: casi siempre es ese el que se queda.
+    const yaCuenta = g.filter(t => t.estado === 'confirmado')
+    const sel = fraudeSel?.grupo === key ? fraudeSel : yaCuenta.length === 1 ? { grupo: key, quedar: yaCuenta[0].id, preguntaFraude: false } : null
     const ambos = n === 2 ? 'ambos' : `los ${n}`
     // Como se nombra un ticket en los botones: el folio es lo que distingue los papeles.
     const nombre = (t: Ticket) => t.folio_ticket ? `folio ${t.folio_ticket}` : `${t.comercio ?? 'ticket'} ${fmt(t.monto)}`
@@ -1521,6 +1536,12 @@ export default function TicketsPage() {
               {detectando ? 'Escaneando…' : 'Buscar sospechas'}
             </button>
           </div>
+          {repetidosPorPersona.length > 0 && (
+            <p className="rounded-lg bg-zinc-800/60 px-3 py-2 text-[13px] leading-relaxed text-zinc-300">
+              <b className="font-medium text-zinc-100">Papeles repetidos que no cuentan:</b>{' '}
+              {repetidosPorPersona.map(([k, v]) => `${k}: ${v.n} por ${fmt(v.monto)}`).join(' · ')}. Si los reportó dos veces, es lo que te debe.
+            </p>
+          )}
           {noAutVis.length > 0 && (
             <section aria-labelledby="no-aut" className="space-y-2 rounded-xl bg-red-900/40 p-3">
               <div>
@@ -1817,7 +1838,10 @@ function BloqueAutorizacion({ it, cats, categoriaInicial, otros, busy, onDecidir
   onDecidir: (aprobar: boolean, categoriaId?: string | null) => void
 }) {
   const a = it.autorizacion ?? 'normal'
-  if (a === 'normal') return null
+  // Cualquier renglon puede no contar (una galleta en un ticket de farmacia): se queda como evidencia y va a "Por justificar".
+  if (a === 'normal') return it.id.startsWith('nuevo-') ? null : (
+    <button type="button" onClick={() => onDecidir(false)} disabled={busy} className="btn-quieto btn-sm -ml-2">Este no cuenta: no es del negocio</button>
+  )
   if (a === 'pendiente') return (
     <div className="space-y-2 rounded-lg bg-red-900 px-3 py-2">
       <p className="text-[13px] text-red-300"><b className="font-semibold">Artículo no autorizado.</b> No aprobar: no cuenta como gasto y se suma a «Por justificar».{otros > 0 ? ' Los demás artículos del ticket siguen contando.' : ''}</p>

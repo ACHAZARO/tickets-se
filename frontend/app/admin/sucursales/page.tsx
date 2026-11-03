@@ -159,14 +159,14 @@ function SucursalModal({ form, onClose, onSaved }: {
   }
 
   async function guardar() {
-    if (!nombre.trim() || !slug.trim()) { setError('Nombre y slug requeridos'); return }
+    if (!nombre.trim() || !slug.trim()) { setError('Falta el nombre'); return }
     setSaving(true); setError('')
     const payload = { nombre: nombre.trim(), slug: slug.trim(), direccion: direccion.trim() || null }
     const res = form.id
       ? await supabase.from('sucursales').update(payload).eq('id', form.id)
       : await supabase.from('sucursales').insert({ ...payload, activa: true })
     setSaving(false)
-    if (res.error) { setError(res.error.code === '23505' ? 'Ese slug ya existe' : res.error.message); return }
+    if (res.error) { setError(res.error.code === '23505' ? 'Ese enlace ya lo usa otra sucursal: cámbialo un poco' : res.error.message); return }
     onSaved()
   }
 
@@ -178,8 +178,8 @@ function SucursalModal({ form, onClose, onSaved }: {
       </div>
       <Field label="Nombre" value={nombre} onChange={onNombre} placeholder="Sucursal Centro" />
       <div>
-        <Field label="Slug (URL)" value={slug} onChange={v => { setSlug(slugify(v)); setSlugTouched(true) }} placeholder="sucursal-centro" />
-        <p className="nota mt-1">Aparece en el enlace y el QR. Solo letras, números y guiones.</p>
+        <Field label="Cómo se ve en el enlace" value={slug} onChange={v => { setSlug(slugify(v)); setSlugTouched(true) }} placeholder="sucursal-centro" />
+        <p className="nota mt-1">Aparece en el enlace y en el código QR. Solo letras, números y guiones.</p>
       </div>
       <Field label="Dirección (opcional)" value={direccion} onChange={setDireccion} />
       {error && <p className="text-sm text-red-400">{error}</p>}
@@ -250,7 +250,7 @@ function EmpleadosModal({ sucursal, onClose, onChanged }: { sucursal: Sucursal; 
       {editing ? (
         <div className="space-y-3">
           <Field label="Nombre" value={editing.nombre} onChange={v => setEditing({ ...editing, nombre: v })} />
-          <Field label={editing.id ? 'Nuevo PIN (dejar vacío para no cambiar)' : 'PIN (4+ dígitos)'} type="number" value={editing.pin} onChange={v => setEditing({ ...editing, pin: v })} placeholder="••••" />
+          <Field label={editing.id ? 'Nuevo PIN (déjalo vacío para no cambiarlo)' : 'PIN (4 a 6 números)'} type="number" value={editing.pin} onChange={v => setEditing({ ...editing, pin: v })} placeholder="••••" />
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <input type="checkbox" checked={editing.activo} onChange={e => setEditing({ ...editing, activo: e.target.checked })} className="h-4 w-4 rounded border-zinc-700 bg-zinc-800 accent-emerald-500" />
             Activo
