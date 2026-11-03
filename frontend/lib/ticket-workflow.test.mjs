@@ -57,8 +57,7 @@ test('ticketStatusLabel uses operator-facing state names', () => {
 })
 
 test('ticketFilterLabel separates confirmation state from review queue', () => {
-  assert.equal(ticketFilterLabel('pendientes'), 'Por confirmar')
-  assert.equal(ticketFilterLabel('alertas'), 'Requieren revisión')
+  assert.equal(ticketFilterLabel('revisar'), 'Por revisar')
   assert.equal(ticketFilterLabel('confirmados'), 'Confirmados')
 })
 

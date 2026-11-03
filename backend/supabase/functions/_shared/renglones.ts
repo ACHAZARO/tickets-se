@@ -1,7 +1,7 @@
 import { matchProductInCatalog, resolveCategoria } from './catalog.ts'
 import type { Catalog } from './catalog.ts'
 import type { GeminiItem, GeminiResult } from './gemini.ts'
-import { aplicarImpuestos, impuestosPorRenglon, quitarDescuentoDoble, repartirSinImporte } from './montos.ts'
+import { aplicarImpuestos, impuestosPorRenglon, noCuadra, quitarDescuentoDoble, repartirSinImporte, sinTotal } from './montos.ts'
 
 // De la lectura de la IA a los renglones del ticket: liga cada uno al catalogo, pone categoria y unidad y cuadra los montos
 // contra el total. Lo comparten procesar-ticket y reprocesar-ticket para que subir y releer den exactamente lo mismo.
@@ -22,9 +22,9 @@ export interface Renglon {
 // Decision de Alejandro (07-oct): lo que manda a revision es el TIPO DE PAPEL, no el nombre del comercio. Una nota a mano o
 // una remision de talonario las ve siempre una persona, aunque todo se vea bien; en la pantalla se aprueban en lote.
 export function papelPideRevision(tipo: string | null | undefined, sinFecha?: boolean): string | null {
-  const papel = tipo === 'nota_a_mano' ? 'Nota escrita a mano' : tipo === 'remision' ? 'Remision de proveedor' : null
+  const papel = tipo === 'nota_a_mano' ? 'Nota escrita a mano' : tipo === 'remision' ? 'Remisión de proveedor' : null
   if (!papel) return null
-  return sinFecha ? `${papel}, sin fecha: se uso el dia en que se subio.` : `${papel}.`
+  return sinFecha ? `${papel}, sin fecha: se usó el día en que se subió.` : `${papel}.`
 }
 
 const pesos = (n: number) => '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -40,6 +40,21 @@ export function motivoCuentaAMano(r: GeminiResult['resumen_mano']): string | nul
   return `A mano dice: ${partes}${total > 0 ? ` = ${pesos(total)}` : ''}. Esa cuenta suma varios tickets: revisa que estén todos y que este solo cuente lo suyo.`
 }
 
+// Lo que se le agrega al prompt en la segunda lectura, cuando en la primera los renglones no sumaron el total.
+export const AVISO_NO_CUADRO = `
+
+OJO: en una lectura anterior de esta misma foto los renglones no sumaron el total. Vuelve a leerla renglon por renglon, de arriba a abajo, sin saltarte ninguno y revisando cada importe.`
+
+// La lectura no cuadra con el total (hecho el mismo cuadre de impuestos y descuentos que se le va a hacer al guardarla).
+export function lecturaNoCuadra(datos: GeminiResult, catalog: Catalog): boolean {
+  const copia = JSON.parse(JSON.stringify(datos)) as GeminiResult & Record<string, unknown>
+  const raw = (Array.isArray(copia.items) ? copia.items : []).filter(it => it && (it.descripcion || it.monto != null))
+  if (!raw.length) return true
+  const total = copia.monto_total ?? (raw.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null)
+  const { items } = construirRenglones('prueba', raw, catalog, copia, total)
+  return sinTotal(items, total) || noCuadra(items, total, copia.tipo_documento)
+}
+
 export function construirRenglones(
   registroId: string, rawItems: GeminiItem[], catalog: Catalog, datos: GeminiResult & Record<string, unknown>, montoTotal: number | null,
 ): { items: Renglon[]; matchedIds: Set<string>; anySinCategoria: boolean; anySinUnidad: boolean; anyProductoNuevo: boolean } {
@@ -50,7 +65,8 @@ export function construirRenglones(
     if (matched) matchedIds.add(matched.id)
     let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
     if (!cat && matched) cat = resolveCategoria(matched.categoria_nombre, catalog.categories)
-    const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || null
+    // Sin unidad en el papel va por pieza: preguntarle a un dueno "falta la unidad" no le dice nada.
+    const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || 'pz'
     let necesita = false, motivo: string | null = null
     if (!cat) { necesita = true; motivo = 'sin_categoria' }
     else if (!unidad) { necesita = true; motivo = 'sin_unidad' }

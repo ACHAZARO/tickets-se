@@ -58,8 +58,33 @@ const folioUtil = (folio: string | null | undefined) => (folio ?? '').replace(/[
 const mismoFolio = (a: string | null | undefined, b: string | null | undefined) =>
   (a ?? '').replace(/[^a-z0-9]/gi, '').replace(/^0+/, '').toLowerCase() === (b ?? '').replace(/[^a-z0-9]/gi, '').replace(/^0+/, '').toLowerCase()
 
+// Mismo numero no siempre es el mismo papel: hay numeros que salen en todos los tickets de un proveedor (repartidor, ruta, un numero
+// bajo el nombre del emisor). Tiene que coincidir tambien el monto o la fecha.
+const CERCA_DIAS = 1
+function diasEntre(a: string | null | undefined, b: string | null | undefined): number | null {
+  if (!a || !b) return null
+  const x = Date.parse(a), y = Date.parse(b)
+  return Number.isFinite(x) && Number.isFinite(y) ? Math.abs(x - y) / 864e5 : null
+}
+const montoIgual = (a: unknown, b: unknown) => {
+  const x = Number(a), y = Number(b)
+  return x > 0 && y > 0 && Math.abs(x - y) <= Math.max(1, x * 0.02)
+}
+
+// Se rechaza solo unicamente lo que seguro es copia: mismo monto y fecha cercana, o factura + otro papel de la misma compra con el
+// mismo monto. Lo demas (mismo numero en fechas lejanas, por ejemplo) lo decide una persona: rechazar de mas pierde gasto real.
+export async function esCopiaSegura(
+  supabase: SB, dupId: string, monto: number | null, fecha: string | null, tipoDocumento?: string | null,
+): Promise<boolean> {
+  const { data } = await supabase.from('registros_tickets').select('monto, fecha_ticket, tipo:gemini_raw->>tipo_documento').eq('id', dupId).maybeSingle()
+  if (!data || !montoIgual(monto, data.monto)) return false
+  const dias = diasEntre(fecha, data.fecha_ticket)
+  if (dias !== null && dias <= 3) return true
+  return dias !== null && dias <= 10 && (tipoDocumento === 'factura') !== (data.tipo === 'factura')
+}
+
 // Busca otro ticket de la misma sucursal que parezca el mismo gasto:
-// 1) mismo folio (±30 dias de la fecha del ticket);
+// 1) mismo folio (±30 dias de la fecha del ticket) y ademas mismo monto o fecha casi igual;
 // 2) mismo comercio + misma fecha + monto (±10%);
 // 3) FACTURA + TICKET de la misma compra: comercio parecido, monto (±1.5%) y fechas a ±10 dias
 //    (la factura CFDI suele llevar otra fecha, otro folio y la razon social completa).
@@ -76,14 +101,15 @@ export async function detectSmartDuplicate(
     // Ventana de ±30 dias alrededor de la FECHA DEL TICKET (no de hoy): al releer tickets
     // viejos la ventana "ultimos 30 dias desde hoy" nunca encontraba nada. Dos proveedores
     // distintos pueden repetir un folio corto: si ambos traen comercio, debe ser el mismo.
-    let q = supabase.from('registros_tickets').select('id, comercio')
+    let q = supabase.from('registros_tickets').select('id, comercio, monto, fecha_ticket')
       .eq('sucursal_id', sucursalId).eq('folio_ticket', folio).neq('estado', 'rechazado').neq('id', noSelf)
     q = fecha
       ? q.gte('fecha_ticket', sumarDias(fecha, -30)).lte('fecha_ticket', sumarDias(fecha, 30))
       : q.gte('created_at', new Date(Date.now() - 60 * 864e5).toISOString())
     const { data } = await q.order('created_at', { ascending: true }).limit(5)
-    const hit = ((data ?? []) as { id: string; comercio: string | null }[])
-      .find(r => !comercio || !r.comercio || mismoComercio(comercio, r.comercio, propias))
+    const hit = ((data ?? []) as { id: string; comercio: string | null; monto: number | null; fecha_ticket: string | null }[])
+      .find(r => (!comercio || !r.comercio || mismoComercio(comercio, r.comercio, propias))
+        && (montoIgual(monto, r.monto) || (diasEntre(fecha, r.fecha_ticket) ?? 99) <= CERCA_DIAS))
     if (hit) return hit.id
   }
   if (comercio && monto && fecha) {

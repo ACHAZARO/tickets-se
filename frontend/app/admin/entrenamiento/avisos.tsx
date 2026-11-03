@@ -22,9 +22,9 @@ export function FranjaEntrenamiento() {
   return (
     <div className="border-b border-amber-800/60 bg-amber-950/60">
       <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[13px] text-amber-200 sm:px-6 lg:px-8 2xl:px-12">
-        <span className="font-semibold">Modo entrenamiento activo.</span>
-        <span className="text-amber-300/90">La IA acepta lo que subes y aprende de ello: sube solo tickets que ya revisaste.</span>
-        <Link href="/admin/entrenamiento" className="font-medium text-amber-100 underline underline-offset-2">Ver pasos</Link>
+        <span className="font-semibold">Falta terminar la configuración.</span>
+        <span className="text-amber-300/90">Mientras tanto la IA acepta todo lo que se sube.</span>
+        <Link href="/admin/entrenamiento" className="font-medium text-amber-100 underline underline-offset-2">Continuar</Link>
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ import { SelectorPeriodo, rangoMesActual } from '../periodo'
 import { ElegirArticulo } from '../elegir-articulo'
 import type { TicketReporte } from '@/lib/export-xlsx'
 import PagosTicket, { textoPagos, type PagoTicket } from './pagos-ticket'
+import { PorRevisar, preguntasDe, type RenglonRevisar, type TicketRevisar } from './por-revisar'
 import { AYUDA_VIGILAR, ChipUso, SelectorUso, useMarcarUso, useMarcarVigilar, usoDe, type Uso } from '../uso-articulo'
 
 interface Item {
@@ -133,6 +134,9 @@ const ALERT_LABEL: Record<string, string> = {
   articulo_no_autorizado: 'Artículo no autorizado',
   articulo_ocasional: 'Compra ocasional',
   articulo_vigilado: 'Artículo vigilado',
+  pago_distinto: 'Pago distinto',
+  nota_a_mano: 'Nota a mano',
+  cuenta_a_mano: 'Cuenta a mano',
 }
 // Que tan grave es cada alerta, para pintarla: rojo = dinero/duplicado en riesgo (revisar ya),
 // naranja = falta clasificar el producto, ambar = informativo o leve (ej. cambio de precio).
@@ -145,6 +149,8 @@ const ALERT_TONE: Record<string, AlertTone> = {
   ia_sin_leer: 'rojo',
   revisar_gerente: 'rojo',
   pagos_no_cuadran: 'rojo',
+  pago_distinto: 'rojo',
+  cuenta_a_mano: 'rojo',
   articulo_no_autorizado: 'rojo',
   rechazado: 'rojo',
   producto_no_reconocido: 'naranja',
@@ -259,7 +265,11 @@ export default function TicketsPage() {
   const [catalogo, setCatalogo] = useState<CatalogProduct[]>([])
   const [cats, setCats] = useState<{ id: string; nombre: string }[]>([])
   const [comercioFiltro, setComercioFiltro] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'alertas' | 'confirmados' | 'fraude'>('todos')
+  const [filtroEstado, setFiltroEstado] = useState<'revisar' | 'todos' | 'confirmados' | 'fraude'>('revisar')
+  // Por revisar no depende del periodo: un ticket pendiente de otro mes tambien hay que verlo.
+  const [pendientes, setPendientes] = useState<Ticket[]>([])
+  const [renglonesPend, setRenglonesPend] = useState<Record<string, RenglonRevisar[]>>({})
+  const [cargandoPend, setCargandoPend] = useState(true)
   const [detectando, setDetectando] = useState(false)
   // Grupo de Fraude en el que se esta decidiendo: ticket que se queda y si se pregunta cual es fraude.
   const [fraudeSel, setFraudeSel] = useState<{ grupo: string; quedar: string | null; preguntaFraude: boolean } | null>(null)
@@ -395,11 +405,103 @@ export default function TicketsPage() {
       for (const s of signed ?? []) if (s.signedUrl && s.path) urlMap[`${bucket}/${s.path}`] = s.signedUrl
     }
     if (!vigente()) return
-    setUrls(urlMap)
+    // Se MEZCLA: las fotos de Por revisar pueden ser de otro periodo.
+    setUrls(prev => ({ ...prev, ...urlMap }))
     setLoading(false)
   }, [desde, hasta, sucursalId])
 
   useEffect(() => { fetchTickets() }, [fetchTickets])
+
+  const fetchPendientes = useCallback(async () => {
+    let q = supabase.from('registros_tickets').select(SELECT_TICKET).eq('estado', 'pendiente')
+      .order('created_at', { ascending: false }).limit(LIMITE_TICKETS)
+    if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+    const { data, error } = await q
+    if (error) { setLoadError(error.message); setCargandoPend(false); return }
+    const filas = (data as unknown as Ticket[]) ?? []
+    const ids = filas.map(t => t.id)
+    const mapa: Record<string, AlertRow[]> = Object.fromEntries(ids.map(id => [id, []]))
+    const rengs: Record<string, RenglonRevisar[]> = {}
+    for (let i = 0; i < ids.length; i += 300) {
+      const tanda = ids.slice(i, i + 300)
+      const [{ data: al }, { data: its }] = await Promise.all([
+        supabase.from('alertas_tickets').select('registro_ticket_id, tipo, resuelta, duplicado_de_id, correccion').in('registro_ticket_id', tanda).eq('resuelta', false),
+        supabase.from('ticket_items').select('id, registro_ticket_id, descripcion, monto, unidad, categoria_id, producto_catalogo_id').in('registro_ticket_id', tanda).order('orden', { ascending: true }),
+      ])
+      for (const a of (al as AlertRow[] | null) ?? []) mapa[a.registro_ticket_id] = [...(mapa[a.registro_ticket_id] ?? []), a]
+      for (const r of (its as (RenglonRevisar & { registro_ticket_id: string })[] | null) ?? []) (rengs[r.registro_ticket_id] ??= []).push(r)
+    }
+    const urlMap: Record<string, string> = {}
+    for (const bucket of ['archivo', 'por-revisar']) {
+      const rutas = filas.map(pathBucket).filter((p): p is { bucket: string; path: string } => !!p && p.bucket === bucket).map(p => p.path)
+      if (!rutas.length) continue
+      const { data: signed } = await supabase.storage.from(bucket).createSignedUrls(rutas, 3600)
+      for (const s of signed ?? []) if (s.signedUrl && s.path) urlMap[`${bucket}/${s.path}`] = s.signedUrl
+    }
+    setAlertas(prev => ({ ...prev, ...mapa }))
+    setRenglonesPend(rengs)
+    setUrls(prev => ({ ...prev, ...urlMap }))
+    setPendientes(filas)
+    setCargandoPend(false)
+  }, [sucursalId])
+
+  useEffect(() => { fetchPendientes() }, [fetchPendientes])
+  // Al cerrar un ticket abierto (confirmado, rechazado o corregido) se actualiza la cola.
+  const habiaDetalle = useRef(false)
+  useEffect(() => {
+    if (habiaDetalle.current && !detalle) fetchPendientes()
+    habiaDetalle.current = !!detalle
+  }, [detalle, fetchPendientes])
+
+  async function aprobarLote(ids: string[], avance: (hechos: number) => void): Promise<number> {
+    await ensureFreshSession()
+    let hechos = 0
+    let fallos = 0
+    // Primero los articulos nuevos, uno por uno: dos tickets pueden traer el mismo.
+    const fallaron = new Set<string>()
+    for (const id of ids) {
+      const t = pendientes.find(x => x.id === id)
+      for (const r of (renglonesPend[id] ?? []).filter(x => !x.producto_catalogo_id)) {
+        const leido = r.descripcion.trim()
+        const nombre = leido === leido.toLowerCase() ? leido.charAt(0).toUpperCase() + leido.slice(1) : leido
+        const { data: ya } = await supabase.from('catalogo_productos').select('id').eq('sucursal_id', t?.sucursal_id ?? '').eq('activo', true)
+          .ilike('nombre', nombre.replace(/[\\%_]/g, m => '\\' + m)).limit(1)
+        let pid = (ya as { id: string }[] | null)?.[0]?.id
+        if (!pid) {
+          const { data: creado, error } = await supabase.from('catalogo_productos').insert({
+            nombre, categoria_id: r.categoria_id, unidad_default: r.unidad ?? 'pz', sucursal_id: t?.sucursal_id, activo: true, sinonimos: leido === nombre ? [] : [leido],
+          }).select('id').single()
+          if (error) { fallaron.add(id); continue }
+          pid = (creado as { id: string }).id
+        }
+        const { error: errLiga } = await supabase.from('ticket_items').update({ producto_catalogo_id: pid, necesita_revision: false, motivo_revision: null }).eq('id', r.id)
+        if (errLiga) fallaron.add(id)
+      }
+    }
+    fallos += fallaron.size
+    const aConfirmar = ids.filter(id => !fallaron.has(id))
+    // De 3 en 3: cada confirmacion mueve la foto y guarda precios.
+    for (let i = 0; i < aConfirmar.length; i += 3) {
+      await Promise.all(aConfirmar.slice(i, i + 3).map(async id => {
+        const { error } = await supabase.functions.invoke('confirmar-admin', { body: { registro_id: id } })
+        if (error) { fallos++; return }
+        await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', id).eq('resuelta', false).neq('tipo', 'articulo_no_autorizado')
+        hechos++
+        avance(hechos)
+      }))
+    }
+    await Promise.all([fetchPendientes(), fetchTickets()])
+    toast(fallos ? `${hechos} aprobados; ${fallos} no se pudieron, siguen en la lista` : `Listo: ${hechos} ${hechos === 1 ? 'aprobado' : 'aprobados'}`, fallos ? 'error' : 'ok')
+    return fallos
+  }
+
+  async function conocerTarjeta(terminacion: string) {
+    const { data, error } = await supabase.rpc('tarjeta_conocida', { p_terminacion: terminacion })
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    const n = Number(data ?? 0)
+    toast(`Listo: ya no se pregunta por la tarjeta ${terminacion}${n > 1 ? ` (${n} tickets)` : ''}`)
+    fetchPendientes()
+  }
 
   // Renglones de articulos NO AUTORIZADOS esperando decision, de CUALQUIER fecha (si quien manejaba antes la
   // operacion metio algo, aqui sale). Van en la pestana Fraude.
@@ -984,9 +1086,33 @@ export default function TicketsPage() {
     if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
     setDetalle(d => d ? { ...d, ticket: { ...d.ticket, [campo]: v } } : d)
     setTickets(prev => prev.map(x => x.id === id ? { ...x, [campo]: v } as Ticket : x))
+    // Una fecha escrita por una persona ya no es "asumida".
+    if (campo === 'fecha_ticket' && v) {
+      const t = detalle?.ticket
+      if (t && t.id === id && t.gemini_raw?._fecha_asumida) await fechaEsCorrecta(t, v)
+    }
+  }
+
+  // Quita la marca de fecha asumida y cierra su alerta: una persona ya la vio.
+  async function fechaEsCorrecta(t: Ticket, fecha?: string) {
+    const raw: Record<string, unknown> = { ...(t.gemini_raw ?? {}), _fecha_verificada: true }
+    delete raw._fecha_asumida
+    const { error } = await supabase.from('registros_tickets').update({ gemini_raw: raw }).eq('id', t.id)
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    await supabase.from('alertas_tickets').update({ resuelta: true }).eq('registro_ticket_id', t.id).eq('tipo', 'sin_fecha').eq('resuelta', false)
+    await refrescarAlertas(t.id)
+    const cambio = { gemini_raw: raw, ...(fecha ? { fecha_ticket: fecha } : {}) }
+    setDetalle(d => d && d.ticket.id === t.id ? { ...d, ticket: { ...d.ticket, ...cambio } } : d)
+    setTickets(prev => prev.map(x => x.id === t.id ? { ...x, ...cambio } : x))
+    if (!fecha) toast('Fecha marcada como correcta')
   }
 
   async function confirmarTicket(t: Ticket) {
+    // Confirmar no cierra una sospecha en silencio (evidencia): se pregunta y queda escrito.
+    if (t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta') {
+      if (!(await confirm('Este ticket está en Fraude. ¿Lo das por bueno?\n\nSale de Fraude y cuenta como gasto.', { si: 'Sí, está bien', no: 'Atrás' }))) return
+      await resolverSospecha(t, 'descartada')
+    }
     setBusy('confirmar')
     await ensureFreshSession()
     // Sin fecha el ticket no entra al Dashboard (filtra por fecha del ticket). Se lee fresca
@@ -1129,10 +1255,10 @@ export default function TicketsPage() {
     (alertas[t.id] ?? []).some(a => a.tipo === 'ia_sin_leer') ||
     (t.estado === 'pendiente' && typeof t.gemini_raw?._ia_en_proceso === 'string' &&
       Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) > 10 * 60_000)))
+  function porRevisarContados() { return pendientes.filter(t => !estaEnFraude(t)).length }
   const cuenta = {
     todos: baseTickets.length,
-    pendientes: baseTickets.filter(t => t.estado === 'pendiente').length,
-    alertas: baseTickets.filter(tieneAlerta).length,
+    revisar: porRevisarContados(),
     confirmados: baseTickets.filter(t => t.estado === 'confirmado').length,
     fraude: baseTickets.filter(esSospechosoAbierto).length,
   }
@@ -1149,12 +1275,15 @@ export default function TicketsPage() {
     for (const [k, g] of [...byGroup]) if (g.length < 2) { sueltos.push(...g); byGroup.delete(k) }
     return { grupos: [...byGroup.entries()].map(([key, tickets]) => ({ key, tickets })), sueltos }
   })()
-  const ticketsFiltrados = baseTickets.filter(t =>
-    filtroEstado === 'todos' ? true
-    : filtroEstado === 'pendientes' ? t.estado === 'pendiente'
-    : filtroEstado === 'alertas' ? tieneAlerta(t)
-    : t.estado === 'confirmado'
-  )
+  const ticketsFiltrados = baseTickets.filter(t => filtroEstado === 'todos' ? true : t.estado === 'confirmado')
+  // Por revisar: lo que esta en Fraude se ve en su pestana, no aqui dos veces.
+  const porRevisar: TicketRevisar[] = pendientes.filter(t => !estaEnFraude(t)).map(t => ({
+    id: t.id, tipo: typeof t.gemini_raw?.tipo_documento === 'string' ? t.gemini_raw.tipo_documento : null, comercio: t.comercio, monto: t.monto, fecha: t.fecha_ticket, sucursal: t.sucursales?.nombre ?? null,
+    subio: t.empleados?.nombre ?? null, url: urlDe(t), nota: t.nota ?? null,
+    alertas: (alertas[t.id] ?? []).map(a => ({ tipo: a.tipo, correccion: a.correccion })),
+    renglones: renglonesPend[t.id] ?? [],
+    leyendo: typeof t.gemini_raw?._ia_en_proceso === 'string' && Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) <= 10 * 60_000,
+  }))
 
   const filaSosp = (t: Ticket) => (
     <div key={t.id} className="tarjeta p-3">
@@ -1252,19 +1381,21 @@ export default function TicketsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className={`flex items-center justify-between gap-4 flex-wrap ${filtroEstado === 'revisar' ? 'hidden' : ''}`}>
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Tickets</h2>
           <p className="nota mt-0.5">{nombreSucursal}</p>
         </div>
-        <button type="button" onClick={descargarReporte} disabled={descargando}
-          title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
-          className="btn-secundario">
-          {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
-        </button>
+        {filtroEstado !== 'revisar' && (
+          <button type="button" onClick={descargarReporte} disabled={descargando}
+            title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
+            className="btn-secundario">
+            {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
+          </button>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      {filtroEstado !== 'revisar' && <div className="flex flex-wrap items-end gap-3">
         <Field label="Periodo"><SelectorPeriodo desde={desde} hasta={hasta} onChange={(d, h) => { setDesde(d); setHasta(h) }} /></Field>
         <Field label="Comercio">
           <select value={comercioFiltro} onChange={e => setComercioFiltro(e.target.value)}
@@ -1273,9 +1404,9 @@ export default function TicketsPage() {
             {comerciosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
-      </div>
+      </div>}
 
-      <div className="tarjeta">
+      {filtroEstado !== 'revisar' && <div className="tarjeta">
         <button type="button" onClick={() => setResumenAbierto(a => !a)} aria-expanded={resumenAbierto}
           className="w-full text-left p-4 flex flex-wrap items-end gap-x-8 gap-y-3 rounded-xl hover:bg-zinc-800/40 transition-colors">
           <div>
@@ -1331,19 +1462,17 @@ export default function TicketsPage() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="flex flex-wrap gap-2">
         {([
           // Cada filtro lleva el color de lo que significa: tenue cuando no esta elegido, lleno cuando si.
-          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos,
-            tenue: 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700', lleno: 'bg-zinc-100 text-zinc-900' },
-          { k: 'pendientes', label: ticketFilterLabel('pendientes'), n: cuenta.pendientes,
-            tenue: 'bg-blue-900 text-blue-300 hover:bg-blue-800', lleno: 'bg-blue-600 text-white' },
-          { k: 'alertas', label: ticketFilterLabel('alertas'), n: cuenta.alertas,
+          { k: 'revisar', label: ticketFilterLabel('revisar'), n: cuenta.revisar,
             tenue: 'bg-amber-900 text-amber-300 hover:bg-amber-800', lleno: 'bg-amber-600 text-white' },
           { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados,
             tenue: 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800', lleno: 'bg-emerald-600 text-white' },
+          { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos,
+            tenue: 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700', lleno: 'bg-zinc-100 text-zinc-900' },
           { k: 'fraude', label: ticketFilterLabel('fraude'), n: new Set([...baseTickets.filter(esSospechosoAbierto).map(t => t.id), ...noAutVis.map(r => r.registros_tickets.id)]).size,
             tenue: 'bg-red-900 text-red-300 hover:bg-red-800', lleno: 'bg-red-600 text-white' },
         ] as const).map(c => {
@@ -1374,7 +1503,11 @@ export default function TicketsPage() {
           {aviso}
         </div>
       )}
-      {filtroEstado === 'fraude' ? (
+      {filtroEstado === 'revisar' ? (
+        <PorRevisar tickets={porRevisar} cargando={cargandoPend} aprobar={aprobarLote} conocerTarjeta={conocerTarjeta}
+          abrir={id => { const t = pendientes.find(x => x.id === id); if (t) abrirDetalle(t) }}
+          irAFraude={() => setFiltroEstado('fraude')} enFraude={cuenta.fraude} />
+      ) : filtroEstado === 'fraude' ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="space-y-0.5">
@@ -1466,7 +1599,7 @@ export default function TicketsPage() {
             <datalist id="unidades-tickets">{UNIDADES.map(u => <option key={u} value={u} />)}</datalist>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? 'Ticket'}</h3>
+                <h3 className="text-lg font-semibold text-zinc-100">{detalle.ticket.comercio ?? (detalle.ticket.gemini_raw?.tipo_documento === 'nota_a_mano' ? 'Nota a mano' : detalle.ticket.gemini_raw?.tipo_documento === 'remision' ? 'Remisión' : 'Ticket')}</h3>
                 <p className="nota">{detalle.ticket.sucursales?.nombre ?? 'Sin sucursal'} · subido por {detalle.ticket.empleados?.nombre ?? 'Desconocido'}</p>
                 <PagosTicket
                   key={detalle.ticket.id}
@@ -1493,7 +1626,15 @@ export default function TicketsPage() {
                     onListo={() => okAlertaArticulo(detalle.ticket, 'articulo_vigilado')}
                     onDejar={p => cambiarVigilarProd(p, false)} />
                 ))}
-                {(alertas[detalle.ticket.id] ?? []).filter(a => a.tipo === 'revisar_gerente' || a.tipo === 'envio_alto').map((a, i) => (
+                {detalle.ticket.estado === 'pendiente' && (() => {
+                  const claras = preguntasDe({ alertas: alertas[detalle.ticket.id] ?? [], fecha: detalle.ticket.fecha_ticket })
+                  return claras.length > 0 && (
+                    <ul className="mt-2 max-w-xl space-y-1 rounded-lg bg-amber-900/40 px-3 py-2 text-[13px] leading-snug text-amber-300">
+                      {claras.map(p => <li key={p}>{p}</li>)}
+                    </ul>
+                  )
+                })()}
+                {detalle.ticket.estado !== 'pendiente' && (alertas[detalle.ticket.id] ?? []).filter(a => ['revisar_gerente', 'envio_alto', 'precio_anomalo', 'pago_distinto', 'cuenta_a_mano'].includes(a.tipo) && !!(a.correccion as { motivo?: string } | null)?.motivo).map((a, i) => (
                   <p key={i} className="mt-2 text-[13px] text-amber-400">{ALERT_LABEL[a.tipo]}: {String((a.correccion as { motivo?: string } | null)?.motivo ?? 'sin motivo')}</p>
                 ))}
                 {detalle.ticket.nota && (
@@ -1514,22 +1655,19 @@ export default function TicketsPage() {
                 <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-800/50 p-3">
                   <Field label="Comercio"><input defaultValue={detalle.ticket.comercio ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'comercio', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
                   <Field label="Fecha"><input type="date" defaultValue={detalle.ticket.fecha_ticket ?? ''} onBlur={e => actualizarHeader(detalle.ticket.id, 'fecha_ticket', e.target.value)} className="campo w-full px-2 py-1.5" /></Field>
+                  {!!detalle.ticket.gemini_raw?._fecha_asumida && (
+                    <div className="col-span-2 flex flex-wrap items-center gap-2">
+                      <p className="text-[13px] text-amber-300">El papel no trae una fecha clara: se usó esta.</p>
+                      <button type="button" onClick={() => fechaEsCorrecta(detalle.ticket)} className="btn-secundario btn-sm">La fecha es correcta</button>
+                    </div>
+                  )}
                 </div>
                 {detalle.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={detalle.url} alt="Ticket" decoding="async" className="w-full max-h-[64vh] object-contain rounded-xl bg-zinc-950" />
+                  <a href={detalle.url} target="_blank" rel="noreferrer" title="Abrir la foto grande">
+                    <img src={detalle.url} alt="Foto del ticket" decoding="async" className="w-full max-h-[42dvh] lg:max-h-[64vh] object-contain rounded-xl bg-zinc-950" />
+                  </a>
                 ) : <div className="h-64 rounded-xl bg-zinc-950 flex items-center justify-center text-sm text-zinc-500">Sin imagen</div>}
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => reintentarIA(detalle.ticket)} disabled={busy === 'ia'} className="btn-secundario">{busy === 'ia' ? 'Leyendo...' : 'Volver a leer IA'}</button>
-                  <button onClick={() => rechazarTicket(detalle.ticket)} className="btn-peligro">Rechazar</button>
-                </div>
-                {esSospechosoAbierto(detalle.ticket) ? (
-                  <button onClick={() => { resolverSospecha(detalle.ticket, 'descartada'); setDetalle(null) }}
-                    className="btn-quieto w-full">Quitar de revisión de fraude</button>
-                ) : (
-                  <button onClick={() => { marcarSospechoso(detalle.ticket, ''); setDetalle(null) }}
-                    className="btn-peligro w-full">Marcar como sospechoso</button>
-                )}
               </div>
 
               <div className="space-y-3">
@@ -1638,16 +1776,32 @@ export default function TicketsPage() {
                   <span className="text-zinc-500">Total ticket</span>
                   <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
                 </div>
-                {detalle.ticket.estado !== 'confirmado' ? (
-                  <button onClick={() => guardarTicket(true)} disabled={busy === 'guardar' || busy === 'confirmar'} className="btn-primario w-full py-2.5">{busy === 'guardar' ? 'Guardando...' : busy === 'confirmar' ? 'Confirmando...' : 'Guardar y confirmar ticket'}</button>
-                ) : editando && (
-                  <button onClick={() => guardarTicket(false)} disabled={busy === 'guardar'} className="btn-primario w-full py-2.5">{busy === 'guardar' ? 'Guardando...' : 'Guardar cambios'}</button>
-                )}
-                {sePuedeEliminar(detalle.ticket)
-                  ? <button onClick={() => eliminarTicket(detalle.ticket)} className="btn-peligro w-full">Eliminar ticket</button>
-                  : <p className="nota text-center">Los tickets de sucursales reales no se eliminan: si no vale, usa Rechazar (sigue contando en &quot;Subidos&quot;).</p>}
+                <details className="rounded-lg border border-zinc-800 px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium text-zinc-400">Más opciones</summary>
+                  <div className="mt-2 flex flex-col gap-2">
+                    <button onClick={() => reintentarIA(detalle.ticket)} disabled={busy === 'ia'} className="btn-secundario w-full">{busy === 'ia' ? 'Leyendo...' : 'Que la IA lo lea otra vez'}</button>
+                    {esSospechosoAbierto(detalle.ticket) ? (
+                      <button onClick={() => { resolverSospecha(detalle.ticket, 'descartada'); setDetalle(null) }} className="btn-quieto w-full">Quitar de Fraude</button>
+                    ) : (
+                      <button onClick={() => { marcarSospechoso(detalle.ticket, ''); setDetalle(null) }} className="btn-peligro w-full">Mandar a Fraude</button>
+                    )}
+                    {sePuedeEliminar(detalle.ticket)
+                      ? <button onClick={() => eliminarTicket(detalle.ticket)} className="btn-peligro w-full">Eliminar ticket</button>
+                      : <p className="nota">Un ticket que no vale se rechaza, no se borra: sigue contando en «Subidos».</p>}
+                  </div>
+                </details>
               </div>
             </div>
+            {(detalle.ticket.estado !== 'confirmado' || editando) && (
+              <div className="sticky -bottom-5 z-10 -mx-5 -mb-5 mt-4 flex items-center gap-2 border-t border-zinc-800 bg-zinc-900 px-5 py-3 safe-bottom">
+                {detalle.ticket.estado !== 'rechazado' && <button onClick={() => rechazarTicket(detalle.ticket)} className="btn-peligro">Rechazar</button>}
+                {detalle.ticket.estado !== 'confirmado' ? (
+                  <button onClick={() => guardarTicket(true)} disabled={busy === 'guardar' || busy === 'confirmar'} className="btn-primario flex-1 py-2.5">{busy === 'guardar' ? 'Guardando...' : busy === 'confirmar' ? 'Confirmando...' : 'Está bien, confirmar'}</button>
+                ) : (
+                  <button onClick={() => guardarTicket(false)} disabled={busy === 'guardar'} className="btn-primario flex-1 py-2.5">{busy === 'guardar' ? 'Guardando...' : 'Guardar cambios'}</button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -58,9 +58,33 @@ export function SucursalProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/** Selector compacto para el header del admin. */
+interface CuentaLista { id: string; nombre: string; es_prueba: boolean; estado: string; activa: boolean }
+
+/** Quien administra varios negocios trabaja sobre UNO a la vez. Con uno solo no se muestra. */
+export function CuentaSelector() {
+  const [cuentas, setCuentas] = useState<CuentaLista[]>([])
+  useEffect(() => {
+    supabase.rpc('mis_cuentas_lista').then(({ data }) => setCuentas((data as CuentaLista[] | null) ?? []))
+  }, [])
+  if (cuentas.length <= 1) return null
+  async function elegir(id: string) {
+    const { error } = await supabase.rpc('elegir_cuenta', { p_cuenta: id })
+    if (error) return
+    window.localStorage.removeItem(STORAGE_KEY)
+    window.location.reload()
+  }
+  return (
+    <select value={cuentas.find(c => c.activa)?.id ?? ''} onChange={e => elegir(e.target.value)} title="Negocio que estás viendo" aria-label="Negocio"
+      className="h-9 max-w-[170px] rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 text-[13px] font-medium text-zinc-100 hover:border-zinc-600">
+      {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.es_prueba ? ' (prueba)' : ''}</option>)}
+    </select>
+  )
+}
+
+/** Selector compacto para el header del admin. Con una sola sucursal no hay nada que elegir. */
 export function SucursalSelector() {
   const { sucursalId, setSucursalId, sucursales } = useSucursal()
+  if (sucursales.length <= 1) return null
   return (
     <select
       value={sucursalId}

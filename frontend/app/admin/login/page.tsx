@@ -11,6 +11,15 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [aviso, setAviso] = useState('')
+
+  async function olvide() {
+    setError(''); setAviso('')
+    if (!email.trim()) { setError('Escribe tu correo arriba y vuelve a tocar aquí.'); return }
+    const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/admin/nueva-clave` })
+    if (e) { setError('No se pudo enviar. Espera unos minutos e intenta de nuevo.'); return }
+    setAviso('Te mandamos un correo con un enlace para poner otra contraseña. Revisa también el correo no deseado.')
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -33,13 +42,13 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Tickets</h1>
-          <p className="nota mt-1">Panel de revisión</p>
+          <p className="nota mt-1">Entra para ver tus gastos</p>
         </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Tu correo"
             value={email}
             onChange={e => setEmail(e.target.value)}
             className="campo w-full px-4 py-3"
@@ -49,7 +58,7 @@ export default function AdminLoginPage() {
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
-              placeholder="Contraseña"
+              placeholder="Tu contraseña"
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="campo w-full px-4 py-3 pr-12"
@@ -79,6 +88,7 @@ export default function AdminLoginPage() {
           {error && (
             <p className="text-sm text-red-400 text-center">{error}</p>
           )}
+          {aviso && <p role="status" className="rounded-lg bg-emerald-900 px-3 py-2 text-sm text-emerald-300">{aviso}</p>}
 
           <button
             type="submit"
@@ -87,6 +97,7 @@ export default function AdminLoginPage() {
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+          <button type="button" onClick={olvide} className="btn-quieto btn-sm self-center">Olvidé mi contraseña</button>
         </form>
       </div>
     </main>

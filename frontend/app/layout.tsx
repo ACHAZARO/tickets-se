@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { SCRIPT_TEMA } from '@/lib/tema-script'
+import { RedirigirRecuperacion } from './recuperar'
 
 export const metadata: Metadata = {
   title: 'Revisión de Tickets',
@@ -38,6 +39,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
       <body className="min-h-screen min-h-[100dvh]">
+        <RedirigirRecuperacion />
         {children}
       </body>
     </html>

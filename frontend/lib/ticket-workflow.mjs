@@ -79,9 +79,8 @@ export function ticketStatusLabel(status) {
 
 export function ticketFilterLabel(filter) {
   const labels = {
+    revisar: 'Por revisar',
     todos: 'Todos',
-    pendientes: 'Por confirmar',
-    alertas: 'Requieren revisión',
     confirmados: 'Confirmados',
     fraude: 'Fraude',
   }

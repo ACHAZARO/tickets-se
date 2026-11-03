@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { comprimirConTope } from '@/lib/fotos'
 
 interface PageProps {
   params: { slug: string }
@@ -21,28 +22,6 @@ function leerMonto(texto: string): number | null {
 const pesos = (n: number) => '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const EDGE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL
-
-// Reduce la foto antes de subir sin destruir texto chico del ticket. Mantener
-// mas resolucion que antes es clave para OCR; el timeout evita que se cuelgue.
-async function comprimirImagen(file: File, maxLado = 2400, calidad = 0.86): Promise<Blob> {
-  if (!file.type.startsWith('image/')) return file
-  try {
-    const bitmap = await createImageBitmap(file)
-    const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height))
-    const w = Math.round(bitmap.width * escala)
-    const h = Math.round(bitmap.height * escala)
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return file
-    ctx.drawImage(bitmap, 0, 0, w, h)
-    const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', calidad))
-    return blob && blob.size < file.size ? blob : file
-  } catch {
-    return file
-  }
-}
 
 export default function SubirPage({ params }: PageProps) {
   const { slug } = params
@@ -202,12 +181,9 @@ export default function SubirPage({ params }: PageProps) {
       : ''
 
     // Envia UNA foto con reintentos. Devuelve el resultado para contarlo.
-    async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail' | 'expired'> {
-      // La compresion no puede colgar el envio: si tarda >8s, usa la original.
-      const imagen = await Promise.race<Blob>([
-        comprimirImagen(file),
-        new Promise<Blob>(resolve => setTimeout(() => resolve(file), 8000)),
-      ])
+    let avisoBloqueo = ''
+    async function enviarUna(file: File): Promise<'ok' | 'dup' | 'fail' | 'expired' | 'tope'> {
+      const imagen = await comprimirConTope(file)
       // Hasta 3 intentos por foto (la red movil falla intermitente).
       for (let intento = 1; intento <= 3; intento++) {
         const formData = new FormData()
@@ -226,6 +202,7 @@ export default function SubirPage({ params }: PageProps) {
           const data = await res.json().catch(() => ({}))
           if (res.ok && data.recibido) return 'ok'
           if (data.duplicado) return 'dup'
+          if (data.tope) { avisoBloqueo = String(data.error ?? ''); return 'tope' }
           // Sesion expirada/invalida: hay que re-ingresar el PIN.
           if (res.status === 401) return 'expired'
           // error del servidor: no tiene caso reintentar el mismo contenido
@@ -251,6 +228,7 @@ export default function SubirPage({ params }: PageProps) {
       if (r === 'ok') ok++
       else if (r === 'dup') duplicados++
       else if (r === 'expired') { expirada = true; break }
+      else if (r === 'tope') { fallidos += archivos.length - i; break }
       else fallidos++
     }
     if (expirada) {
@@ -268,7 +246,7 @@ export default function SubirPage({ params }: PageProps) {
     setFallidas(fallidos)
     if (ok === 0) {
       setErrorMsg(
-        duplicados > 0 && fallidos === 0
+        avisoBloqueo ? avisoBloqueo : duplicados > 0 && fallidos === 0
           ? 'Ese ticket ya fue enviado antes.'
           : 'No se pudo enviar. Revisa tu internet e inténtalo de nuevo.'
       )
@@ -437,6 +415,7 @@ export default function SubirPage({ params }: PageProps) {
             <div>
               <p className="text-lg font-semibold text-zinc-100">{varias ? 'Elegir fotos de tu carrete' : 'Tomar foto'}</p>
               <p className="nota mt-1">{varias ? 'Selecciona todas las que quieras: se suben juntas' : 'o elegir de la galería'}</p>
+              <p className="nota mt-3 font-medium">Una foto por ticket. Que no se vea otro papel debajo o al lado.</p>
             </div>
           </button>
           {puedeContar && (

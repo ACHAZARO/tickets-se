@@ -26,20 +26,16 @@ export default function PinPage({ params }: PageProps) {
   // Fetch sucursal name
   useEffect(() => {
     async function fetchSucursal() {
-      const { data, error } = await supabase
-        .from('sucursales')
-        .select('nombre')
-        .eq('slug', slug)
-        .single()
-
-      if (data) {
-        setSucursalNombre(data.nombre)
+      const { data, error } = await supabase.rpc('sucursal_publica', { p_slug: slug })
+      const fila = (data as { nombre: string }[] | null)?.[0]
+      if (fila) {
+        setSucursalNombre(fila.nombre)
         return
       }
-      // PGRST116 = "no rows": la sucursal realmente no existe -> 404.
-      // Cualquier otro error (red movil intermitente) NO debe bloquear la pantalla:
+      // Sin filas: la sucursal realmente no existe -> 404.
+      // Un error (red movil intermitente) NO debe bloquear la pantalla:
       // el PIN valida el slug server-side, asi que dejamos teclear igual.
-      if (error && error.code === 'PGRST116') setNotFound(true)
+      if (!error) setNotFound(true)
     }
     fetchSucursal()
   }, [slug])

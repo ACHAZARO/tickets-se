@@ -96,8 +96,9 @@ export async function guardarPrecios(
 // ninguna decision. El historial de precios guarda todo de cualquier forma.
 const IMPACTO_MINIMO = 50
 
-// Revisa (SIN escribir nada) si algun renglon ligado a un producto trae un precio unitario muy distinto (+-40%) a la mediana
-// de sus ultimas 5 compras y eso mueve al menos IMPACTO_MINIMO. Requiere 3+ compras previas y la misma unidad.
+// Revisa (SIN escribir nada) si algun renglon ligado a un producto subio mas de 40% contra la mediana de sus ultimas 5 compras y
+// eso mueve al menos IMPACTO_MINIMO. Que baje no se pregunta: no le cuesta al dueno y casi siempre es otra presentacion.
+// Requiere 3+ compras previas y la misma unidad.
 // excluirRegistroId evita compararse consigo mismo. Devuelve el motivo para la persona que revisa, o null.
 export async function hayPrecioAnomalo(
   supabase: SB,
@@ -128,7 +129,7 @@ export async function hayPrecioAnomalo(
       const ref = mediana(prev)
       const ratio = (monto / cant) / ref
       const impacto = Math.abs(monto - ref * cant)
-      if (ref > 0 && (ratio > 1.4 || ratio < 0.6) && impacto >= IMPACTO_MINIMO) {
+      if (ref > 0 && ratio > 1.4 && impacto >= IMPACTO_MINIMO) {
         const u = prod?.unidad_default ?? it.unidad ?? 'unidad'
         motivos.push({ impacto, texto: `${prod?.nombre ?? 'Articulo'}: $${(monto / cant).toFixed(2)} por ${u}, normalmente $${ref.toFixed(2)}` })
       }
@@ -170,7 +171,7 @@ export async function envioMuyAlto(
   if (previos.length >= 3) {
     const ref = mediana(previos)
     return envio > Math.max(ref * 1.5, ref + 40)
-      ? `Envio de ${pesos(envio)}; con este proveedor suele ser ${pesos(ref)}. Confirmar con la gerente.` : null
+      ? `Envío de ${pesos(envio)}; con este proveedor suele ser ${pesos(ref)}. Confírmalo con quien lo subió.` : null
   }
-  return envio > 150 ? `Envio de ${pesos(envio)} (mas de $150). Confirmar con la gerente.` : null
+  return envio > 150 ? `Envío de ${pesos(envio)}: es mucho. Confírmalo con quien lo subió.` : null
 }

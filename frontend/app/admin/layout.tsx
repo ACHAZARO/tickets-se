@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
-import { SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
+import { CuentaSelector, SucursalProvider, SucursalSelector } from '@/lib/sucursal-context'
 import { BotonTema } from '@/lib/tema'
 import { AdminUIProvider } from './ui'
 import { CerebroBadge } from './unificar'
@@ -41,6 +41,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const { activo: entrenamientoActivo, cuentas: cuentasOpciones, guardar: guardarOpciones } = useEntrenamientoActivo(!!user)
+  const [esSuper, setEsSuper] = useState(false)
+  useEffect(() => {
+    if (!user) return
+    supabase.rpc('es_superadmin').then(({ data }) => setEsSuper(data === true))
+  }, [user])
+  // Quien no ha terminado de configurar su negocio sigue en el asistente al entrar (una vez por sesion: puede salir).
+  useEffect(() => {
+    if (entrenamientoActivo && pathname === '/admin/tickets' && !sessionStorage.getItem('asistente_visto')) {
+      sessionStorage.setItem('asistente_visto', '1')
+      router.replace('/admin/entrenamiento')
+    }
+  }, [entrenamientoActivo, pathname, router])
   // En celular la fila de pantallas se desliza: que la pantalla activa siempre quede a la vista.
   const filaPantallas = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -94,8 +106,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (!user) return null
 
-  const grupos = GRUPOS.map(g => ({ ...g, paginas: g.paginas.filter(p =>
-    p.href !== '/admin/entrenamiento' || entrenamientoActivo || pathname.startsWith(p.href)) }))
+  // El asistente de inicio va a pantalla completa: sin menu que distraiga.
+  if (pathname.startsWith('/admin/entrenamiento')) {
+    return (
+      <SucursalProvider>
+        <AdminUIProvider>
+          <main id="contenido" className="mx-auto min-h-[100dvh] w-full max-w-2xl px-4 py-5 safe-top safe-bottom sm:px-6">{children}</main>
+        </AdminUIProvider>
+      </SucursalProvider>
+    )
+  }
+
+  const grupos = GRUPOS.map(g => ({ ...g, paginas: [
+    ...g.paginas.filter(p => p.href !== '/admin/entrenamiento' || entrenamientoActivo),
+    ...(g.nombre === 'Configuración' && esSuper ? [{ href: '/admin/negocios', label: 'Negocios' }] : []),
+  ] }))
   const grupoActivo = grupos.find(g => g.paginas.some(p => pathname.startsWith(p.href))) ?? grupos[0]
 
   return (
@@ -105,8 +130,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur safe-top">
         <div className="mx-auto w-full max-w-[1920px] px-4 pt-3 space-y-3 sm:px-6 lg:px-8 2xl:px-12">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[15px] font-semibold tracking-tight text-zinc-100">Tickets</span>
+            <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-100">{cuentasOpciones?.length === 1 ? cuentasOpciones[0].nombre : 'Tickets'}</span>
             <div className="flex items-center gap-1">
+              <CuentaSelector />
               <SucursalSelector />
               <BotonTema />
               <button

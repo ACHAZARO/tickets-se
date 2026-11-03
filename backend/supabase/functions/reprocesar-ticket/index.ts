@@ -9,7 +9,7 @@ import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { noCuadra, sinTotal } from '../_shared/montos.ts'
-import { construirRenglones, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
+import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
 import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
 import { pagoDistinto, revisarPagos } from '../_shared/pagos.ts'
 import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
@@ -79,7 +79,7 @@ serve(async (req: Request) => {
     const quien = await llamanteDe(supabase, req)
     if (!quien) return json({ error: 'No autorizado' }, 401)
     const { data: reg } = await supabase.from('registros_tickets')
-      .select('id, sucursal_id, estado, created_at, gemini_raw, storage_path_original, storage_path_archivo')
+      .select('id, sucursal_id, estado, created_at, gemini_raw, storage_path_original, storage_path_archivo, sospecha_estado')
       .eq('id', registro_id).maybeSingle()
     // Un ticket de otro negocio responde igual que uno que no existe.
     if (!reg || !(await puedeSucursal(supabase, quien, reg.sucursal_id))) return json({ error: 'Ticket no encontrado' }, 404)
@@ -124,12 +124,21 @@ serve(async (req: Request) => {
         }, 500)
       }
       const imageBytes = await fileData.arrayBuffer()
+      const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida, catalog.negocio)
       lectura = await leerTicketConGemini({
         imagenBase64: encodeBase64(imageBytes),
         mimeType: fileData.type || 'image/jpeg',
-        prompt: buildGeminiPrompt(buildCatalogPromptContext(catalog), fechaSubida, catalog.negocio),
+        prompt,
         modelos: modelo ? [modelo] : undefined,
       })
+      // Igual que al subir: si los renglones no suman el total, una segunda lectura (no en las pruebas de modelo).
+      if (!solo_leer && lectura.datos && lecturaNoCuadra(lectura.datos, catalog)) {
+        const otra = await leerTicketConGemini({
+          imagenBase64: encodeBase64(imageBytes), mimeType: fileData.type || 'image/jpeg', prompt: prompt + AVISO_NO_CUADRO,
+          modelos: modelo ? [modelo] : undefined,
+        })
+        if (otra.datos && !lecturaNoCuadra(otra.datos, catalog)) lectura = { ...otra, intentos: [...lectura.intentos, ...otra.intentos] }
+      }
     }
     if (solo_leer) {
       return json({
@@ -271,6 +280,15 @@ serve(async (req: Request) => {
       }).eq('id', registro_id)
       if (sospErr) console.error('marcar sospecha fallo:', sospErr.message)
       alertas.push('texto_para_ia')
+    }
+    // Lo raro que ve la IA en el papel va a Fraude, igual que al subir; lo que una persona ya decidio no se vuelve a abrir.
+    const sospecha = typeof datos.sospecha === 'string' ? datos.sospecha.trim().slice(0, 400) : ''
+    if (sospecha && !paraIA && reg.sospecha_estado !== 'descartada' && reg.sospecha_estado !== 'confirmada') {
+      const { error: sospErr } = await supabase.from('registros_tickets').update({
+        sospechoso: true, sospecha_origen: 'auto', sospecha_estado: 'abierta', sospecha_motivo: `IA: ${sospecha}`,
+      }).eq('id', registro_id)
+      if (sospErr) console.error('marcar sospecha fallo:', sospErr.message)
+      alertas.push('sospecha')
     }
     // Articulos no autorizados (a Fraude) u ocasionales (a Por revisar), igual que la subida normal.
     if (!rechazado) alertas.push(...await revisarUsoArticulos(supabase, registro_id))

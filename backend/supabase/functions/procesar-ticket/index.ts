@@ -7,10 +7,10 @@ import { loadCatalog, buildCatalogPromptContext } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
 import { buildGeminiPrompt, fechaMexico, fechaPideRevision, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
-import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
+import { detectSmartDuplicate, esCopiaSegura, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { noCuadra, sinTotal } from '../_shared/montos.ts'
-import { construirRenglones, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
+import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
@@ -116,8 +116,10 @@ async function crearArticulosEntrenamiento(
   for (const it of items) {
     if (!it.categoria_id) continue
     if (!it.producto_catalogo_id) {
-      const nombre = it.descripcion?.trim()
-      if (!nombre) continue
+      const leido = it.descripcion?.trim()
+      if (!leido) continue
+      // "lechuga" -> "Lechuga": el nombre lo va a ver el dueno. Como viene en el ticket, salvo la mayuscula inicial.
+      const nombre = leido === leido.toLowerCase() ? leido.charAt(0).toUpperCase() + leido.slice(1) : leido
       const key = nombre.toLowerCase()
       let id = creados.get(key) ?? null
       if (!id) {
@@ -205,7 +207,12 @@ async function procesarEnSegundoPlano(opts: {
     const prompt = buildGeminiPrompt(buildCatalogPromptContext(catalog), hoy, catalog.negocio)
     const propias = palabrasDelNegocio(catalog.negocio.sucursales)
 
-    const lectura = await leerTicketConGemini({ imagenBase64: encodeBase64(imageBytes), mimeType: mime, prompt })
+    let lectura = await leerTicketConGemini({ imagenBase64: encodeBase64(imageBytes), mimeType: mime, prompt })
+    // Los renglones no suman el total: se lee otra vez antes de molestar al dueno. Si tampoco cuadra, se queda la primera.
+    if (lectura.datos && lecturaNoCuadra(lectura.datos, catalog)) {
+      const otra = await leerTicketConGemini({ imagenBase64: encodeBase64(imageBytes), mimeType: mime, prompt: prompt + AVISO_NO_CUADRO })
+      if (otra.datos && !lecturaNoCuadra(otra.datos, catalog)) lectura = { ...otra, intentos: [...lectura.intentos, ...otra.intentos] }
+    }
     if (!lectura.datos) {
       // La IA NO leyo el ticket (sin cuota, saturada, etc.). No es "ilegible" ni se inventa
       // fecha: queda marcado para releer (boton "Volver a leer IA" / releer en lote).
@@ -345,8 +352,8 @@ async function procesarEnSegundoPlano(opts: {
     } else if (dupId) {
       // Papel repetido (factura + ticket de la misma compra, reimpresion, mismo folio). Decision Alejandro
       // 18-sep: no se cuenta ni se deja para revisar; se RECHAZA solo y va a la revision de fraude junto
-      // con el original (si el gerente reporta el gasto dos veces, se le cobra).
-      if (await rechazarDuplicadoAFraude(supabase, registroId, dupId, sospecha)) {
+      // con el original (si el gerente reporta el gasto dos veces, se le cobra). Si no es seguro que sea copia, lo decide una persona.
+      if (await esCopiaSegura(supabase, dupId, montoTotal, fechaTicket, datos.tipo_documento) && await rechazarDuplicadoAFraude(supabase, registroId, dupId, sospecha)) {
         notifyAlertEmail(registroId, 'posible_duplicado')
         return
       }
