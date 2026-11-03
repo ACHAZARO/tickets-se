@@ -3,7 +3,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const RESEND_API = 'https://api.resend.com/emails'
-const ADMIN_EMAIL = 'alepolch@gmail.com'
 const ALERT_TYPES_EMAIL = ['duplicado', 'posible_duplicado', 'ilegible']
 
 const ALERT_LABELS: Record<string, string> = {
@@ -52,11 +51,26 @@ serve(async (req: Request) => {
 
     const { data: ticket } = await supabase
       .from('registros_tickets')
-      .select('comercio, monto, fecha_ticket, sucursales:sucursal_id(nombre)')
+      .select('comercio, monto, fecha_ticket, sucursales:sucursal_id(nombre, cuenta_id)')
       .eq('id', registro_ticket_id)
       .single()
 
-    const sucursal = (ticket?.sucursales as { nombre: string })?.nombre ?? 'Desconocida'
+    const suc = ticket?.sucursales as unknown as { nombre: string; cuenta_id: string } | null
+    const sucursal = suc?.nombre ?? 'Desconocida'
+    // A quien de ESE negocio: su correo de alertas o, si no tiene, sus duenos. Nunca a otro negocio.
+    const { data: cuenta } = await supabase.from('cuentas').select('correo_alertas').eq('id', suc?.cuenta_id).maybeSingle()
+    let destinos: string[] = cuenta?.correo_alertas ? [cuenta.correo_alertas] : []
+    if (!destinos.length && suc?.cuenta_id) {
+      const { data: duenos } = await supabase.from('cuenta_usuarios').select('user_id').eq('cuenta_id', suc.cuenta_id)
+      for (const d of (duenos ?? []) as { user_id: string }[]) {
+        const { data: u } = await supabase.auth.admin.getUserById(d.user_id)
+        if (u?.user?.email) destinos.push(u.user.email)
+      }
+    }
+    destinos = [...new Set(destinos)]
+    if (!destinos.length) {
+      return new Response(JSON.stringify({ skipped: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
     const label = ALERT_LABELS[tipo] ?? tipo
     const subject = `${label} - ${sucursal}`
 
@@ -67,7 +81,7 @@ serve(async (req: Request) => {
       <p><strong>Monto:</strong> $${ticket?.monto ?? '?'}</p>
       <p><strong>Fecha:</strong> ${ticket?.fecha_ticket ?? 'No detectada'}</p>
       <br>
-      <p><a href="https://tickets-se.vercel.app/admin/alertas">Ver en el panel de administracion</a></p>
+      <p><a href="https://tickets-se.vercel.app/admin/tickets">Ver en el panel</a></p>
     `
 
     const emailRes = await fetch(RESEND_API, {
@@ -77,8 +91,9 @@ serve(async (req: Request) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Tickets SE <onboarding@resend.dev>',
-        to: [ADMIN_EMAIL],
+        // Con el remitente de prueba de Resend solo llega al dueno de esa cuenta de Resend; para los demas hay que verificar un dominio.
+        from: Deno.env.get('ALERTAS_REMITENTE') ?? 'Tickets <onboarding@resend.dev>',
+        to: destinos,
         subject,
         html: body,
       }),

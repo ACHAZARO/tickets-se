@@ -8,6 +8,7 @@ import { fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemi
 import type { GeminiItem, GeminiResult } from '../_shared/gemini.ts'
 import { mismoComercio, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { esEnvio, mediana } from '../_shared/precios.ts'
+import { llamanteDe, puedeSucursal } from '../_shared/permisos.ts'
 
 // SEGUNDO REVISOR IA (ver PLAN_REVISOR_IA.md). Hoy solo MODO PRUEBA: juzga un ticket que ya tiene alertas
 // y guarda lo que HABRIA decidido en `revisor_ia_pruebas`. NO cambia el ticket, sus renglones ni sus alertas.
@@ -19,25 +20,16 @@ import { esEnvio, mediana } from '../_shared/precios.ts'
 const VERSION_PROMPT = 'v2-2026-10-03'
 // Alertas que el revisor NUNCA resuelve solo, diga lo que diga la IA (candado en codigo).
 // ('ilegible' no va aqui: sin renglones el revisor ni corre, y la que queda junto a 'ia_sin_leer' fue falta de cuota, no foto mala).
-const SIEMPRE_HUMANO = new Set(['duplicado', 'envio_alto', 'articulo_no_autorizado', 'articulo_vigilado'])
+const SIEMPRE_HUMANO = new Set(['duplicado', 'envio_alto', 'articulo_no_autorizado', 'articulo_vigilado', 'pago_distinto', 'cuenta_a_mano'])
 const MODELO_DEFAULT = 'gemini-3.8-flash'
 // Alertas que pone el sistema automaticamente (las manuales, como revisar_gerente, no se juzgan).
 const ALERTAS_AUTO = new Set([
   'ilegible', 'sin_fecha', 'producto_no_reconocido', 'sin_unidad', 'monto_anomalo', 'precio_anomalo',
-  'posible_duplicado', 'duplicado', 'envio_alto', 'ia_sin_leer', 'articulo_no_autorizado', 'articulo_vigilado',
+  'posible_duplicado', 'duplicado', 'envio_alto', 'ia_sin_leer', 'articulo_no_autorizado', 'articulo_vigilado', 'pago_distinto', 'cuenta_a_mano',
 ])
 
 // deno-lint-ignore no-explicit-any
 type SB = any
-
-async function requireAdmin(supabase: SB, req: Request): Promise<boolean> {
-  const token = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return false
-  const { data: { user } } = await supabase.auth.getUser(token)
-  if (!user) return false
-  const { data } = await supabase.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle()
-  return !!data
-}
 
 const num = (v: unknown): number | null => {
   const n = Number(v)
@@ -185,12 +177,14 @@ serve(async (req: Request) => {
     const elModelo = modelo || MODELO_DEFAULT
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    if (!(await requireAdmin(supabase, req))) return json({ error: 'No autorizado' }, 401)
+    const quien = await llamanteDe(supabase, req)
+    if (!quien) return json({ error: 'No autorizado' }, 401)
 
     const { data: reg } = await supabase.from('registros_tickets')
       .select('id, sucursal_id, created_at, gemini_raw, storage_path_original, storage_path_archivo')
       .eq('id', registro_id).maybeSingle()
-    if (!reg) return json({ error: 'Ticket no encontrado' }, 404)
+    // Un ticket de otro negocio responde igual que uno que no existe.
+    if (!reg || !(await puedeSucursal(supabase, quien, reg.sucursal_id))) return json({ error: 'Ticket no encontrado' }, 404)
     const raw = reg.gemini_raw as (GeminiResult & Record<string, unknown>) | null
     const items = ((Array.isArray(raw?.items) ? raw!.items : []) as GeminiItem[]).filter(it => it && (it.descripcion || it.monto != null))
     if (!raw || !items.length) return json({ error: 'El ticket no tiene una lectura de la IA con renglones.' }, 409)

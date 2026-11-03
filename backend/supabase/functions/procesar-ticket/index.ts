@@ -3,19 +3,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts'
 import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
 import { corsHeaders } from '../_shared/cors.ts'
-import {
-  loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveCategoria,
-} from '../_shared/catalog.ts'
+import { loadCatalog, buildCatalogPromptContext } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
 import { enviarAGoogleSheets } from '../_shared/google-sheets.ts'
-import { buildGeminiPrompt, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
+import { buildGeminiPrompt, fechaMexico, fechaPideRevision, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
-import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
+import { noCuadra, sinTotal } from '../_shared/montos.ts'
+import { construirRenglones, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
-import { formasDeCuenta, guardarPagos, leerPagos, revisarPagos } from '../_shared/pagos.ts'
+import { formasDeCuenta, guardarPagos, leerPagos, pagoDistinto, revisarPagos } from '../_shared/pagos.ts'
 import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
 
 // EdgeRuntime.waitUntil permite seguir procesando despues de responder.
@@ -226,58 +225,21 @@ async function procesarEnSegundoPlano(opts: {
       ? rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null : null)
 
     // Si Gemini no leyo una fecha real (o leyo un año imposible), corregir el año si dia/mes
-    // sirven, o usar la fecha de subida; en ambos casos queda marcada como asumida.
-    const { fecha: fechaTicket, asumida } = resolverFecha(datos.fecha, hoy)
-    const fechaValida = !asumida
-    if (asumida) {
-      ;(datos as Record<string, unknown>)._fecha_asumida = true
-      if (datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
-    }
+    // sirven, o usar la fecha de subida; lo que no sea seguro queda marcado como asumido.
+    const resFecha = resolverFecha(datos.fecha, hoy)
+    const fechaTicket = resFecha.fecha
+    if (resFecha.asumida) (datos as Record<string, unknown>)._fecha_asumida = true
+    if ((resFecha.asumida || resFecha.corregida) && datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
+    const fechaValida = !fechaPideRevision(resFecha)
 
-    const matchedIds = new Set<string>()
-    let anySinCategoria = false
-    let anySinUnidad = false
-    let anyProductoNuevo = false
-    const itemsToInsert = (rawItems.length ? rawItems : [
+    const armados = construirRenglones(registroId, rawItems.length ? rawItems : [
       { descripcion: datos.comercio ?? 'Ticket', monto: montoTotal, categoria: null, unidad: null, cantidad: null },
-    ]).map((it, index) => {
-      const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
-      const matched = matchProductInCatalog(desc, catalog.products)
-      if (matched) matchedIds.add(matched.id)
-      let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
-      if (!cat && matched) cat = resolveCategoria(matched.categoria_nombre, catalog.categories)
-      const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || null
-      let necesita = false, motivo: string | null = null
-      if (!cat) { necesita = true; motivo = 'sin_categoria'; anySinCategoria = true }
-      else if (!unidad) { necesita = true; motivo = 'sin_unidad'; anySinUnidad = true }
-      else if (!matched) { necesita = true; motivo = 'producto_nuevo'; anyProductoNuevo = true }
-      return {
-        registro_ticket_id: registroId, descripcion: desc,
-        cantidad: it.cantidad ?? null, unidad, monto: it.monto ?? null,
-        categoria_id: cat?.id ?? null, producto_catalogo_id: matched?.id ?? null,
-        necesita_revision: necesita, motivo_revision: motivo,
-        orden: index,
-        categoria_nombre: cat?.nombre ?? null,
-      }
-    })
-
-    // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total
-    // a ese renglon (notas a mano: "alitas 50 pzas $850").
-    const conMonto = itemsToInsert.filter(it => it.monto != null && Number(it.monto) > 0)
-    if (montoTotal != null && conMonto.length === 0 && itemsToInsert.length === 1) {
-      itemsToInsert[0].monto = montoTotal
-    }
-    // Nota con varios renglones sin importe y solo el total (pan): se reparte por cantidad.
-    if (repartirSinImporte(itemsToInsert, montoTotal, datos.tipo_documento)) {
-      ;(datos as Record<string, unknown>)._montos_repartidos = true
-    }
-    // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo
-    // pagan para que sumen el total pagado (gastos CON IVA).
-    const impuestos = impuestosPorRenglon(itemsToInsert, montoTotal, datos)
-    if (impuestos) {
-      aplicarImpuestos(itemsToInsert, impuestos, Number(montoTotal))
-      ;(datos as Record<string, unknown>)._impuestos_sumados = Math.round(impuestos.reduce((s, x) => s + x, 0) * 100) / 100
-    }
+    ], catalog, datos as typeof datos & Record<string, unknown>, montoTotal)
+    const itemsToInsert = armados.items
+    const matchedIds = armados.matchedIds
+    const anySinCategoria = armados.anySinCategoria
+    let anySinUnidad = armados.anySinUnidad
+    let anyProductoNuevo = armados.anyProductoNuevo
     const montoNoCuadra = sinTotal(itemsToInsert, montoTotal) || noCuadra(itemsToInsert, montoTotal, datos.tipo_documento)
     if (entrenamiento) {
       await crearArticulosEntrenamiento(supabase, sucursalId, itemsToInsert)
@@ -329,7 +291,7 @@ async function procesarEnSegundoPlano(opts: {
     // Precios: detecta saltos fuertes vs la mediana de compras confirmadas. El historial se
     // guarda solo al confirmar (aqui abajo si sale limpio, o en confirmar-admin tras revision).
     // En entrenamiento no se pregunta por precios ni envios: la IA apenas esta conociendo el negocio.
-    const precioAnomalo = entrenamiento ? false : await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
+    const precioAnomalo = entrenamiento ? null : await hayPrecioAnomalo(supabase, itemsToInsert, catalog.products, registroId)
     const envioAlto = entrenamiento ? null : await envioMuyAlto(supabase, itemsToInsert, catalog.products, sucursalId, datos.comercio ?? null, registroId, propias)
 
     let hayAlerta = false
@@ -354,11 +316,19 @@ async function procesarEnSegundoPlano(opts: {
     if (montoNoCuadra) { await createAlert(supabase, registroId, 'monto_anomalo'); hayAlerta = true }
     // Pago mixto declarado por el gerente que no suma el total leido: no se aprueba solo.
     if (await revisarPagos(supabase, registroId, montoTotal)) { await createAlert(supabase, registroId, 'pagos_no_cuadran'); hayAlerta = true }
+    // El papel dice tarjeta y se declaro efectivo de caja: el dueno debe saberlo (no aplica en entrenamiento).
+    const distinto = entrenamiento ? null : await pagoDistinto(supabase, registroId, datos.pago_leido)
+    if (distinto) { await createAlert(supabase, registroId, 'pago_distinto', undefined, { motivo: distinto }); hayAlerta = true }
     if (precioAnomalo) {
-      await createAlert(supabase, registroId, 'precio_anomalo')
+      await createAlert(supabase, registroId, 'precio_anomalo', undefined, { motivo: precioAnomalo })
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
     }
     if (envioAlto) { await createAlert(supabase, registroId, 'envio_alto', undefined, { motivo: envioAlto }); hayAlerta = true }
+    const cuentaMano = entrenamiento ? null : motivoCuentaAMano(datos.resumen_mano)
+    if (cuentaMano) { await createAlert(supabase, registroId, 'cuenta_a_mano', undefined, { motivo: cuentaMano, resumen: datos.resumen_mano }); hayAlerta = true }
+    // Nota a mano o remision: siempre la ve una persona, aunque se vea bien (en entrenamiento la IA acepta todo).
+    const porPapel = entrenamiento ? null : papelPideRevision(datos.tipo_documento, resFecha.sinFecha)
+    if (porPapel) { await createAlert(supabase, registroId, 'nota_a_mano', undefined, { motivo: porPapel }); hayAlerta = true }
     // Articulos no autorizados (a Fraude, siempre) u ocasionales (a Por revisar): nunca se aprueban solos.
     if (!entrenamiento && (await revisarUsoArticulos(supabase, registroId)).length) hayAlerta = true
 
@@ -464,7 +434,7 @@ async function autoConfirmar(
     const archivoPath = await copiarAArchivo(supabase, storagePath, now)
 
     const [{ data: suc }, { data: emp }, { data: reg }] = await Promise.all([
-      supabase.from('sucursales').select('nombre').eq('id', sucursalId).maybeSingle(),
+      supabase.from('sucursales').select('nombre, cuenta_id').eq('id', sucursalId).maybeSingle(),
       supabase.from('empleados').select('nombre').eq('id', empleadoId).maybeSingle(),
       supabase.from('registros_tickets').select('fecha_ticket, folio_ticket, comercio').eq('id', registroId).maybeSingle(),
     ])
@@ -472,6 +442,7 @@ async function autoConfirmar(
     let sheetsRowId: string | null = null
     try {
       sheetsRowId = await enviarAGoogleSheets({
+        cuenta_id: suc?.cuenta_id ?? null,
         fecha_ticket: reg?.fecha_ticket ?? null,
         folio_ticket: reg?.folio_ticket ?? null,
         comercio: reg?.comercio ?? null,
@@ -527,6 +498,11 @@ serve(async (req: Request) => {
     // Formas de pago del negocio (las crea el admin). GET = la pantalla de subir las pide para pintar los botones.
     const formas = await formasDeCuenta(supabase, suc.cuenta_id)
     if (req.method === 'GET') return json({ formas_pago: formas })
+
+    // Negocio suspendido o que ya llego a su tope de tickets del mes: no se gasta IA ni se guarda la foto.
+    const { data: bloqueo } = await supabase.rpc('puede_subir', { p_sucursal: sucursalId })
+    if (bloqueo === 'tope') return json({ error: 'Este negocio ya llegó a su tope de tickets de este mes. Avísale al dueño.', tope: true }, 429)
+    if (bloqueo === 'suspendida') return json({ error: 'Este negocio está suspendido. Avísale al dueño.', tope: true }, 403)
 
     const formData = await req.formData()
     const imagenFile = formData.get('imagen') as File | null

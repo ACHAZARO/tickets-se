@@ -2,16 +2,18 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
 import { corsHeaders } from '../_shared/cors.ts'
-import { loadCatalog, buildCatalogPromptContext, matchProductInCatalog, resolveCategoria } from '../_shared/catalog.ts'
+import { loadCatalog, buildCatalogPromptContext } from '../_shared/catalog.ts'
 import type { Catalog } from '../_shared/catalog.ts'
-import { buildGeminiPrompt, explicarFallo, fechaMexico, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
+import { buildGeminiPrompt, explicarFallo, fechaMexico, fechaPideRevision, leerTicketConGemini, resolverFecha } from '../_shared/gemini.ts'
 import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
-import { aplicarImpuestos, impuestosPorRenglon, noCuadra, repartirSinImporte, sinTotal } from '../_shared/montos.ts'
+import { noCuadra, sinTotal } from '../_shared/montos.ts'
+import { construirRenglones, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
 import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
-import { revisarPagos } from '../_shared/pagos.ts'
+import { pagoDistinto, revisarPagos } from '../_shared/pagos.ts'
 import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
+import { llamanteDe, puedeSucursal } from '../_shared/permisos.ts'
 
 // Segunda pasada de IA (manual, desde Tickets). Usa EXACTAMENTE las mismas reglas de
 // lectura que procesar-ticket. Si la IA no puede leer, no toca nada del ticket.
@@ -22,6 +24,8 @@ import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
 // - desde_guardada: NO llama a Gemini; rehace renglones, ligas al catalogo y alertas desde la
 //   lectura ya guardada (gemini_raw). Sirve tras ensenar sinonimos o mejorar el emparejador.
 //   Solo tickets pendientes (no toca confirmados).
+// - simular: hace todo el camino (leer o usar la lectura guardada, ligar, cuadrar, alertas) y devuelve el resultado SIN
+//   escribir nada. Sirve para medir la IA contra tickets ya auditados, confirmados o no.
 
 // deno-lint-ignore no-explicit-any
 type SB = any
@@ -34,15 +38,6 @@ async function createAlert(
     registro_ticket_id: registroId, tipo, duplicado_de_id: dupId ?? null, correccion: correccion ?? null,
   })
   if (error) console.error(`createAlert(${tipo}) fallo:`, error.message)
-}
-
-async function requireAdmin(supabase: SB, req: Request): Promise<boolean> {
-  const token = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return false
-  const { data: { user } } = await supabase.auth.getUser(token)
-  if (!user) return false
-  const { data } = await supabase.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle()
-  return !!data
 }
 
 async function downloadTicketImage(
@@ -74,18 +69,20 @@ serve(async (req: Request) => {
 
   try {
     if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-    const { registro_id, modelo, solo_leer, solo_si_sin_leer, desde_guardada } = await req.json().catch(() => ({})) as {
-      registro_id?: string; modelo?: string; solo_leer?: boolean; solo_si_sin_leer?: boolean; desde_guardada?: boolean
+    const { registro_id, modelo, solo_leer, solo_si_sin_leer, desde_guardada, simular } = await req.json().catch(() => ({})) as {
+      registro_id?: string; modelo?: string; solo_leer?: boolean; solo_si_sin_leer?: boolean; desde_guardada?: boolean; simular?: boolean
     }
     if (!registro_id) return json({ error: 'registro_id requerido' }, 400)
     if (modelo !== undefined && !/^[a-z0-9.\-]{3,60}(@(minimal|low|medium|high))?$/.test(String(modelo))) return json({ error: 'modelo invalido' }, 400)
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    if (!(await requireAdmin(supabase, req))) return json({ error: 'No autorizado' }, 401)
+    const quien = await llamanteDe(supabase, req)
+    if (!quien) return json({ error: 'No autorizado' }, 401)
     const { data: reg } = await supabase.from('registros_tickets')
       .select('id, sucursal_id, estado, created_at, gemini_raw, storage_path_original, storage_path_archivo')
       .eq('id', registro_id).maybeSingle()
-    if (!reg) return json({ error: 'Ticket no encontrado' }, 404)
+    // Un ticket de otro negocio responde igual que uno que no existe.
+    if (!reg || !(await puedeSucursal(supabase, quien, reg.sucursal_id))) return json({ error: 'Ticket no encontrado' }, 404)
 
     const { data: viejos } = await supabase.from('ticket_items').select('id').eq('registro_ticket_id', registro_id)
     const idsViejos = ((viejos ?? []) as { id: string }[]).map(r => r.id)
@@ -113,7 +110,7 @@ serve(async (req: Request) => {
     let lectura: LecturaIA
     if (desde_guardada && !solo_leer) {
       const raw = reg.gemini_raw as (GeminiResult & Record<string, unknown>) | null
-      if (reg.estado !== 'pendiente') return json({ omitido: true, motivo: 'Solo se rehacen tickets pendientes.' }, 409)
+      if (reg.estado !== 'pendiente' && !simular) return json({ omitido: true, motivo: 'Solo se rehacen tickets pendientes.' }, 409)
       if (!raw || raw._ia_fallo || raw._ia_en_proceso || !Array.isArray(raw.items) || !raw.items.length) {
         return json({ omitido: true, motivo: 'El ticket no tiene una lectura guardada util.' }, 409)
       }
@@ -168,50 +165,48 @@ serve(async (req: Request) => {
       return json({ error: 'La IA no encontro renglones en el ticket (imagen ilegible o vacia). No se cambio nada.', fallo: 'sin_renglones' }, 422)
     }
     const montoTotal = datos.monto_total ?? (rawItems.reduce((s, it) => s + (Number(it.monto) || 0), 0) || null)
-    const { fecha: fechaTicket, asumida } = resolverFecha(datos.fecha, fechaSubida)
-    if (asumida) {
-      ;(datos as Record<string, unknown>)._fecha_asumida = true
-      if (datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
-    }
+    const resFecha = resolverFecha(datos.fecha, fechaSubida)
+    const fechaTicket = resFecha.fecha
+    if (resFecha.asumida) (datos as Record<string, unknown>)._fecha_asumida = true
+    if ((resFecha.asumida || resFecha.corregida) && datos.fecha) (datos as Record<string, unknown>)._fecha_leida = datos.fecha
+    const asumida = fechaPideRevision(resFecha)
+    const porPapel = papelPideRevision(datos.tipo_documento, resFecha.sinFecha)
+    const cuentaMano = motivoCuentaAMano(datos.resumen_mano)
 
-    let anySinCategoria = false
-    let anySinUnidad = false
-    let anyProductoNuevo = false
-    const items = rawItems.map((it, index) => {
-      const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
-      const matched = matchProductInCatalog(desc, catalog.products)
-      let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
-      if (!cat && matched) cat = resolveCategoria(matched.categoria_nombre, catalog.categories)
-      const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || null
-      let necesita = false, motivo: string | null = null
-      if (!cat) { necesita = true; motivo = 'sin_categoria'; anySinCategoria = true }
-      else if (!unidad) { necesita = true; motivo = 'sin_unidad'; anySinUnidad = true }
-      else if (!matched) { necesita = true; motivo = 'producto_nuevo'; anyProductoNuevo = true }
-      return {
-        registro_ticket_id: registro_id,
-        descripcion: desc,
-        cantidad: it.cantidad ?? null,
-        unidad,
-        monto: it.monto ?? null,
-        categoria_id: cat?.id ?? null,
-        producto_catalogo_id: matched?.id ?? null,
-        necesita_revision: necesita,
-        motivo_revision: motivo,
-        orden: index,
-      }
-    })
-    // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total a ese renglon.
-    if (montoTotal != null && items.length === 1 && !(Number(items[0].monto) > 0)) items[0].monto = montoTotal
-    // Nota con varios renglones sin importe y solo el total (pan): se reparte por cantidad.
-    if (repartirSinImporte(items, montoTotal, datos.tipo_documento)) {
-      ;(datos as Record<string, unknown>)._montos_repartidos = true
-    }
-    // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo
-    // pagan para que sumen el total pagado (gastos CON IVA).
-    const impuestos = impuestosPorRenglon(items, montoTotal, datos)
-    if (impuestos) {
-      aplicarImpuestos(items, impuestos, Number(montoTotal))
-      ;(datos as Record<string, unknown>)._impuestos_sumados = Math.round(impuestos.reduce((s, x) => s + x, 0) * 100) / 100
+    const armados = construirRenglones(registro_id, rawItems, catalog, datos as typeof datos & Record<string, unknown>, montoTotal)
+    const { anySinCategoria, anySinUnidad, anyProductoNuevo } = armados
+    const items = armados.items.map(({ categoria_nombre: _omit, ...resto }) => resto)
+
+    if (simular) {
+      // Lo mismo que se haria abajo, sin escribir nada.
+      const alertasSim: string[] = []
+      const dupSim = await detectSmartDuplicate(
+        supabase, reg.sucursal_id, datos.folio_ticket ?? null, datos.comercio ?? null, montoTotal, fechaTicket, registro_id,
+        datos.tipo_documento ?? null, propias,
+      )
+      if (dupSim) alertasSim.push('posible_duplicado')
+      if (asumida) alertasSim.push('sin_fecha')
+      if (datos.confianza === 'baja') alertasSim.push('ilegible')
+      if (anySinCategoria || anyProductoNuevo) alertasSim.push('producto_no_reconocido')
+      if (anySinUnidad) alertasSim.push('sin_unidad')
+      const precioSim = await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)
+      if (precioSim) alertasSim.push('precio_anomalo')
+      if (await envioMuyAlto(supabase, items, catalog.products, reg.sucursal_id, datos.comercio ?? null, registro_id, propias)) alertasSim.push('envio_alto')
+      if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) alertasSim.push('monto_anomalo')
+      if (await revisarPagos(supabase, registro_id, montoTotal)) alertasSim.push('pagos_no_cuadran')
+      if (await pagoDistinto(supabase, registro_id, datos.pago_leido)) alertasSim.push('pago_distinto')
+      if (paraIA || datos.sospecha) alertasSim.push('sospecha')
+      if (porPapel) alertasSim.push('nota_a_mano')
+      if (cuentaMano) alertasSim.push('cuenta_a_mano')
+      return json({
+        ok: true, simulado: true, modelo: lectura.modelo, fecha: fechaTicket, comercio: datos.comercio ?? null, folio: datos.folio_ticket ?? null,
+        total: montoTotal, tipo_documento: datos.tipo_documento ?? null, sospecha: datos.sospecha ?? null, pago_leido: datos.pago_leido ?? null,
+        resumen_mano: datos.resumen_mano ?? null, confianza: datos.confianza ?? null, alertas: alertasSim, ids_duplicado: dupSim, precio: precioSim,
+        renglones: armados.items.map(it => {
+          const p = it.producto_catalogo_id ? catalog.products.find(x => x.id === it.producto_catalogo_id) : null
+          return { descripcion: it.descripcion, cantidad: it.cantidad, unidad: it.unidad, monto: it.monto, categoria: it.categoria_nombre, articulo: p?.nombre ?? null }
+        }),
+      })
     }
 
     // Orden seguro: 1) insertar lo nuevo, 2) actualizar encabezado, 3) borrar lo viejo.
@@ -255,15 +250,20 @@ serve(async (req: Request) => {
     if (anySinCategoria || anyProductoNuevo) { await createAlert(supabase, registro_id, 'producto_no_reconocido'); alertas.push('producto_no_reconocido') }
     if (anySinUnidad) { await createAlert(supabase, registro_id, 'sin_unidad'); alertas.push('sin_unidad') }
     // Misma revision de precios que la subida normal (solo lectura; el historial se guarda al confirmar).
-    if (await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)) {
-      await createAlert(supabase, registro_id, 'precio_anomalo'); alertas.push('precio_anomalo')
-    }
+    const precioRaro = await hayPrecioAnomalo(supabase, items, catalog.products, registro_id)
+    if (precioRaro) { await createAlert(supabase, registro_id, 'precio_anomalo', undefined, { motivo: precioRaro }); alertas.push('precio_anomalo') }
     const envioAlto = await envioMuyAlto(supabase, items, catalog.products, reg.sucursal_id, datos.comercio ?? null, registro_id, propias)
     if (envioAlto) { await createAlert(supabase, registro_id, 'envio_alto', undefined, { motivo: envioAlto }); alertas.push('envio_alto') }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (sinTotal(items, montoTotal) || noCuadra(items, montoTotal, datos.tipo_documento)) { await createAlert(supabase, registro_id, 'monto_anomalo'); alertas.push('monto_anomalo') }
     // Pago mixto declarado por el gerente que no suma el total releido.
     if (await revisarPagos(supabase, registro_id, montoTotal)) { await createAlert(supabase, registro_id, 'pagos_no_cuadran'); alertas.push('pagos_no_cuadran') }
+    // El papel dice tarjeta y se declaro efectivo de caja: el dueno debe saberlo.
+    const distinto = await pagoDistinto(supabase, registro_id, datos.pago_leido)
+    if (distinto) { await createAlert(supabase, registro_id, 'pago_distinto', undefined, { motivo: distinto }); alertas.push('pago_distinto') }
+    if (cuentaMano) { await createAlert(supabase, registro_id, 'cuenta_a_mano', undefined, { motivo: cuentaMano, resumen: datos.resumen_mano }); alertas.push('cuenta_a_mano') }
+    // Nota a mano o remision: siempre la ve una persona, aunque se vea bien.
+    if (porPapel) { await createAlert(supabase, registro_id, 'nota_a_mano', undefined, { motivo: porPapel }); alertas.push('nota_a_mano') }
     // Texto en el papel dirigido a la IA: a la revision de Fraude (no se quita solo al releer).
     if (paraIA) {
       const { error: sospErr } = await supabase.from('registros_tickets').update({

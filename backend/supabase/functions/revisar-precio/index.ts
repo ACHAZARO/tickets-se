@@ -1,31 +1,23 @@
 // revisar-precio: la IA revisa una alerta de precio (variacion grande entre el renglon ANTERIOR y el ULTIMO de un
 // articulo) y dice si es una FALSA ALARMA (mismo articulo, medida mal tomada: caja vs pieza, kg vs g, paquete vs
 // unidad) o una subida real. Propone la correccion exacta; NO cambia nada: quien revisa la aplica desde Precios.
-// Solo admin (JWT de Supabase + admin_users). Ve las dos fotos (una si es el mismo ticket).
+// Solo quien puede operar la sucursal de los dos renglones (migracion 101). Ve las dos fotos (una si es el mismo ticket).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { leerTicketConGemini, modelosCandidatos } from '../_shared/gemini.ts'
+import { llamanteDe, puedeSucursal } from '../_shared/permisos.ts'
 
 // deno-lint-ignore no-explicit-any
 type SB = any
 
 const UNIDADES = ['pz', 'g', 'kg', 'ml', 'lt', 'caja', 'paquete', 'bolsa', 'bulto', 'rollo', 'galon', 'servicio', 'cono', 'charola', 'docena', 'botella', 'lata']
 
-async function requireAdmin(supabase: SB, req: Request): Promise<string | null> {
-  const token = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return null
-  const { data: { user } } = await supabase.auth.getUser(token)
-  if (!user) return null
-  const { data } = await supabase.from('admin_users').select('user_id').eq('user_id', user.id).maybeSingle()
-  return data ? (user.email ?? 'admin') : null
-}
-
 type Item = {
   id: string; descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null
   catalogo_productos: { id: string; nombre: string; unidad_default: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null } | null
-  registros_tickets: { id: string; comercio: string | null; fecha_ticket: string | null; monto: number | null; storage_path_original: string | null; storage_path_archivo: string | null }
+  registros_tickets: { id: string; sucursal_id: string; comercio: string | null; fecha_ticket: string | null; monto: number | null; storage_path_original: string | null; storage_path_archivo: string | null }
 }
 
 const pesos = (n: number | null | undefined) => (n == null || !Number.isFinite(Number(n)) ? '?' : `$${Number(n).toFixed(2)}`)
@@ -44,7 +36,7 @@ serve(async (req) => {
   try {
     if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    const quien = await requireAdmin(supabase, req)
+    const quien = await llamanteDe(supabase, req)
     if (!quien) return json({ error: 'No autorizado' }, 401)
 
     const { item_anterior, item_ultimo } = await req.json().catch(() => ({})) as { item_anterior?: string; item_ultimo?: string }
@@ -52,12 +44,16 @@ serve(async (req) => {
     if (!item_anterior || !item_ultimo || !uuid.test(item_anterior) || !uuid.test(item_ultimo)) return json({ error: 'Faltan los renglones' }, 400)
 
     const { data, error } = await supabase.from('ticket_items')
-      .select('id, descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(id, comercio, fecha_ticket, monto, storage_path_original, storage_path_archivo)')
+      .select('id, descripcion, cantidad, unidad, monto, catalogo_productos:producto_catalogo_id(id, nombre, unidad_default, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad), registros_tickets!inner(id, sucursal_id, comercio, fecha_ticket, monto, storage_path_original, storage_path_archivo)')
       .in('id', [item_anterior, item_ultimo])
     if (error) return json({ error: 'No se pudieron leer los renglones' }, 500)
     const items = (data ?? []) as unknown as Item[]
     const a = items.find(x => x.id === item_anterior), b = items.find(x => x.id === item_ultimo)
     if (!a || !b) return json({ error: 'No se encontraron los renglones' }, 404)
+    // Los dos renglones deben ser de sucursales que este llamante puede operar (otro negocio = como si no existieran).
+    if (!(await puedeSucursal(supabase, quien, a.registros_tickets.sucursal_id)) || !(await puedeSucursal(supabase, quien, b.registros_tickets.sucursal_id))) {
+      return json({ error: 'No se encontraron los renglones' }, 404)
+    }
 
     // Fotos: una sola si es el mismo ticket.
     const mismoTicket = a.registros_tickets.id === b.registros_tickets.id

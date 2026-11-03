@@ -1,0 +1,91 @@
+import { matchProductInCatalog, resolveCategoria } from './catalog.ts'
+import type { Catalog } from './catalog.ts'
+import type { GeminiItem, GeminiResult } from './gemini.ts'
+import { aplicarImpuestos, impuestosPorRenglon, quitarDescuentoDoble, repartirSinImporte } from './montos.ts'
+
+// De la lectura de la IA a los renglones del ticket: liga cada uno al catalogo, pone categoria y unidad y cuadra los montos
+// contra el total. Lo comparten procesar-ticket y reprocesar-ticket para que subir y releer den exactamente lo mismo.
+export interface Renglon {
+  registro_ticket_id: string
+  descripcion: string
+  cantidad: number | null
+  unidad: string | null
+  monto: number | null
+  categoria_id: string | null
+  producto_catalogo_id: string | null
+  necesita_revision: boolean
+  motivo_revision: string | null
+  orden: number
+  categoria_nombre: string | null
+}
+
+// Decision de Alejandro (07-oct): lo que manda a revision es el TIPO DE PAPEL, no el nombre del comercio. Una nota a mano o
+// una remision de talonario las ve siempre una persona, aunque todo se vea bien; en la pantalla se aprueban en lote.
+export function papelPideRevision(tipo: string | null | undefined, sinFecha?: boolean): string | null {
+  const papel = tipo === 'nota_a_mano' ? 'Nota escrita a mano' : tipo === 'remision' ? 'Remision de proveedor' : null
+  if (!papel) return null
+  return sinFecha ? `${papel}, sin fecha: se uso el dia en que se subio.` : `${papel}.`
+}
+
+const pesos = (n: number) => '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Cuenta escrita a mano de toda una vuelta de compras ("compra $1,332 + envio $171"): suma varios tickets. La IA ya no la toma como
+// compra, pero siempre la ve una persona: es donde se notan los comprobantes que faltan y donde se puede contar algo dos veces.
+export function motivoCuentaAMano(r: GeminiResult['resumen_mano']): string | null {
+  const compra = Number(r?.compra_total) || 0
+  const envio = Number(r?.envio) || 0
+  const total = Number(r?.total) || 0
+  if (compra <= 0 && total <= 0) return null
+  const partes = [compra > 0 ? `compra ${pesos(compra)}` : '', envio > 0 ? `envío ${pesos(envio)}` : ''].filter(Boolean).join(' + ')
+  return `A mano dice: ${partes}${total > 0 ? ` = ${pesos(total)}` : ''}. Esa cuenta suma varios tickets: revisa que estén todos y que este solo cuente lo suyo.`
+}
+
+export function construirRenglones(
+  registroId: string, rawItems: GeminiItem[], catalog: Catalog, datos: GeminiResult & Record<string, unknown>, montoTotal: number | null,
+): { items: Renglon[]; matchedIds: Set<string>; anySinCategoria: boolean; anySinUnidad: boolean; anyProductoNuevo: boolean } {
+  const matchedIds = new Set<string>()
+  const items: Renglon[] = rawItems.map((it, index) => {
+    const desc = (it.descripcion ?? 'Producto').toString().slice(0, 500)
+    const matched = matchProductInCatalog(desc, catalog.products, it.producto_catalogo)
+    if (matched) matchedIds.add(matched.id)
+    let cat = resolveCategoria(it.categoria ?? null, catalog.categories)
+    if (!cat && matched) cat = resolveCategoria(matched.categoria_nombre, catalog.categories)
+    const unidad = (it.unidad && String(it.unidad).trim()) || matched?.unidad_default || null
+    let necesita = false, motivo: string | null = null
+    if (!cat) { necesita = true; motivo = 'sin_categoria' }
+    else if (!unidad) { necesita = true; motivo = 'sin_unidad' }
+    else if (!matched) { necesita = true; motivo = 'producto_nuevo' }
+    // En un papel impreso, un renglon sin cantidad es 1 (si no, no entra a Entradas ni a Stock).
+    const impreso = datos.tipo_documento === 'ticket' || datos.tipo_documento === 'factura'
+    const cantidad = it.cantidad ?? (impreso && Number(it.monto) > 0 ? 1 : null)
+    return {
+      registro_ticket_id: registroId, descripcion: desc,
+      cantidad, unidad, monto: it.monto ?? null,
+      categoria_id: cat?.id ?? null, producto_catalogo_id: matched?.id ?? null,
+      necesita_revision: necesita, motivo_revision: motivo,
+      orden: index,
+      categoria_nombre: cat?.nombre ?? null,
+    }
+  })
+
+  // Si solo hay un renglon sin precio pero el ticket tiene total, liga el total a ese renglon (notas a mano: "alitas 50 pzas $850").
+  const conMonto = items.filter(it => it.monto != null && Number(it.monto) > 0)
+  if (montoTotal != null && conMonto.length === 0 && items.length === 1) items[0].monto = montoTotal
+  // Nota con varios renglones sin importe y solo el total (pan): se reparte por cantidad.
+  if (repartirSinImporte(items, montoTotal, datos.tipo_documento)) datos._montos_repartidos = true
+  // Importes que ya traian el descuento + renglon "Descuento": se restaria dos veces.
+  if (quitarDescuentoDoble(items, montoTotal, datos)) datos._descuento_doble_quitado = true
+  // Facturas: los renglones vienen antes de IVA/IEPS; se suma el impuesto a los renglones que lo pagan para que sumen el
+  // total pagado (gastos CON IVA).
+  const impuestos = impuestosPorRenglon(items, montoTotal, datos)
+  if (impuestos) {
+    aplicarImpuestos(items, impuestos, Number(montoTotal))
+    datos._impuestos_sumados = Math.round(impuestos.reduce((s, x) => s + x, 0) * 100) / 100
+  }
+  return {
+    items, matchedIds,
+    anySinCategoria: items.some(it => it.motivo_revision === 'sin_categoria'),
+    anySinUnidad: items.some(it => it.motivo_revision === 'sin_unidad'),
+    anyProductoNuevo: items.some(it => it.motivo_revision === 'producto_nuevo'),
+  }
+}

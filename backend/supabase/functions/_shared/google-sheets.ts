@@ -139,6 +139,8 @@ export interface SheetItem {
 }
 
 export interface TicketRow {
+  // Cuenta (negocio) del ticket: la hoja de Google es una sola y solo la usa la cuenta que la configuro.
+  cuenta_id?: string | null
   fecha_ticket: string | null
   folio_ticket: string | null
   comercio: string | null
@@ -150,6 +152,10 @@ export interface TicketRow {
 }
 
 export async function enviarAGoogleSheets(registro: TicketRow): Promise<string> {
+  // GOOGLE_SHEETS_CUENTA = la unica cuenta que escribe en GOOGLE_SHEETS_ID. Sin esa variable nadie escribe:
+  // el gasto de un negocio nunca debe acabar en la hoja de otro.
+  const cuentaHoja = Deno.env.get('GOOGLE_SHEETS_CUENTA')
+  if (!cuentaHoja || registro.cuenta_id !== cuentaHoja) return ''
   const saJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')
   const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_ID')
 

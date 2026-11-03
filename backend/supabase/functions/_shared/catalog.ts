@@ -281,6 +281,39 @@ function distancia(a: string, b: string, max: number): number {
   return prev[b.length]
 }
 
+// Codigos largos de tienda (Costco, Sam's, Walmart): "981040331 QSO PARME KR", "1089787KS BOLSA". Si el mismo codigo ya
+// esta en el nombre o un sinonimo de UN solo producto, es ese producto aunque el texto venga cortado distinto.
+const codigosDe = (s: string) => s.match(/\d{5,}/g) ?? []
+const codigosCache = new WeakMap<CatalogProduct[], Map<string, Set<string>>>()
+function porCodigo(products: CatalogProduct[]): Map<string, Set<string>> {
+  let m = codigosCache.get(products)
+  if (!m) {
+    m = new Map()
+    for (const p of products) for (const cand of [p.nombre, ...p.sinonimos]) for (const c of codigosDe(cand)) {
+      if (!m.has(c)) m.set(c, new Set())
+      m.get(c)!.add(p.id)
+    }
+    codigosCache.set(products, m)
+  }
+  return m
+}
+
+// Renglon que solo dice una cantidad ("LITROS: 46 L" de una gasera): sin numeros no queda ninguna palabra que distinga.
+const sinNumeros = (s: string) => normaliza(s).replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim()
+const soloCantidad = (s: string) => {
+  const t = sinNumeros(s)
+  return !!t && t.split(' ').every(w => w.length === 1 || GENERICAS.has(w))
+}
+
+// Moto o envio sin articulo exacto ("MOTO ETRUSCA", "Envio pan"): va al articulo de envios del negocio, si tiene.
+const ES_ENVIO = /\benvios?\b|^\s*moto\b/
+function articuloDeEnvio(d: string, products: CatalogProduct[]): CatalogProduct | null {
+  if (!ES_ENVIO.test(d)) return null
+  const envios = products.filter(p => ES_ENVIO.test(normaliza(p.nombre)))
+  if (!envios.length) return null
+  return envios.sort((a, b) => Number(/envio/.test(normaliza(b.nombre))) - Number(/envio/.test(normaliza(a.nombre))) || b.veces_matched - a.veces_matched)[0]
+}
+
 // Vocabulario del catalogo: palabra (de nombres y sinonimos) -> productos que la usan. Cacheado por lista de productos.
 const vocabCache = new WeakMap<CatalogProduct[], Map<string, Set<string>>>()
 function vocabulario(products: CatalogProduct[]): Map<string, Set<string>> {
@@ -327,13 +360,26 @@ function corregirPalabra(t: string, vocab: Map<string, Set<string>>): string {
 // 3) gana el de mayor proporcion de palabras en comun, no el primero de la lista.
 // Antes de comparar, las palabras del renglon con falta de ortografia se corrigen (corregirPalabra).
 // Candidatos solo con numeros o codigos ("730", "61") solo cuentan como exactos.
+// Antes del puntaje: el mismo codigo de tienda, un renglon que solo dice cantidad ("LITROS: 46 L") y la sugerencia de la
+// IA (`sugerido`, debe ser el nombre exacto de un producto: la IA vio la foto y el catalogo). Al final, motos y envios.
 export function matchProductInCatalog(
   producto: string | null,
-  products: CatalogProduct[]
+  products: CatalogProduct[],
+  sugerido?: string | null,
 ): CatalogProduct | null {
   if (!producto) return null
   const d = normaliza(producto)
   if (!d) return null
+  const exacto = products.find(p => [p.nombre, ...p.sinonimos].some(c => normaliza(c) === d))
+  if (exacto) return exacto
+  const porCod = porCodigo(products)
+  const conCodigo = new Set(codigosDe(producto).flatMap(c => [...(porCod.get(c) ?? [])]))
+  if (conCodigo.size === 1) return products.find(p => conCodigo.has(p.id)) ?? null
+  if (soloCantidad(producto)) {
+    const plantilla = sinNumeros(producto)
+    const iguales = products.filter(p => [p.nombre, ...p.sinonimos].some(c => /\d/.test(c) && sinNumeros(c) === plantilla))
+    if (iguales.length) return iguales.sort((a, b) => b.veces_matched - a.veces_matched)[0]
+  }
   const vocab = vocabulario(products)
   const dPal = new Set(palabras(producto).map(t => corregirPalabra(t, vocab)))
   const dMed = medidas(producto)
@@ -359,5 +405,14 @@ export function matchProductInCatalog(
       if (puntos > mejorPuntos) { mejorPuntos = puntos; mejor = p }
     }
   }
-  return mejor
+  if (mejor) return mejor
+  // Abreviaturas que el buscador no entiende ("Hvo"): se acepta lo que sugiere la IA si comparte la inicial de alguna palabra
+  // (a veces se le cruzan los renglones y sugiere "cilantro" para "jitomates").
+  if (sugerido) {
+    const s = normaliza(sugerido)
+    const elegido = s ? products.find(p => normaliza(p.nombre) === s) : null
+    const iniciales = new Set(palabras(producto).map(t => t[0]))
+    if (elegido && palabras(elegido.nombre).some(t => iniciales.has(t[0]))) return elegido
+  }
+  return articuloDeEnvio(d, products)
 }

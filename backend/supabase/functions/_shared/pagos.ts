@@ -63,6 +63,24 @@ export function pagosNoCuadran(pagos: { monto: number | null }[], total: number 
   return Math.abs(suma - Number(total)) >= TOLERANCIA
 }
 
+// El comprobante dice que se pago con tarjeta o transferencia y TODO se declaro como salido de la caja: puede ser dinero
+// que salio de la caja sin que haya salido de verdad. Devuelve el motivo para el dueno, o null.
+export async function pagoDistinto(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, registroId: string, leido: { forma?: string | null; terminacion?: string | null } | null | undefined,
+): Promise<string | null> {
+  const forma = String(leido?.forma ?? '').trim().toLowerCase()
+  if (forma !== 'tarjeta' && forma !== 'transferencia') return null
+  const { data, error } = await supabase.from('ticket_pagos')
+    .select('formas_pago:forma_pago_id(nombre, sale_de_caja)').eq('registro_ticket_id', registroId)
+  if (error) { console.error('pagoDistinto:', error.message); return null }
+  const filas = (data ?? []) as { formas_pago: { nombre: string; sale_de_caja: boolean } | null }[]
+  if (!filas.length || !filas.every(f => f.formas_pago?.sale_de_caja)) return null
+  const term = String(leido?.terminacion ?? '').replace(/\D/g, '')
+  const nombres = filas.map(f => f.formas_pago?.nombre).filter(Boolean).join(' + ')
+  return `El ticket dice que se pago con ${forma}${term ? ` terminacion ${term}` : ''}, pero se registro ${nombres} (sale de la caja). ¿Fue con tarjeta del negocio, o se le repuso de la caja a quien pago?`
+}
+
 export async function revisarPagos(supabase: SB, registroId: string, total: number | null): Promise<boolean> {
   const { data, error } = await supabase.from('ticket_pagos').select('monto').eq('registro_ticket_id', registroId)
   if (error) { console.error('ticket_pagos select fallo:', error.message); return false }

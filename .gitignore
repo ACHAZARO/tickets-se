@@ -45,3 +45,6 @@ _secretos/
 
 mobile-audit/
 .playwright-cli/
+
+# Trabajo temporal de la ronda beta (resultados de auditoria, scripts sueltos): no va a git
+_trabajo_beta/

@@ -5,11 +5,20 @@
 // pagan (hay facturas con productos tasa 0 e IEPS en un solo renglon) y solo si la diferencia se
 // explica como impuesto; si no, se deja como esta y noCuadra() levanta la alerta.
 
-type ConMonto = { monto: number | null }
-type DatosImpuesto = { subtotal?: number | null; iva?: number | null; ieps?: number | null; tipo_documento?: string | null }
+type ConMonto = { monto: number | null; descripcion?: string | null; categoria_id?: string | null }
+type DatosImpuesto = {
+  subtotal?: number | null; iva?: number | null; ieps?: number | null; tipo_documento?: string | null
+  // Descuento que ya venia aplicado en los importes (lo pone quitarDescuentoDoble).
+  _descuento_ya_aplicado?: number | null
+}
 
 const redondea = (n: number) => Math.round(n * 100) / 100
 const num = (x: unknown): number | null => (x === null || x === undefined || x === '' || !Number.isFinite(Number(x)) ? null : Number(x))
+// Renglon de envio o moto: no paga el IVA de la factura (se anota a mano aparte).
+const esEnvioTxt = (t: string | null | undefined) => {
+  const s = (t ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  return /\benvios?\b/.test(s) || /^\s*moto\b/.test(s)
+}
 
 // Tasas por renglon: exento, IEPS 8% (botanas, dedos de queso), IVA 16%, IEPS 8% + IVA 16% sobre el precio con IEPS.
 const TASAS = [0, 0.08, 0.16, 0.2528]
@@ -53,9 +62,25 @@ function porTasas(montos: number[], gap: number, iva: number | null): number[] |
 // 3) IVA parejo al 16% (lo normal en distribuidoras): se reparte proporcional en todos los renglones.
 // 4) Si no, se busca que renglones pagan 16%/8% (solucion unica) y solo a esos se les suma.
 // 5) Si no hay solucion unica, no se reparte (alerta monto_anomalo).
+// Si el ticket trae envio anotado a mano (total a mano = factura + envio), el impuesto se busca solo en los demas
+// renglones: el envio no entra a la base gravable y conserva su importe.
 export function impuestosPorRenglon(items: ConMonto[], total: number | null, datos: DatosImpuesto): number[] | null {
   const T = num(total)
   if (T === null || !(T > 0) || !items.length || items.some(it => num(it.monto) === null)) return null
+  const envios = items.map((it, i) => (esEnvioTxt(it.descripcion) ? i : -1)).filter(i => i >= 0)
+  if (envios.length && envios.length < items.length) {
+    const resto = items.filter((_, i) => !envios.includes(i))
+    const totalSinEnvio = T - envios.reduce((s, i) => s + Number(items[i].monto), 0)
+    const parcial = impuestosDe(resto, totalSinEnvio, datos)
+    if (parcial) {
+      let k = 0
+      return items.map((_, i) => (envios.includes(i) ? 0 : parcial[k++]))
+    }
+  }
+  return impuestosDe(items, T, datos)
+}
+
+function impuestosDe(items: ConMonto[], T: number, datos: DatosImpuesto): number[] | null {
   const montos = items.map(it => Number(it.monto))
   const suma = montos.reduce((s, m) => s + m, 0)
   const gap = redondea(T - suma)
@@ -71,8 +96,10 @@ export function impuestosPorRenglon(items: ConMonto[], total: number | null, dat
   let base: number | null = null
   if (leyoSub) {
     const positivos = montos.filter(m => m > 0).reduce((s, m) => s + m, 0)
+    const yaDescontado = num(datos._descuento_ya_aplicado) ?? 0
     if (Math.abs(sub! - suma) <= tolera(sub!)) base = sub!
     else if (Math.abs(sub! - positivos) <= tolera(sub!)) base = sub! - (positivos - suma)
+    else if (yaDescontado && Math.abs(sub! - yaDescontado - suma) <= tolera(sub!)) base = sub! - yaDescontado
     else return null // faltan o sobran renglones
   }
   if (base !== null && iva !== null && Math.abs(base + iva + ieps - T) > tolera(T)) return null
@@ -83,7 +110,32 @@ export function impuestosPorRenglon(items: ConMonto[], total: number | null, dat
   // Si no hay una sola forma exacta de explicar el impuesto (dos renglones del mismo precio, o IEPS en
   // facturas de 8+ renglones) NO se reparte: repartir parejo le cargaria IVA a productos exentos.
   // El ticket queda con alerta monto_anomalo para revisarlo.
-  return porTasas(montos, gap, iva !== null ? iva : null)
+  const exacta = porTasas(montos, gap, iva !== null ? iva : null)
+  if (exacta) return exacta
+  // IEPS por litro u otra tasa que no se puede deducir (remisiones de bebidas): si subtotal + impuestos ya dieron el
+  // total y TODOS los renglones son de la misma categoria, repartir proporcional no mueve el gasto de categoria.
+  const cats = new Set(items.map(it => it.categoria_id ?? null))
+  if (base !== null && iva !== null && cats.size === 1 && !cats.has(null)) return montos.map(m => m * gap / suma)
+  return null
+}
+
+// Factura cuyos importes YA traen el descuento y ademas se leyo un renglon "Descuento": se restaria dos veces.
+// Senal: renglones positivos + impuestos = total, y con el descuento no da. Quita esos renglones (mutando la lista)
+// y anota cuanto era para que el subtotal impreso (antes del descuento) se pueda cuadrar. Devuelve true si quito.
+export function quitarDescuentoDoble<T extends ConMonto>(items: T[], total: number | null, datos: DatosImpuesto): boolean {
+  const Tot = num(total)
+  const iva = num(datos.iva)
+  if (Tot === null || !(Tot > 0) || iva === null) return false
+  const negativos = items.filter(it => (num(it.monto) ?? 0) < 0)
+  if (!negativos.length) return false
+  const ieps = num(datos.ieps) ?? 0
+  const pos = items.reduce((s, it) => s + Math.max(num(it.monto) ?? 0, 0), 0)
+  const neg = negativos.reduce((s, it) => s + Number(it.monto), 0)
+  const tol = Math.max(1, Tot * 0.002)
+  if (Math.abs(pos + iva + ieps - Tot) > tol || Math.abs(pos + neg + iva + ieps - Tot) <= tol) return false
+  for (const it of negativos) items.splice(items.indexOf(it), 1)
+  datos._descuento_ya_aplicado = Math.abs(redondea(neg))
+  return true
 }
 
 type ConCantidad = ConMonto & { cantidad?: number | null; categoria_id?: string | null }

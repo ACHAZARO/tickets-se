@@ -92,15 +92,20 @@ export async function guardarPrecios(
   }
 }
 
-// Revisa (SIN escribir nada) si algun renglon ligado a un producto trae un precio unitario
-// muy distinto (+-40%) a la mediana de sus ultimas 5 compras. Misma regla que procesar-ticket;
-// requiere 3+ compras previas y la misma unidad. excluirRegistroId evita compararse consigo mismo.
+// Diferencia minima en dinero para preguntarle al dueno: la verdura sube y baja 40% cada semana y unos pesos no cambian
+// ninguna decision. El historial de precios guarda todo de cualquier forma.
+const IMPACTO_MINIMO = 50
+
+// Revisa (SIN escribir nada) si algun renglon ligado a un producto trae un precio unitario muy distinto (+-40%) a la mediana
+// de sus ultimas 5 compras y eso mueve al menos IMPACTO_MINIMO. Requiere 3+ compras previas y la misma unidad.
+// excluirRegistroId evita compararse consigo mismo. Devuelve el motivo para la persona que revisa, o null.
 export async function hayPrecioAnomalo(
   supabase: SB,
   items: { producto_catalogo_id: string | null; monto: number | null; cantidad: number | null; unidad: string | null }[],
   productos: CatalogProduct[],
   excluirRegistroId: string,
-): Promise<boolean> {
+): Promise<string | null> {
+  const motivos: { impacto: number; texto: string }[] = []
   for (const it of items) {
     const pid = it.producto_catalogo_id
     const monto = Number(it.monto)
@@ -122,10 +127,15 @@ export async function hayPrecioAnomalo(
       if (prev.length < 3) continue
       const ref = mediana(prev)
       const ratio = (monto / cant) / ref
-      if (ref > 0 && (ratio > 1.4 || ratio < 0.6)) return true
+      const impacto = Math.abs(monto - ref * cant)
+      if (ref > 0 && (ratio > 1.4 || ratio < 0.6) && impacto >= IMPACTO_MINIMO) {
+        const u = prod?.unidad_default ?? it.unidad ?? 'unidad'
+        motivos.push({ impacto, texto: `${prod?.nombre ?? 'Articulo'}: $${(monto / cant).toFixed(2)} por ${u}, normalmente $${ref.toFixed(2)}` })
+      }
     } catch (e) { console.error('hayPrecioAnomalo:', e) }
   }
-  return false
+  if (!motivos.length) return null
+  return motivos.sort((a, b) => b.impacto - a.impacto).slice(0, 3).map(m => m.texto).join('; ')
 }
 
 // Envio mucho mas caro de lo normal con ESE proveedor (Adan Melchor cobra $60-80: uno de $430 se revisa,
