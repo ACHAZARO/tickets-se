@@ -40,6 +40,22 @@ export function motivoCuentaAMano(r: GeminiResult['resumen_mano']): string | nul
   return `A mano dice: ${partes}${total > 0 ? ` = ${pesos(total)}` : ''}. Esa cuenta suma varios tickets: revisa que estén todos y que este solo cuente lo suyo.`
 }
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+// Un ticket de un mes que el dueno ya cerro no se aprueba solo: cambiaria unas cuentas ya cuadradas sin avisar.
+export async function motivoMesCerrado(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, sucursalId: string, fecha: string | null,
+): Promise<string | null> {
+  if (!fecha) return null
+  const { data: suc } = await supabase.from('sucursales').select('cuenta_id').eq('id', sucursalId).maybeSingle()
+  if (!suc?.cuenta_id) return null
+  const { data } = await supabase.from('meses_cerrados').select('mes').eq('cuenta_id', suc.cuenta_id).eq('mes', `${fecha.slice(0, 7)}-01`).maybeSingle()
+  if (!data) return null
+  const mes = MESES[Number(fecha.slice(5, 7)) - 1] ?? fecha.slice(0, 7)
+  return `Este ticket es de ${mes}, que ya cerraste. Si lo apruebas se suma a ese mes; si debe contar en este, cámbiale la fecha.`
+}
+
 // Lo que se le agrega al prompt en la segunda lectura, cuando en la primera los renglones no sumaron el total.
 export const AVISO_NO_CUADRO = `
 

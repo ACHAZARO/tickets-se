@@ -9,7 +9,7 @@ import type { GeminiResult, LecturaIA } from '../_shared/gemini.ts'
 import { detectSmartDuplicate, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { noCuadra, sinTotal } from '../_shared/montos.ts'
-import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
+import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, motivoMesCerrado, papelPideRevision } from '../_shared/renglones.ts'
 import { detectarTextoParaIA, motivoTextoParaIA } from '../_shared/inyeccion.ts'
 import { pagoDistinto, revisarPagos } from '../_shared/pagos.ts'
 import { revisarUsoArticulos } from '../_shared/uso-articulos.ts'
@@ -271,6 +271,8 @@ serve(async (req: Request) => {
     const distinto = await pagoDistinto(supabase, registro_id, datos.pago_leido)
     if (distinto) { await createAlert(supabase, registro_id, 'pago_distinto', undefined, { motivo: distinto }); alertas.push('pago_distinto') }
     if (cuentaMano) { await createAlert(supabase, registro_id, 'cuenta_a_mano', undefined, { motivo: cuentaMano, resumen: datos.resumen_mano }); alertas.push('cuenta_a_mano') }
+    const mesCerrado = await motivoMesCerrado(supabase, reg.sucursal_id, fechaTicket)
+    if (mesCerrado) { await createAlert(supabase, registro_id, 'mes_cerrado', undefined, { motivo: mesCerrado }); alertas.push('mes_cerrado') }
     // Nota a mano o remision: siempre la ve una persona, aunque se vea bien.
     if (porPapel) { await createAlert(supabase, registro_id, 'nota_a_mano', undefined, { motivo: porPapel }); alertas.push('nota_a_mano') }
     // Texto en el papel dirigido a la IA: a la revision de Fraude (no se quita solo al releer).

@@ -1,6 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback, Fragment } from 'react'
+import { useEffect, useMemo, useState, useCallback, Fragment } from 'react'
+import { baseDeRenglon } from '@/lib/stock.mjs'
+import { calcularSugerencias } from '@/lib/sugerencias.mjs'
+import type { FilaSugerencia, Sugerencia } from '@/lib/sugerencias-tipos'
 import { supabase } from '@/lib/supabase'
 import { traerTodo } from '@/lib/traer-todo'
 import { useSucursal } from '@/lib/sucursal-context'
@@ -86,6 +89,8 @@ export default function PreciosPage() {
   const [revisiones, setRevisiones] = useState<Record<string, Revision>>({})   // por nombre de articulo
   const [revisados, setRevisados] = useState<Record<string, string>>({})       // par -> veredicto guardado
   const [revisandoTodo, setRevisandoTodo] = useState(false)
+  const [filasSug, setFilasSug] = useState<FilaSugerencia[]>([])
+  const sugerencias = useMemo(() => calcularSugerencias(filasSug, new Date().toISOString().slice(0, 10)) as Sugerencia[], [filasSug])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -93,11 +98,25 @@ export default function PreciosPage() {
     // (No dependemos de precio_historial, asi aparecen TODOS los productos comprados.)
     const { data } = await traerTodo(() => {
       let q = supabase.from('ticket_items')
-        .select('id, descripcion, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default, uso), registros_tickets!inner(id, comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)')
+        .select('id, descripcion, cantidad, unidad, monto, producto_catalogo_id, catalogo_productos:producto_catalogo_id(nombre, unidad_default, uso, insumo_id, contiene_cantidad, contiene_unidad, contiene_sub_cantidad, contiene_sub_unidad, insumos:insumo_id(nombre)), registros_tickets!inner(id, comercio, fecha_ticket, created_at, estado, sucursal_id, storage_path_original, storage_path_archivo)')
         .eq('registros_tickets.estado', 'confirmado')
       if (sucursalId) q = q.eq('registros_tickets.sucursal_id', sucursalId)
       return q
     })
+
+    // Sugerencias: cada renglon en la unidad base de su insumo, para comparar tamanos y comercios.
+    type ProdFila = { nombre: string; unidad_default: string | null; insumo_id: string | null; contiene_cantidad: number | null; contiene_unidad: string | null; contiene_sub_cantidad: number | null; contiene_sub_unidad: string | null; insumos: { nombre: string } | null } | null
+    setFilasSug(((data as unknown as { cantidad: number | null; unidad: string | null; monto: number | null; producto_catalogo_id: string | null; catalogo_productos: ProdFila; registros_tickets: { comercio: string | null; fecha_ticket: string | null } }[]) ?? []).flatMap(row => {
+      const prod = row.catalogo_productos
+      if (!prod || !row.producto_catalogo_id) return []
+      const base = baseDeRenglon(prod, row) as { cantidad?: number; unidad?: string | null } | null
+      if (!base?.cantidad || !base.unidad) return []
+      return [{
+        grupo: prod.insumo_id ?? row.producto_catalogo_id, nombreGrupo: prod.insumos?.nombre ?? prod.nombre, articulo: prod.nombre,
+        comercio: row.registros_tickets?.comercio ?? null, fecha: row.registros_tickets?.fecha_ticket ?? null,
+        monto: Number(row.monto), cantidadBase: base.cantidad, unidadBase: base.unidad,
+      }]
+    }))
 
     const map = new Map<string, ProdPrecio>()
     for (const row of (data as unknown as Array<{ id: string; descripcion: string | null; cantidad: number | null; unidad: string | null; monto: number | null; producto_catalogo_id: string | null; catalogo_productos: { nombre: string; unidad_default: string | null; uso?: string } | null; registros_tickets: { id: string; comercio: string | null; fecha_ticket: string | null; created_at: string; storage_path_original: string | null; storage_path_archivo: string | null } | null }>) ?? []) {
@@ -258,8 +277,21 @@ export default function PreciosPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Precios</h2>
-        <p className="nota mt-1">{nombreSucursal} · precio unitario y su variación. Un cambio de más de 40% genera alerta al procesar.</p>
+        <p className="nota mt-1">{nombreSucursal} · cuánto te cuesta cada cosa y cómo ha cambiado. Si algo sube mucho, te avisamos en Tickets.</p>
       </div>
+
+      {sugerencias.length > 0 && (
+        <section aria-labelledby="sugerencias" className="space-y-2 rounded-xl border border-emerald-800/60 bg-emerald-950/30 p-4">
+          <h3 id="sugerencias" className="text-sm font-semibold text-emerald-300">Podrías pagar menos</h3>
+          <ul className="space-y-2">
+            {sugerencias.map(s => (
+              <li key={s.nombre} className="text-[13px] leading-relaxed text-zinc-300">
+                <b className="font-medium text-zinc-100">{s.nombre}:</b> {s.mejor.articulo === s.ultima.articulo ? '' : `${s.mejor.articulo} `}en {s.mejor.comercio} salió a {fmt(s.mejor.precio)} por {s.unidad}; la última vez{s.mejor.articulo === s.ultima.articulo ? '' : ` (${s.ultima.articulo})`} en {s.ultima.comercio} a {fmt(s.ultima.precio)}. <span className="font-medium text-emerald-300">{Math.round(s.ahorroPct)}% menos.</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar producto…"

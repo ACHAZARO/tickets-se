@@ -10,7 +10,7 @@ import { buildGeminiPrompt, fechaMexico, fechaPideRevision, leerTicketConGemini,
 import { detectSmartDuplicate, esCopiaSegura, palabrasDelNegocio } from '../_shared/duplicados.ts'
 import { envioMuyAlto, guardarPrecios, hayPrecioAnomalo } from '../_shared/precios.ts'
 import { noCuadra, sinTotal } from '../_shared/montos.ts'
-import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, papelPideRevision } from '../_shared/renglones.ts'
+import { AVISO_NO_CUADRO, construirRenglones, lecturaNoCuadra, motivoCuentaAMano, motivoMesCerrado, papelPideRevision } from '../_shared/renglones.ts'
 import { copiarAArchivo, quitarDePorRevisar } from '../_shared/archivo.ts'
 import type { GeminiItem } from '../_shared/gemini.ts'
 import { detectarTextoParaIA, motivoTextoParaIA, notaPareceOrdenParaIA } from '../_shared/inyeccion.ts'
@@ -331,6 +331,8 @@ async function procesarEnSegundoPlano(opts: {
       notifyAlertEmail(registroId, 'precio_anomalo'); hayAlerta = true
     }
     if (envioAlto) { await createAlert(supabase, registroId, 'envio_alto', undefined, { motivo: envioAlto }); hayAlerta = true }
+    const mesCerrado = entrenamiento ? null : await motivoMesCerrado(supabase, sucursalId, fechaTicket)
+    if (mesCerrado) { await createAlert(supabase, registroId, 'mes_cerrado', undefined, { motivo: mesCerrado }); hayAlerta = true }
     const cuentaMano = entrenamiento ? null : motivoCuentaAMano(datos.resumen_mano)
     if (cuentaMano) { await createAlert(supabase, registroId, 'cuenta_a_mano', undefined, { motivo: cuentaMano, resumen: datos.resumen_mano }); hayAlerta = true }
     // Nota a mano o remision: siempre la ve una persona, aunque se vea bien (en entrenamiento la IA acepta todo).
@@ -539,7 +541,7 @@ serve(async (req: Request) => {
       .in('sucursal_id', sucursalesDelNegocio)
       .order('created_at', { ascending: true }).limit(1).maybeSingle()
     if (existing) {
-      const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_dup.${extension}`
+      const dupPath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_${crypto.randomUUID().slice(0, 6)}_dup.${extension}`
       // Si la copia no se guarda, el gerente ve el error y vuelve a subir: no queda un registro sin foto.
       const { error: dupUpErr } = await supabase.storage.from('por-revisar')
         .upload(dupPath, imageBytes, { contentType: mime, upsert: false })
@@ -570,7 +572,8 @@ serve(async (req: Request) => {
       return json({ duplicado: true, registro_id: dupReg?.id ?? null, ticket_original_id: existing.id })
     }
 
-    const storagePath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}.${extension}`
+    // Con el azar, la misma foto enviada dos veces en el mismo milisegundo (doble toque) no choca al guardarse.
+    const storagePath = `${sucursalId}/${Date.now()}_${hashImagen.slice(0, 8)}_${crypto.randomUUID().slice(0, 6)}.${extension}`
     const { error: uploadError } = await supabase.storage.from('por-revisar')
       .upload(storagePath, imageBytes, { contentType: mime, upsert: false })
     if (uploadError) {

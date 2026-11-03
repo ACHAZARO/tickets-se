@@ -137,6 +137,7 @@ const ALERT_LABEL: Record<string, string> = {
   pago_distinto: 'Pago distinto',
   nota_a_mano: 'Nota a mano',
   cuenta_a_mano: 'Cuenta a mano',
+  mes_cerrado: 'De un mes cerrado',
 }
 // Que tan grave es cada alerta, para pintarla: rojo = dinero/duplicado en riesgo (revisar ya),
 // naranja = falta clasificar el producto, ambar = informativo o leve (ej. cambio de precio).
@@ -151,6 +152,7 @@ const ALERT_TONE: Record<string, AlertTone> = {
   pagos_no_cuadran: 'rojo',
   pago_distinto: 'rojo',
   cuenta_a_mano: 'rojo',
+  mes_cerrado: 'rojo',
   articulo_no_autorizado: 'rojo',
   rechazado: 'rojo',
   producto_no_reconocido: 'naranja',

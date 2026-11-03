@@ -22,6 +22,7 @@ const GRUPOS = [
   { nombre: 'Revisar', paginas: [
     { href: '/admin/tickets', label: 'Tickets' },
     { href: '/admin/insumos', label: 'Artículos por revisar' },
+    { href: '/admin/faltantes', label: 'Tickets faltantes' },
   ] },
   { nombre: 'Configuración', paginas: [
     { href: '/admin/catalogo', label: 'Artículos' },

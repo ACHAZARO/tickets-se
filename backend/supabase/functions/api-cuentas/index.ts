@@ -74,7 +74,7 @@ const ALERTA: Record<string, string> = {
   ilegible: 'Ilegible', ia_sin_leer: 'La IA no lo leyo', producto_no_reconocido: 'Producto no reconocido',
   sin_unidad: 'Sin unidad', sin_categoria: 'Sin categoria', sin_fecha: 'Fecha asumida', monto_anomalo: 'Monto no cuadra',
   precio_anomalo: 'Precio fuera de lo normal', envio_alto: 'Envio muy alto', pagos_no_cuadran: 'Pagos no cuadran con el total', duplicado: 'Duplicado',
-  pago_distinto: 'Pago distinto al declarado', nota_a_mano: 'Nota a mano', cuenta_a_mano: 'Cuenta a mano de varios tickets', articulo_vigilado: 'Articulo vigilado', articulo_ocasional: 'Compra ocasional',
+  pago_distinto: 'Pago distinto al declarado', nota_a_mano: 'Nota a mano', cuenta_a_mano: 'Cuenta a mano de varios tickets', mes_cerrado: 'De un mes ya cerrado', articulo_vigilado: 'Articulo vigilado', articulo_ocasional: 'Compra ocasional',
   articulo_no_autorizado: 'Articulo no autorizado',
   posible_duplicado: 'Posible duplicado', revisar_gerente: 'Revisar con la gerente',
 }
