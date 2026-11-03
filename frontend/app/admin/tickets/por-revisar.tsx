@@ -132,7 +132,7 @@ export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-3xl space-y-6">
       {leyendo.length > 0 && (
         <p className="rounded-lg bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300">
           La IA está leyendo {leyendo.length === 1 ? '1 ticket' : `${leyendo.length} tickets`}. Aparecen aquí en cuanto termine, si hay algo que ver.

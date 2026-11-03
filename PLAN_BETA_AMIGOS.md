@@ -7,19 +7,19 @@
 
 **Operación sin navegador:** la CLI de Supabase tiene sesión. `npx supabase@latest functions deploy <fn> --project-ref dlmqqmvrgkilptawllep --use-api --workdir backend --yes` (`--no-verify-jwt` en procesar-ticket, api-cuentas, revisor-ia, verificar-pin, conteo-gerente, avisos-gerente). Las llaves se piden a la CLI dentro de los scripts (`_trabajo_beta/scripts/lib_ops.py`) y nunca se imprimen. Los resultados de trabajo van en `_trabajo_beta/` (gitignored): Windows borró la carpeta temporal el 1-nov.
 
-## Fases y estado
+## Fases y estado (03-nov)
 
 | # | Fase | Estado |
 |---|---|---|
-| 1 | Ronda de pendientes WP/SE (revisor IA + auditoría contra foto) | 116 hechos 03-nov: 100 confirmados, 16 con pregunta para el dueño. Faltan 56 nuevos y la cola de Fraude |
-| 2 | Rama `beta-amigos`: main + modo entrenamiento (verificado = producción) | hecho |
-| 3 | **Aislamiento por negocio**: RLS y funciones (101 aplicada) + edge functions con permiso por sucursal | 101 hecha; confirmar-admin publicada; faltan las demás |
-| 4 | Mejoras de IA por errores de la auditoría (abajo) | en curso |
-| 5 | Alta por invitación + asistente de inicio sin saltar de pantalla + selector de negocio + panel de negocios | pendiente |
-| 6 | Revisión de diseño (design critique), Cerebro entendible sin manual, recomendación del revisor IA con aprobar en lote | pendiente |
-| 7 | QA de punta a punta (cuenta nueva → gerente sube → revisión → reportes) y pruebas de carga | pendiente |
-| 8 | Publicar frontend a `main`, quitar política anon de sucursales, verificar en producción | pendiente |
-| 9 | **Tickets faltantes**: cotejo salidas de caja vs tickets (al final, con Alejandro viendo) | pendiente |
+| 1 | Ronda de pendientes WP/SE | Hecha: 116 auditados y 56 releidos. Queda solo lo que debe ver el dueno en Por revisar |
+| 2 | Rama `beta-amigos` | Hecha |
+| 3 | Aislamiento por negocio | Hecho (101 + permisos en edge functions; QA 63 de 63) |
+| 4 | Mejoras de IA | Hechas y medidas (`_trabajo_beta/scripts/medir_ia.py`) |
+| 5 | Alta por invitacion, asistente de inicio, selector, Negocios | Hecho |
+| 6 | Design critique, Cerebro, Por revisar con lote | Hecho |
+| 7 | QA y carga | Hecho (lista en PROJECT_STATE) |
+| 8 | Publicar | Ver PROJECT_STATE |
+| 9 | Tickets faltantes | Hecho, Alejandro lo revisa |
 
 ## Errores de la IA encontrados (auditoría de 116 tickets, 150 errores) y qué se hace
 
@@ -38,7 +38,7 @@
 ## Decisiones (Claude, 24-oct / 03-nov)
 
 ### Revisor IA
-Ronda del 24-oct: de 99 que aprobó, 11 debían verlos el dueño y aprobó un monto mal ($270 en vez de $210). **No cumple para aprobar solo.** Se usa como recomendación visible con "aprobar en lote"; se sigue midiendo.
+Ronda del 24-oct: de 99 que aprobó, 11 debían verlos el dueño y aprobó un monto mal ($270 en vez de $210). **No cumple para aprobar solo.** El lote de Por revisar se decide con reglas fijas (alertas suaves), no con el revisor: es más barato y explicable. Sigue en modo prueba.
 
 ### Aislamiento
 - `admin_users` = super admin (Alejandro). El panel trabaja sobre UNA cuenta a la vez (`usuario_cuenta_activa`), así "Todas las sucursales" nunca mezcla negocios.
@@ -51,7 +51,7 @@ Ronda del 24-oct: de 99 que aprobó, 11 debían verlos el dueño y aprobó un mo
 - Tope de tickets por mes en beta (`cuentas.limite_tickets_mes`).
 
 ### Asistente de inicio
-Una sola pantalla con pasos que se hacen AHÍ MISMO: sucursal → PIN → categorías → formas de pago → cómo suben los gerentes (QR) → subir tickets de entrenamiento → revisar lo aprendido → terminar.
+Una sola pantalla con pasos que se hacen AHÍ MISMO: negocio y sucursal → categorías → formas de pago → PIN → subir tickets viendo cómo lee la IA → lo que aprendió → gerentes con QR y WhatsApp → terminar.
 
 ### Tickets faltantes
 "Tickets faltantes" = dinero que salió sin comprobante: salidas de la caja sin ticket, y hojas-resumen de la gerente cuya "compra total" no alcanza con los tickets subidos (ej. 8-oct SE faltan $151.98; 10-oct SE faltan $517.50). Se construye al final.

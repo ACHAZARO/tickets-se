@@ -45,6 +45,9 @@ auto-confirmarlo).
 - `ligar_huerfano` trabaja sucursal por sucursal: ya no crea productos globales ni reclasifica renglones de otra sucursal.
 - Panel Catalogo: no deja crear categoria ni producto con el selector en "Todas".
 
+## Hecho el 2026-11-03: puntos 1, 2, 3, 5 (correo por negocio) y 6 de la lista de abajo
+Permisos por cuenta (101, `permisos.ts`), sucursal sin default ajeno, categorias por cuenta, correo de alertas por negocio (falta dominio en Resend para que llegue a otros), Google Sheets solo con `GOOGLE_SHEETS_CUENTA`. Siguen abiertos: pantalla para `reglas_ia`, umbrales fijos y zona horaria.
+
 ## Pendiente ANTES del primer cliente externo (plataforma, no aprendizaje)
 
 1. **Permisos por cuenta.** Hoy `is_admin()` es global: un admin ve y edita TODOS los negocios (todas las politicas RLS,

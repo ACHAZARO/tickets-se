@@ -1,7 +1,25 @@
 # PROJECT_STATE.md — Revision de Tickets
 
-> Estado vivo del proyecto. Ultima actualizacion: 2026-10-16.
+> Estado vivo del proyecto. Ultima actualizacion: 2026-11-03.
 > **Cambio de computadora / recuperacion:** ver `RECUPERACION.md` (donde nos quedamos + pasos) y `DIRECTORIO_CUENTAS.md` (cuentas, correos e integraciones). Foto del 2026-09-19.
+
+## Sesion 2026-11-03 (Claude, /loop de Alejandro) -- BETA PARA NEGOCIOS DE AMIGOS
+**Pedido:** dejarle solo lo minimo de Wings y Santa Elena, corregir la IA, todas las mejoras a produccion sin preguntar, QA desde crear cuenta, design critique, pruebas masivas y al final tickets faltantes. Plan y decisiones: `PLAN_BETA_AMIGOS.md`.
+
+**IA (medido contra 116 tickets auditados, releyendo la foto):** antes los 116 estaban atorados; ahora 47 pasan solos, 41 en lote y 28 uno por uno. Se corrigio: IVA con envio a mano, descuento doble, IEPS de remisiones, codigos de tienda y plantillas de cantidad en el emparejador, sugerencia de la IA con candado de inicial, presentaciones ("HARINA 4/1KG" = 4 kg), digitos a mano, hoja-resumen, forma de pago impresa, fechas (sin alerta si no hay fecha escrita; solo si la escrita no tiene sentido), segunda lectura automatica si los renglones no suman (arreglo 3 de 3 en real), duplicados con candado (mismo numero en fechas lejanas ya no se rechaza solo: "612" de Adan y "Rep." de Cervezas eran falsos). Precio raro solo si SUBE mas de 40% y mueve al menos $50, y dice cual. Unidad faltante = pz (ya no se pregunta). `reprocesar-ticket` tiene modo `simular` (no escribe) y `_trabajo_beta/scripts/medir_ia.py` mide contra la auditoria.
+
+**Alertas nuevas:** `pago_distinto` (el papel dice tarjeta y se declaro caja; un toque "Conozco la tarjeta" y ya no pregunta, `cuenta_opciones.tarjetas_ok`), `nota_a_mano` (suave: nota o remision las ve siempre una persona, decision 07-oct, pero se aprueban en lote), `cuenta_a_mano` (hoja-resumen de una vuelta), `mes_cerrado`.
+
+**Pantallas:** Tickets abre en **Por revisar** (de cualquier mes, sin periodo): "Necesitan tu decision" con la pregunta en palabras claras y "Se ven bien" con aprobar en lote (aprende articulos nuevos ahi). Detalle del ticket con pie fijo (Rechazar / Esta bien, confirmar), foto chica y Mas opciones; confirmar un ticket en Fraude pregunta; "La fecha es correcta". **Asistente de inicio** a pantalla completa, 7 pasos sin salir (negocio, categorias, pagos, PIN, subir tickets ahi mismo viendo como lee la IA, lo que aprendio, gerentes con QR y WhatsApp). **Cerebro** en una columna (lo que no sabe; por grupo; por comercio; tocar un nombre lo renombra y el viejo queda de sinonimo). **Registro** por invitacion, **Negocios** (solo super admin: invitar, tope, suspender, entrar), selector de negocio, olvide mi contrasena. **Tickets faltantes** (Revisar): se sube el reporte de caja del punto de venta, dice que salidas no tienen ticket, se piden por WhatsApp, y ahi se cierra el mes. **Precios**: "Podrias pagar menos" (por unidad base entre tamanos y comercios). Fraude: el que ya cuenta va marcado y arriba sale cuanto papel repetido subio cada persona.
+
+**Multi-negocio:** RLS por cuenta (101) y permiso por sucursal en todas las edge functions (`_shared/permisos.ts`). Alta: `crear-cuenta` + 104 (invitaciones, tope por mes, negocios_resumen). Correo de alertas por negocio (`cuentas.correo_alertas`, o sus duenos). Google Sheets solo con `GOOGLE_SHEETS_CUENTA`.
+
+**Pruebas:** `_trabajo_beta/scripts/qa_total.py` 63 de 63 (alta, aislamiento entre dos negocios, gerente, tope, suspension). Carga a 25 simultaneos: lecturas ~100/s, mediana 0.23 s, p95 0.34 s; resumen 65/s. Volumen simulado (20 negocios, 50 mil tickets, 150 mil renglones, transaccion deshecha): consultas de un dueno de 4 a 61 ms. Recorrido en navegador a 390 px con cuenta de prueba: asistente, Por revisar, lote, tarjeta, detalle, faltantes, cerrar mes.
+
+**Tickets WP/SE:** 116 auditados (100 confirmados, 16 con pregunta) + 56 nuevos releidos: 13 confirmados que pasaron solos (muestra revisada contra foto), el resto en Por revisar. Tres rechazos falsos regresados (Adan 612, Cervezas Rep., Adan 405273). Fraude: no se cerro ningun papel repetido (regla 18-sep).
+
+**No probado por mi (se hace con la primera invitacion real):** teclear el registro en el navegador contra produccion (se probo por API) y el correo real de "olvide mi contrasena".
+**Pendiente para Alejandro:** ver `PENDIENTES_APP.md` (dominio en Resend para correos a otros, previews de Vercel).
 
 ## Sesion 2026-10-10 (Claude) -- ARTICULOS VIGILADOS (idea Alejandro: "mandar siempre a revision")
 - **Que es:** interruptor por articulo en Catalogo > Editar > "Opciones avanzadas": "Vigilar: mandar siempre a revision" + motivo

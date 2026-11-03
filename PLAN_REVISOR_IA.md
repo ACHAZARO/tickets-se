@@ -56,6 +56,9 @@ Claude AUDITOR -> Alejandro decide. Procedimiento de cada ronda:
 |---|---|---|---|---|---|---|
 | (pendiente primera ronda) | v2 | | | | | |
 
+### Ronda 24-oct / 03-nov (116 tickets WP y SE, contra auditoria con foto)
+Revisor aprobo y el auditor aprobo: 88 (58 con correcciones). Aprobo y debian verlo el dueno: 11. Mando a humano sin necesidad: 11. Aprobo un monto mal: Jugotropick $270 (real $210). **No cumple para aprobar solo.** Decision 03-nov: no se muestra en pantalla; el lote se decide con reglas fijas (alertas suaves), mas barato y explicable. Sigue en modo prueba.
+
 ## Fase futura OPCIONAL (plan B): Claude como auditor permanente por API
 > Decision Alejandro 03-oct: por ahora SOLO modo sombra por rondas. Si las rondas cumplen los criterios, se declara listo
 > para venta SIN meter este auditor a la app. Esto solo se activa si las rondas muestran fallas que reglas/candados no arreglan.

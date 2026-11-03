@@ -68,10 +68,6 @@ test('las copias para la edge function son identicas', () => {
   for (const f of ['stock.mjs', 'units.mjs']) {
     const aqui = readFileSync(new URL('./' + f, import.meta.url), 'utf8')
     const alla = readFileSync(new URL('../../backend/supabase/functions/_shared/' + f, import.meta.url), 'utf8')
-    assert.equal(alla.replace(/
-/g, '
-'), aqui.replace(/
-/g, '
-'), f + ' cambio: copialo a backend/supabase/functions/_shared/')
+    assert.equal(alla.replace(/\r\n/g, '\n'), aqui.replace(/\r\n/g, '\n'), f + ' cambio: copialo a backend/supabase/functions/_shared/')
   }
 })
