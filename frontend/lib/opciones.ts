@@ -13,6 +13,8 @@ export interface OpcionesCuenta {
   // Articulos no autorizados (migracion 094): a donde va lo aprobado y si el gerente ve lo que no se aprobo.
   categoria_extra_id: string | null
   avisar_gerente_no_autorizado: boolean
+  // El gerente paga con su tarjeta y toma el efectivo de la caja (migracion 115): ese papel ya no se pregunta.
+  tarjeta_repone_caja: boolean
   // Modo entrenamiento (migracion 098, PLAN_MODO_ENTRENAMIENTO.md): la IA acepta lo que sube el admin y aprende.
   entrenamiento: boolean
   entrenamiento_desde: string | null
@@ -38,7 +40,7 @@ export function useOpciones() {
     const [{ data: sucs }, { data: cts }, { data: ops, error: errOps }] = await Promise.all([
       supabase.from('sucursales').select('id, cuenta_id'),
       supabase.from('cuentas').select('id, nombre').order('nombre'),
-      supabase.from('cuenta_opciones').select('cuenta_id, usa_stock, gerente_conteo, categoria_extra_id, avisar_gerente_no_autorizado, entrenamiento, entrenamiento_desde, bienvenida_vista, giro, entrenamiento_pasos'),
+      supabase.from('cuenta_opciones').select('cuenta_id, usa_stock, gerente_conteo, categoria_extra_id, avisar_gerente_no_autorizado, tarjeta_repone_caja, entrenamiento, entrenamiento_desde, bienvenida_vista, giro, entrenamiento_pasos'),
     ])
     const mapa: Record<string, string> = {}
     for (const s of (sucs as { id: string; cuenta_id: string | null }[] | null) ?? []) if (s.cuenta_id) mapa[s.id] = s.cuenta_id
@@ -50,6 +52,7 @@ export function useOpciones() {
       gerente_conteo: porCuenta.get(c.id)?.gerente_conteo ?? false,
       categoria_extra_id: porCuenta.get(c.id)?.categoria_extra_id ?? null,
       avisar_gerente_no_autorizado: porCuenta.get(c.id)?.avisar_gerente_no_autorizado ?? false,
+      tarjeta_repone_caja: porCuenta.get(c.id)?.tarjeta_repone_caja ?? false,
       entrenamiento: porCuenta.get(c.id)?.entrenamiento ?? false,
       entrenamiento_desde: porCuenta.get(c.id)?.entrenamiento_desde ?? null,
       // Cuenta sin fila = negocio nuevo: aun no se le pregunta por la configuracion.

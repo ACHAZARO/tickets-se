@@ -524,6 +524,15 @@ export default function TicketsPage() {
     fetchPendientes()
   }
 
+  async function gerentePagaConTarjeta() {
+    if (!(await confirm('Si el papel dice tarjeta y el gerente registró efectivo, se tomará como correcto y ya no te preguntaremos, en ningún ticket de este negocio.\n\nLo puedes cambiar en Configuración → Opciones.', { si: 'Sí, siempre es así', no: 'Atrás' }))) return
+    const { data, error } = await supabase.rpc('gerente_paga_con_tarjeta')
+    if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return }
+    const n = Number(data ?? 0)
+    toast(`Listo: ya no se pregunta${n > 0 ? ` (${n} ${n === 1 ? 'ticket' : 'tickets'})` : ''}`)
+    fetchPendientes()
+  }
+
   // Renglones de articulos NO AUTORIZADOS esperando decision, de CUALQUIER fecha (si quien manejaba antes la
   // operacion metio algo, aqui sale). Van en la pestana Fraude.
   const [noAut, setNoAut] = useState<RenglonNoAut[]>([])
@@ -777,6 +786,7 @@ export default function TicketsPage() {
       : 'Listo: no es fraude.') + extra)
     setFraudeSel(null)
     fetchTickets()
+    fetchPendientes()
     return true
   }
 
@@ -896,21 +906,20 @@ export default function TicketsPage() {
 
   // Los gastos van CON IVA: si el ticket trae un total leido, ese total manda y los renglones
   // deben sumarlo (en facturas, importe impreso + su IVA). Solo en captura manual (sin total
-  // leido) el total es la suma de renglones.
-  async function syncTicketTotal(ticket: Ticket, items: Item[]): Promise<number> {
+  // leido) el total es la suma de renglones. Quien agrega un renglon (un envio, algo que faltaba) quiere que sume: no se pregunta.
+  async function syncTicketTotal(ticket: Ticket, items: Item[], agregoRenglon = false): Promise<number> {
     const suma = Math.round(sumItems(items) * 100) / 100
     const total = Number(ticket.monto)
     if (Number(ticket.gemini_raw?.monto_total) > 0 && total > 0) {
       if (Math.abs(total - suma) <= Math.max(1, total * 0.005)) return total
       // Si el total leido estaba mal, el admin puede tomar la suma de renglones como total.
-      const usarSuma = window.confirm(`Los renglones suman $${suma.toFixed(2)} y el total del ticket es $${total.toFixed(2)}.\n\n` +
-        `Aceptar: el total del ticket pasa a ser $${suma.toFixed(2)} (el total leido estaba mal).\n` +
-        `Cancelar: se deja $${total.toFixed(2)} (captura los importes CON IVA para que cuadren).`)
-      if (!usarSuma) return total
+      if (!agregoRenglon && !(await confirm(`Los renglones suman $${suma.toFixed(2)} y el total del ticket es $${total.toFixed(2)}.\n\n¿Cuál es el total correcto? Los importes van con IVA.`,
+        { si: `Usar $${suma.toFixed(2)}`, no: `Dejar $${total.toFixed(2)}` }))) return total
     }
     const { error } = await supabase.from('registros_tickets').update({ monto: suma }).eq('id', ticket.id)
     if (error) { toast('No se pudo actualizar el total: ' + error.message, 'error'); return total }
     setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, monto: suma } : t))
+    if (Math.abs(total - suma) > 0.005 && total > 0) toast(`El total pasó de $${total.toFixed(2)} a $${suma.toFixed(2)}`)
     return suma
   }
 
@@ -1074,6 +1083,7 @@ export default function TicketsPage() {
     await ensureFreshSession()
     let items = d.items
     let ticket = d.ticket
+    const agregoRenglon = porGuardar.some(it => it.id.startsWith('nuevo-'))
     try {
       for (const it of porGuardar) items = await guardarRenglon(it, formsRenglon.current[it.id]!, items, ticket)
     } catch (e) {
@@ -1086,7 +1096,7 @@ export default function TicketsPage() {
     if (porGuardar.length) {
       renglonesTocados.current.clear()
       await loadCatalogo(ticket.sucursal_id)
-      ticket = { ...ticket, monto: await syncTicketTotal(ticket, items) }
+      ticket = { ...ticket, monto: await syncTicketTotal(ticket, items, agregoRenglon) }
       // Cerrar las alertas de renglon que ya no aplican y refrescar la lista (si no, el ticket parecia seguir pendiente).
       const tiposAResolver = items.some(x => x.necesita_revision)
         ? ['producto_no_reconocido', 'ia_sin_leer']
@@ -1264,6 +1274,9 @@ export default function TicketsPage() {
   const baseTickets = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
   const esSospechosoAbierto = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta'
   const estaEnFraude = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
+  // Lo pendiente en Fraude no sale en Por revisar: se ve aqui aunque sea de otro mes, o nadie lo encontraria.
+  const enFraudeAbiertos = [...baseTickets.filter(esSospechosoAbierto), ...pendientes.filter(t =>
+    esSospechosoAbierto(t) && !baseTickets.some(x => x.id === t.id) && (!comercioFiltro || (t.comercio ?? '') === comercioFiltro))]
   // Un pendiente SIN fecha tambien requiere revision (no entraria al Dashboard al confirmarlo).
   // Un rechazado (p. ej. foto repetida, que se rechaza sola) o archivado ya no tiene nada que revisar.
   const tieneAlerta = (t: Ticket) => t.estado !== 'rechazado' && t.estado !== 'archivado' && (
@@ -1281,11 +1294,11 @@ export default function TicketsPage() {
     todos: baseTickets.length,
     revisar: porRevisarContados(),
     confirmados: baseTickets.filter(t => t.estado === 'confirmado').length,
-    fraude: baseTickets.filter(esSospechosoAbierto).length,
+    fraude: enFraudeAbiertos.length,
   }
   const noAutVis = comercioFiltro ? noAut.filter(r => (r.registros_tickets.comercio ?? '') === comercioFiltro) : noAut
   const fraudeGrupos = (() => {
-    const sosp = baseTickets.filter(esSospechosoAbierto)
+    const sosp = enFraudeAbiertos
     const byGroup = new Map<string, Ticket[]>()
     const sueltos: Ticket[] = []
     for (const t of sosp) {
@@ -1321,6 +1334,13 @@ export default function TicketsPage() {
     return [...m.entries()].sort((a, b) => b[1].monto - a[1].monto)
   })()
 
+  // Una copia cuyo original ya se resolvio queda sola en Fraude: desde aqui se puede ver con que se repite.
+  async function abrirOriginal(id: string) {
+    const { data } = await supabase.from('registros_tickets').select(SELECT_TICKET).eq('id', id).maybeSingle()
+    if (data) abrirDetalle(data as unknown as Ticket)
+    else toast('No se encontró el original', 'error')
+  }
+
   const filaSosp = (t: Ticket) => (
     <div key={t.id} className="tarjeta p-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -1334,7 +1354,8 @@ export default function TicketsPage() {
       <div className="mt-2 flex items-center gap-2">
         <button onClick={() => resolverSospecha(t, 'descartada')} className="btn-quieto btn-sm">No es fraude</button>
         <button onClick={() => resolverSospecha(t, 'confirmada')} className="btn-peligro btn-sm">Es fraude</button>
-        <button onClick={() => abrirDetalle(t)} className="btn-texto btn-sm ml-auto">Abrir →</button>
+        {t.duplicado_de && <button onClick={() => abrirOriginal(t.duplicado_de as string)} className="btn-texto btn-sm ml-auto">Ver el original</button>}
+        <button onClick={() => abrirDetalle(t)} className={`btn-texto btn-sm ${t.duplicado_de ? '' : 'ml-auto'}`}>Abrir →</button>
       </div>
     </div>
   )
@@ -1511,7 +1532,7 @@ export default function TicketsPage() {
             tenue: 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800', lleno: 'bg-emerald-600 text-white' },
           { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos,
             tenue: 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700', lleno: 'bg-zinc-100 text-zinc-900' },
-          { k: 'fraude', label: ticketFilterLabel('fraude'), n: new Set([...baseTickets.filter(esSospechosoAbierto).map(t => t.id), ...noAutVis.map(r => r.registros_tickets.id)]).size,
+          { k: 'fraude', label: ticketFilterLabel('fraude'), n: new Set([...enFraudeAbiertos.map(t => t.id), ...noAutVis.map(r => r.registros_tickets.id)]).size,
             tenue: 'bg-red-900 text-red-300 hover:bg-red-800', lleno: 'bg-red-600 text-white' },
         ] as const).map(c => {
           const elegido = filtroEstado === c.k
@@ -1542,7 +1563,7 @@ export default function TicketsPage() {
         </div>
       )}
       {filtroEstado === 'revisar' ? (
-        <PorRevisar tickets={porRevisar} cargando={cargandoPend} aprobar={aprobarLote} conocerTarjeta={conocerTarjeta}
+        <PorRevisar tickets={porRevisar} cargando={cargandoPend} aprobar={aprobarLote} conocerTarjeta={conocerTarjeta} gerentePagaConTarjeta={gerentePagaConTarjeta}
           abrir={id => { const t = pendientes.find(x => x.id === id); if (t) abrirDetalle(t) }}
           irAFraude={() => setFiltroEstado('fraude')} enFraude={cuenta.fraude} />
       ) : filtroEstado === 'fraude' ? (
@@ -1821,6 +1842,7 @@ export default function TicketsPage() {
                   <span className="text-zinc-500">Total ticket</span>
                   <span className="text-zinc-100 font-semibold">{fmt(detalle.ticket.monto)}</span>
                 </div>
+                {(detalle.ticket.estado !== 'confirmado' || editando) && <p className="nota">Para cambiar el total, corrige el importe del renglón.</p>}
                 <details className="rounded-lg border border-zinc-800 px-3 py-2">
                   <summary className="cursor-pointer text-sm font-medium text-zinc-400">Más opciones</summary>
                   <div className="mt-2 flex flex-col gap-2">

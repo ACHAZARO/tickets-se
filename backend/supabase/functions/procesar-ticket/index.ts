@@ -316,9 +316,12 @@ async function procesarEnSegundoPlano(opts: {
       notifyAlertEmail(registroId, 'ilegible'); hayAlerta = true
     }
     if (!fechaValida) { await createAlert(supabase, registroId, 'sin_fecha'); hayAlerta = true }
+    // Ticket impreso o factura con todo en categoria: un articulo nuevo o sin unidad no pide decidir nada. Si no sale otra alerta, se aprende y se aprueba solo (abajo).
+    const nuevosSinPreguntar = !entrenamiento && !anySinCategoria && (anyProductoNuevo || anySinUnidad)
+      && (datos.tipo_documento === 'ticket' || datos.tipo_documento === 'factura')
     // En entrenamiento un renglon sin categoria NO frena el ticket: se queda "sin clasificar" para acomodarlo en Cerebro.
-    if ((anySinCategoria && !entrenamiento) || anyProductoNuevo) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
-    if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
+    if ((anySinCategoria && !entrenamiento) || (anyProductoNuevo && !nuevosSinPreguntar)) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
+    if (anySinUnidad && !nuevosSinPreguntar) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
     // Sin total, o renglones que no suman el total (y no es impuesto): probable lectura incompleta.
     if (montoNoCuadra) { await createAlert(supabase, registroId, 'monto_anomalo'); hayAlerta = true }
     // Pago mixto declarado por el gerente que no suma el total leido: no se aprueba solo.
@@ -377,6 +380,23 @@ async function procesarEnSegundoPlano(opts: {
       }).eq('id', registroId)
       if (sospErr) console.error('marcar sospecha fallo:', sospErr.message)
       hayAlerta = true
+    }
+
+    if (nuevosSinPreguntar) {
+      if (!hayAlerta) {
+        await crearArticulosEntrenamiento(supabase, sucursalId, itemsToInsert)
+        for (const it of itemsToInsert) {
+          const { error } = await supabase.from('ticket_items')
+            .update({ producto_catalogo_id: it.producto_catalogo_id, necesita_revision: it.necesita_revision, motivo_revision: it.motivo_revision })
+            .eq('registro_ticket_id', registroId).eq('orden', it.orden)
+          // Si no se pudo ligar, el ticket va a revision como antes.
+          if (error) { console.error('ligar articulo nuevo:', error.message); it.motivo_revision = 'producto_nuevo' }
+        }
+        anySinUnidad = itemsToInsert.some(it => it.motivo_revision === 'sin_unidad')
+        anyProductoNuevo = itemsToInsert.some(it => it.motivo_revision === 'producto_nuevo')
+      }
+      if (anyProductoNuevo) { await createAlert(supabase, registroId, 'producto_no_reconocido'); hayAlerta = true }
+      if (anySinUnidad) { await createAlert(supabase, registroId, 'sin_unidad'); hayAlerta = true }
     }
 
     // Auto-confirmar tickets limpios (sin alertas): archiva imagen + Sheets.

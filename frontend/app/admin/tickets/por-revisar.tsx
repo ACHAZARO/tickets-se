@@ -43,6 +43,8 @@ export function seVeBien(t: TicketRevisar): boolean {
 const nuevosDe = (t: TicketRevisar) => t.renglones.filter(r => !r.producto_catalogo_id)
 const terminacionDe = (a: AlertaRevisar) => a.tipo === 'pago_distinto' && typeof a.correccion?.motivo === 'string'
   ? /terminaci[oó]n (\d+)/.exec(a.correccion.motivo)?.[1] ?? null : null
+const dudaDeTarjeta = (a: AlertaRevisar) => a.tipo === 'pago_distinto' && typeof a.correccion?.motivo === 'string'
+  && /^El (papel dice|ticket dice que se pago con) tarjeta/.test(a.correccion.motivo)
 
 const PREGUNTAS: Record<string, string> = {
   posible_duplicado: 'Puede ser el mismo gasto que otro ticket.',
@@ -88,13 +90,14 @@ function Foto({ url, onClick, etiqueta }: { url: string | null; onClick: () => v
   )
 }
 
-export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, irAFraude, enFraude }: {
+export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, gerentePagaConTarjeta, irAFraude, enFraude }: {
   tickets: TicketRevisar[]
   cargando: boolean
   abrir: (id: string) => void
   /** Aprueba esos tickets; llama al avance con cuantos van. Devuelve cuantos fallaron. */
   aprobar: (ids: string[], avance: (hechos: number) => void) => Promise<number>
   conocerTarjeta: (terminacion: string) => void
+  gerentePagaConTarjeta: () => void
   irAFraude: () => void
   enFraude: number
 }) {
@@ -163,6 +166,11 @@ export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, 
                     Conozco la tarjeta {term}: ya no preguntar
                   </button>
                 ))}
+                {t.alertas.some(dudaDeTarjeta) && (
+                  <button type="button" onClick={gerentePagaConTarjeta} className="btn-texto btn-sm -ml-2 mt-1 block text-left">
+                    Siempre es así: el gerente paga y toma de la caja
+                  </button>
+                )}
               </div>
             </div>
           ))}

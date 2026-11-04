@@ -77,14 +77,13 @@ export async function pagoDistinto(
   const filas = (data ?? []) as { formas_pago: { nombre: string; sale_de_caja: boolean } | null }[]
   if (!filas.length || !filas.every(f => f.formas_pago?.sale_de_caja)) return null
   const term = String(leido?.terminacion ?? '').replace(/\D/g, '')
-  // Una tarjeta que el dueno ya dijo que conoce no se vuelve a preguntar.
-  if (term) {
-    const { data: reg } = await supabase.from('registros_tickets').select('sucursales:sucursal_id(cuenta_id)').eq('id', registroId).maybeSingle()
-    const cuenta = (reg?.sucursales as { cuenta_id?: string } | null)?.cuenta_id
-    if (cuenta) {
-      const { data: op } = await supabase.from('cuenta_opciones').select('tarjetas_ok').eq('cuenta_id', cuenta).maybeSingle()
-      if (((op?.tarjetas_ok ?? []) as string[]).includes(term)) return null
-    }
+  // Una tarjeta que el dueno ya dijo que conoce no se vuelve a preguntar; tampoco si en ese negocio el gerente paga con su tarjeta y toma de la caja.
+  const { data: reg } = await supabase.from('registros_tickets').select('sucursales:sucursal_id(cuenta_id)').eq('id', registroId).maybeSingle()
+  const cuenta = (reg?.sucursales as { cuenta_id?: string } | null)?.cuenta_id
+  if (cuenta) {
+    const { data: op } = await supabase.from('cuenta_opciones').select('tarjetas_ok, tarjeta_repone_caja').eq('cuenta_id', cuenta).maybeSingle()
+    if (forma === 'tarjeta' && op?.tarjeta_repone_caja) return null
+    if (term && ((op?.tarjetas_ok ?? []) as string[]).includes(term)) return null
   }
   const nombres = filas.map(f => f.formas_pago?.nombre).filter(Boolean).join(' + ')
   return `El papel dice ${forma}${term ? ` terminación ${term}` : ''}, pero se registró ${nombres}, que sale de la caja. ¿Fue la tarjeta del negocio, o se le repuso a quien pagó?`

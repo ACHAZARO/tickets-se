@@ -93,6 +93,17 @@ export default function OpcionesPage() {
             {!c.usa_stock && <p className="nota pl-0.5">Disponible cuando prendas «Usar Stock».</p>}
           </div>
 
+          <div className="space-y-2 px-4 py-4">
+            <h4 className="text-sm font-semibold text-zinc-300">Pagos</h4>
+            <div className="-ml-2">
+              <Interruptor encendido={c.tarjeta_repone_caja} etiqueta="El gerente paga con su tarjeta y toma el efectivo de la caja"
+                onCambiar={() => cambiar(c.cuenta_id, { tarjeta_repone_caja: !c.tarjeta_repone_caja },
+                  c.tarjeta_repone_caja ? 'Listo: te preguntaremos cuando el papel diga tarjeta y se registre efectivo' : 'Listo: ya no se pregunta por esos tickets')}
+                ayuda="Si el papel dice tarjeta y el gerente registró efectivo, se toma como correcto y no te preguntamos." />
+            </div>
+            <p className="nota pl-0.5">Si el papel dice tarjeta y el gerente registró efectivo, se toma como correcto y no te preguntamos.</p>
+          </div>
+
           <div className="space-y-3 px-4 py-4">
             <div className="space-y-1">
               <h4 className="text-sm font-semibold text-zinc-300">Artículos no autorizados</h4>
