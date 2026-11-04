@@ -1,5 +1,7 @@
 'use client'
 
+// RETIRADA 04-nov-2026 (Alejandro): la carpeta con _ no es ruta de Next. Solo tiene sentido cuando se conecte a la caja de la app propia. No exponer por API.
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, ensureFreshSession } from '@/lib/supabase'
 import { traerTodo } from '@/lib/traer-todo'
