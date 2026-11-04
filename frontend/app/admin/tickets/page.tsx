@@ -9,7 +9,8 @@ import { toCanonical } from '@/lib/units.mjs'
 import { detectarSospechas } from '@/lib/fraude.mjs'
 import { buildEquivalenceUpdate, hasReviewAlert, mergeProductSynonyms, nextTicketItemOrder, resolveItemDescription, ticketFilterLabel, ticketStatusLabel } from '@/lib/ticket-workflow.mjs'
 import { useToast, useConfirm, Interruptor } from '../ui'
-import { SelectorPeriodo, rangoMesActual } from '../periodo'
+import { SelectorPeriodo, nombreMesLargo, rangoMesActual } from '../periodo'
+import { rangoDeMes } from '@/lib/arqueo'
 import { ElegirArticulo } from '../elegir-articulo'
 import type { TicketReporte } from '@/lib/export-xlsx'
 import PagosTicket, { textoPagos, type PagoTicket } from './pagos-ticket'
@@ -268,7 +269,7 @@ export default function TicketsPage() {
   const [cats, setCats] = useState<{ id: string; nombre: string }[]>([])
   const [comercioFiltro, setComercioFiltro] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'revisar' | 'todos' | 'confirmados' | 'fraude'>('revisar')
-  // Por revisar no depende del periodo: un ticket pendiente de otro mes tambien hay que verlo.
+  // Se traen TODOS los pendientes: la pestana sigue el periodo, y los de otros meses se avisan arriba para que nadie los pierda.
   const [pendientes, setPendientes] = useState<Ticket[]>([])
   const [renglonesPend, setRenglonesPend] = useState<Record<string, RenglonRevisar[]>>({})
   const [cargandoPend, setCargandoPend] = useState(true)
@@ -1289,10 +1290,19 @@ export default function TicketsPage() {
     (alertas[t.id] ?? []).some(a => a.tipo === 'ia_sin_leer') ||
     (t.estado === 'pendiente' && typeof t.gemini_raw?._ia_en_proceso === 'string' &&
       Date.now() - Date.parse(t.gemini_raw._ia_en_proceso as string) > 10 * 60_000)))
-  function porRevisarContados() { return pendientes.filter(t => !estaEnFraude(t)).length }
+  // Por revisar sigue el periodo y el comercio, como las demas pestanas. Sin fecha entra por el dia en que se subio (hora de Mexico).
+  const fechaPendiente = (t: Ticket) => t.fecha_ticket ?? new Date(Date.parse(t.created_at) - 6 * 3600_000).toISOString().slice(0, 10)
+  const pendientesLimpios = pendientes.filter(t => !estaEnFraude(t))
+  const enElPeriodo = (t: Ticket) => fechaPendiente(t) >= desde && fechaPendiente(t) <= hasta
+  const pendientesVista = pendientesLimpios.filter(t => enElPeriodo(t) && (!comercioFiltro || (t.comercio ?? '') === comercioFiltro))
+  const otrosMeses = (() => {
+    const m = new Map<string, number>()
+    for (const t of pendientesLimpios) if (!enElPeriodo(t)) { const ym = fechaPendiente(t).slice(0, 7); m.set(ym, (m.get(ym) ?? 0) + 1) }
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+  })()
   const cuenta = {
     todos: baseTickets.length,
-    revisar: porRevisarContados(),
+    revisar: pendientesVista.length,
     confirmados: baseTickets.filter(t => t.estado === 'confirmado').length,
     fraude: enFraudeAbiertos.length,
   }
@@ -1311,7 +1321,7 @@ export default function TicketsPage() {
   })()
   const ticketsFiltrados = baseTickets.filter(t => filtroEstado === 'todos' ? true : t.estado === 'confirmado')
   // Por revisar: lo que esta en Fraude se ve en su pestana, no aqui dos veces.
-  const porRevisar: TicketRevisar[] = pendientes.filter(t => !estaEnFraude(t)).map(t => ({
+  const porRevisar: TicketRevisar[] = pendientesVista.map(t => ({
     id: t.id, tipo: typeof t.gemini_raw?.tipo_documento === 'string' ? t.gemini_raw.tipo_documento : null, comercio: t.comercio, monto: t.monto, fecha: t.fecha_ticket, sucursal: t.sucursales?.nombre ?? null,
     subio: t.empleados?.nombre ?? null, url: urlDe(t), nota: t.nota ?? null,
     alertas: (alertas[t.id] ?? []).map(a => ({ tipo: a.tipo, correccion: a.correccion })),
@@ -1440,21 +1450,19 @@ export default function TicketsPage() {
 
   return (
     <div className="space-y-6">
-      <div className={`flex items-center justify-between gap-4 flex-wrap ${filtroEstado === 'revisar' ? 'hidden' : ''}`}>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-zinc-100">Tickets</h2>
           <p className="nota mt-0.5">{nombreSucursal}</p>
         </div>
-        {filtroEstado !== 'revisar' && (
-          <button type="button" onClick={descargarReporte} disabled={descargando}
-            title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
-            className="btn-secundario">
-            {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
-          </button>
-        )}
+        <button type="button" onClick={descargarReporte} disabled={descargando}
+          title="Ticket por ticket del periodo y la sucursal elegidos, ordenado por fecha: estado, total, notas y desglose"
+          className="btn-secundario">
+          {descargando ? 'Armando...' : 'Descargar reporte (Excel)'}
+        </button>
       </div>
 
-      {filtroEstado !== 'revisar' && <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <Field label="Periodo"><SelectorPeriodo desde={desde} hasta={hasta} onChange={(d, h) => { setDesde(d); setHasta(h) }} /></Field>
         <Field label="Comercio">
           <select value={comercioFiltro} onChange={e => setComercioFiltro(e.target.value)}
@@ -1463,9 +1471,9 @@ export default function TicketsPage() {
             {comerciosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
-      </div>}
+      </div>
 
-      {filtroEstado !== 'revisar' && <div className="tarjeta">
+      <div className="tarjeta">
         <button type="button" onClick={() => setResumenAbierto(a => !a)} aria-expanded={resumenAbierto}
           className="w-full text-left p-4 flex flex-wrap items-end gap-x-8 gap-y-3 rounded-xl hover:bg-zinc-800/40 transition-colors">
           <div>
@@ -1521,17 +1529,29 @@ export default function TicketsPage() {
             </div>
           </div>
         )}
-      </div>}
+      </div>
+
+      {otrosMeses.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-amber-900 px-3 py-2 text-sm text-amber-300">
+          <span>También hay por revisar en:</span>
+          {otrosMeses.map(([ym, n]) => (
+            <button key={ym} type="button" className="font-medium underline underline-offset-2 hover:text-amber-100"
+              onClick={() => { const r = rangoDeMes(ym); setDesde(r.inicio); setHasta(r.fin); setFiltroEstado('revisar') }}>
+              {nombreMesLargo(ym)} ({n})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {([
           // Cada filtro lleva el color de lo que significa: tenue cuando no esta elegido, lleno cuando si.
-          { k: 'revisar', label: ticketFilterLabel('revisar'), n: cuenta.revisar,
-            tenue: 'bg-amber-900 text-amber-300 hover:bg-amber-800', lleno: 'bg-amber-600 text-white' },
-          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados,
-            tenue: 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800', lleno: 'bg-emerald-600 text-white' },
           { k: 'todos', label: ticketFilterLabel('todos'), n: cuenta.todos,
             tenue: 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700', lleno: 'bg-zinc-100 text-zinc-900' },
+          { k: 'confirmados', label: ticketFilterLabel('confirmados'), n: cuenta.confirmados,
+            tenue: 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800', lleno: 'bg-emerald-600 text-white' },
+          { k: 'revisar', label: ticketFilterLabel('revisar'), n: cuenta.revisar,
+            tenue: 'bg-amber-900 text-amber-300 hover:bg-amber-800', lleno: 'bg-amber-600 text-white' },
           { k: 'fraude', label: ticketFilterLabel('fraude'), n: new Set([...enFraudeAbiertos.map(t => t.id), ...noAutVis.map(r => r.registros_tickets.id)]).size,
             tenue: 'bg-red-900 text-red-300 hover:bg-red-800', lleno: 'bg-red-600 text-white' },
         ] as const).map(c => {

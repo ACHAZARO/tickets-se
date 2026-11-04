@@ -355,6 +355,25 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
     await cargar()
   }
 
+  // Ninguno es de la operacion: quedan No autorizados (van a Fraude si vuelven a aparecer) y el grupo ya no se pregunta. Lo pasado no cambia.
+  async function noEsDeLaOperacion(g: Grupo) {
+    const nombres = g.productos.map(p => `«${p.nombre}»`).join(', ')
+    const ok = await confirm(`${nombres}: no es de tu operación.\n\nCada vez que aparezca en un ticket irá a Fraude para que decidas si cuenta. Lo que ya aprobaste antes no cambia.`, { si: 'No es de mi operación' })
+    if (!ok) return
+    setBusy(g.clave)
+    for (const p of g.productos) {
+      const { error } = await supabase.rpc('marcar_uso_articulo', { p_producto: p.id, p_uso: 'no_autorizado', p_revisar_pasados: false })
+      if (error) { setBusy(null); toast(`No se pudo marcar «${p.nombre}»: ${error.message}`, 'error'); await cargar(); onCambio(); return }
+    }
+    for (const s of g.pares) {
+      const err = await descartarUnificacion(s.a.id, s.b.id)
+      if (err) { setBusy(null); toast('No se pudo guardar: ' + err, 'error'); await cargar(); onCambio(); return }
+    }
+    setBusy(null)
+    toast('Listo: si vuelve a aparecer, va a Fraude')
+    await cargar(); onCambio()
+  }
+
   function abrirForm(g: Grupo) {
     setEligiendo(e => ({ ...e, [g.clave]: false }))
     const base = baseInicial(g.unidad_base_sugerida)
@@ -523,6 +542,7 @@ export function PanelDuplicados({ categorias, onCambio }: { categorias: { id: st
                 className="btn-opcion btn-sm">Unificar</button>
               <button type="button" disabled={ocupado} onClick={() => abrirForm(g)} className="btn-opcion btn-sm">Mismo insumo, distinto tamaño</button>
               <button type="button" disabled={ocupado} onClick={() => descartar(g)} className="btn-opcion btn-sm">No son iguales</button>
+              <button type="button" disabled={ocupado} onClick={() => noEsDeLaOperacion(g)} className="btn-opcion btn-sm">No es de mi operación</button>
               {toggleTickets}
             </div>
           )}

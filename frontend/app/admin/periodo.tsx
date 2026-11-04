@@ -20,7 +20,7 @@ function mesesRecientes(n: number): string[] {
   const actual = mesActualMx()
   return Array.from({ length: n }, (_, i) => moverMes(actual, -i))
 }
-const nombreMesLargo = (ym: string) => {
+export const nombreMesLargo = (ym: string) => {
   const [y, m] = ym.split('-').map(Number)
   const t = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' })
   return t.charAt(0).toUpperCase() + t.slice(1) // "Julio de 2026" (solo la primera letra)

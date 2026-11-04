@@ -12,6 +12,7 @@ const AYUDA: { boton: string; estilo: string; texto: string }[] = [
   { boton: 'Unificar', estilo: 'btn-opcion', texto: 'Son el mismo artículo con otro nombre. Eliges con qué nombre se queda y la IA usará ese de ahora en adelante.' },
   { boton: 'Mismo insumo, distinto tamaño', estilo: 'btn-opcion', texto: 'Son dos tamaños de lo mismo (Sal 1 kg y Sal 500 g). Quedan los dos, cada uno con su precio, y el inventario los suma.' },
   { boton: 'No son iguales', estilo: 'btn-opcion', texto: 'Cada uno se queda con su nombre, separados. La IA los seguirá clasificando por separado.' },
+  { boton: 'No es de mi operación', estilo: 'btn-opcion', texto: 'Tu negocio no compra esto. Si vuelve a aparecer en un ticket, va a Fraude y tú decides si cuenta. Lo que ya aprobaste antes no cambia.' },
   { boton: 'Ver tickets', estilo: 'btn-texto', texto: 'Muestra una foto de cada uno para compararlos antes de decidir.' },
 ]
 

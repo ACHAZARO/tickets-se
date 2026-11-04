@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-// Por revisar: lo minimo que el dueno tiene que ver, sin importar de que mes sea el ticket. Dos grupos:
+// Por revisar: lo minimo que el dueno tiene que ver del periodo elegido (los de otros meses se avisan arriba, en la pagina). Dos grupos:
 // - "Necesitan tu decision": cada ticket dice en palabras claras que hay que resolver; se abren uno por uno.
 // - "Se ven bien": notas a mano y remisiones (siempre las ve una persona, decision del 07-oct) y tickets que solo traen articulos
 //   nuevos con categoria y unidad; la IA no encontro nada raro. Se aprueban juntos con un solo toque y los nuevos se aprenden ahi.
@@ -129,7 +129,7 @@ export function PorRevisar({ tickets, cargando, abrir, aprobar, conocerTarjeta, 
         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900">
           <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-300"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
         </span>
-        <p className="text-base font-semibold text-zinc-100">Nada por revisar</p>
+        <p className="text-base font-semibold text-zinc-100">Nada por revisar en este periodo</p>
         <p className="nota max-w-sm">Cuando la IA tenga una duda sobre un ticket, aparece aquí con la pregunta.</p>
         {enFraude > 0 && <button onClick={irAFraude} className="btn-texto btn-sm">Ver {enFraude} en Fraude</button>}
       </div>
