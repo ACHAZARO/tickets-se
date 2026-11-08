@@ -1357,6 +1357,12 @@ export default function TicketsPage() {
     if (data) abrirDetalle(data as unknown as Ticket)
     else toast('No se encontró el original', 'error')
   }
+  // Al reves: desde la original, la copia que se rechazo sola.
+  async function abrirCopia(id: string) {
+    const { data } = await supabase.from('registros_tickets').select(SELECT_TICKET).eq('duplicado_de', id).order('created_at').limit(1).maybeSingle()
+    if (data) abrirDetalle(data as unknown as Ticket)
+    else toast('No se encontró la copia', 'error')
+  }
 
   const filaSosp = (t: Ticket) => (
     <div key={t.id} className="tarjeta p-3">
@@ -1366,7 +1372,10 @@ export default function TicketsPage() {
         {t.sospecha_origen === 'manual' && <span className="chip-neutro">manual</span>}
         <span className="ml-auto text-sm text-zinc-200">{fmt(t.monto)}</span>
       </div>
-      {t.sospecha_motivo?.startsWith('Tiene una copia') && <p className="mt-1 text-[13px] text-zinc-400">{motivoFraudeClaro(t.sospecha_motivo)}</p>}
+      {t.sospecha_motivo?.startsWith('Tiene una copia') && (
+        <p className="mt-1 text-[13px] text-zinc-400"><span className="chip-mal mr-1">Repetido</span>{motivoFraudeClaro(t.sospecha_motivo)}{' '}
+          <button onClick={() => abrirCopia(t.id)} className="btn-texto btn-sm">Ver la copia</button></p>
+      )}
       <input defaultValue={t.sospecha_motivo ?? ''} onBlur={e => guardarMotivo(t, e.target.value)} placeholder="motivo de la sospecha…"
         className="campo mt-2 w-full py-1.5" />
       <div className="mt-2 flex items-center gap-2">
@@ -1717,6 +1726,8 @@ export default function TicketsPage() {
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button onClick={async () => { const t = detalle.ticket; setDetalle(null); await resolverSospecha(t, 'descartada') }} className="btn-quieto btn-sm">Está bien, sacar de Fraude</button>
                       <button onClick={async () => { const t = detalle.ticket; setDetalle(null); await resolverSospecha(t, 'confirmada') }} className="btn-peligro btn-sm">Es fraude</button>
+                      {detalle.ticket.sospecha_motivo?.startsWith('Tiene una copia') && <button onClick={() => abrirCopia(detalle.ticket.id)} className="btn-texto btn-sm">Ver la copia</button>}
+                      {detalle.ticket.duplicado_de && <button onClick={() => abrirOriginal(detalle.ticket.duplicado_de as string)} className="btn-texto btn-sm">Ver el original</button>}
                     </div>
                   </div>
                 )}
