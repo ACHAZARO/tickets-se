@@ -1109,7 +1109,9 @@ export default function TicketsPage() {
     }
     setBusy(null)
     if (confirmar) await confirmarTicket(ticket)
-    else toast(porGuardar.length ? 'Cambios guardados' : 'No había cambios por guardar')
+    else toast(porGuardar.length ? 'Cambios guardados'
+      : esSospechosoAbierto(ticket) ? 'No había cambios. Para cerrarlo usa «Está bien, sacar de Fraude», arriba.'
+      : 'No había cambios por guardar')
   }
 
   async function actualizarHeader(id: string, campo: 'fecha_ticket' | 'comercio', valor: string) {
@@ -1274,6 +1276,11 @@ export default function TicketsPage() {
   const comerciosUnicos = [...new Set(tickets.map(t => t.comercio).filter((c): c is string => !!c))].sort()
   const baseTickets = comercioFiltro ? tickets.filter(t => (t.comercio ?? '') === comercioFiltro) : tickets
   const esSospechosoAbierto = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') === 'abierta'
+  // El motivo que escribe la app, dicho para un humano.
+  const motivoFraudeClaro = (m: string | null | undefined) =>
+    !m ? 'Alguien lo mandó a revisar.'
+      : m.startsWith('Tiene una copia') ? 'Se subió otra vez este mismo papel. La copia ya se rechazó y no cuenta; este sí cuenta. Si las dos fotos son la misma compra, todo está bien: sácalo de Fraude.'
+      : m
   const estaEnFraude = (t: Ticket) => !!t.sospechoso && (t.sospecha_estado ?? 'abierta') !== 'descartada'
   // Lo pendiente en Fraude no sale en Por revisar: se ve aqui aunque sea de otro mes, o nadie lo encontraria.
   const enFraudeAbiertos = [...baseTickets.filter(esSospechosoAbierto), ...pendientes.filter(t =>
@@ -1359,6 +1366,7 @@ export default function TicketsPage() {
         {t.sospecha_origen === 'manual' && <span className="chip-neutro">manual</span>}
         <span className="ml-auto text-sm text-zinc-200">{fmt(t.monto)}</span>
       </div>
+      {t.sospecha_motivo?.startsWith('Tiene una copia') && <p className="mt-1 text-[13px] text-zinc-400">{motivoFraudeClaro(t.sospecha_motivo)}</p>}
       <input defaultValue={t.sospecha_motivo ?? ''} onBlur={e => guardarMotivo(t, e.target.value)} placeholder="motivo de la sospecha…"
         className="campo mt-2 w-full py-1.5" />
       <div className="mt-2 flex items-center gap-2">
@@ -1702,6 +1710,16 @@ export default function TicketsPage() {
                   }}
                 />
                 <div className="flex gap-1 flex-wrap mt-2">{ticketBadges(detalle.ticket).map(b => <span key={b.label} className={TONE_PILL[alertTone(b.tipo)]}>{b.label}</span>)}</div>
+                {esSospechosoAbierto(detalle.ticket) && (
+                  <div className="mt-3 max-w-xl rounded-lg bg-red-900/40 px-3 py-2">
+                    <p className="text-xs font-medium text-red-300">Está en Fraude</p>
+                    <p className="mt-0.5 text-sm text-zinc-100">{motivoFraudeClaro(detalle.ticket.sospecha_motivo)}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button onClick={async () => { const t = detalle.ticket; setDetalle(null); await resolverSospecha(t, 'descartada') }} className="btn-quieto btn-sm">Está bien, sacar de Fraude</button>
+                      <button onClick={async () => { const t = detalle.ticket; setDetalle(null); await resolverSospecha(t, 'confirmada') }} className="btn-peligro btn-sm">Es fraude</button>
+                    </div>
+                  </div>
+                )}
                 {(alertas[detalle.ticket.id] ?? []).some(a => a.tipo === 'articulo_ocasional') && (
                   <AvisoOcasional items={detalle.items} catalogo={catalogo}
                     onListo={() => okAlertaArticulo(detalle.ticket, 'articulo_ocasional')} onNormal={p => cambiarUsoProd(p, 'normal')} />
