@@ -10,8 +10,8 @@
 - **EN PRODUCCION, funcional de punta a punta**, con dos negocios reales: Santa Elena y Wings Palace.
 - **`main` = `beta-amigos`** desde el 2026-11-13 (fusion por avance rapido de `7e148fb`: documentacion, candado de esquemas y `api-cuentas`; sin cambios de frontend). Ultimo cambio de pantallas: `bc3f9ba` (2026-11-08, Fraude se cierra desde el detalle). Vercel despliega solo desde `main`.
 - **Migraciones aplicadas:** hasta la 116.
-- **Edge functions (verificado en Supabase el 2026-11-13):** `api-cuentas` publicada = **v14 del 2026-11-13** (con OK de Alejandro; antes se comparo lo publicado con `origin/main`: iguales). Ya manda la forma de pago en `/bandeja`, en `/desglose?detalle=1` y en el conector MCP: `_trabajo_beta/scripts/qa_api_pagos.py` pasa esos puntos contra produccion. Le queda 1 fallo que NO es de la API: la prueba espera «6 tickets con tarjeta» en octubre y hoy hay 24 (dato fijo viejo en la prueba; corregirla para que no dependa de una cifra).
-- **Ramas (verificado 2026-11-13):** `main` y `beta-amigos` estan iguales. `modo-entrenamiento`, `rediseno-pistache`, `feat/fase1-backoffice-backend` y `feat/fase2-admin-panel` ya estan dentro de `main`: se pueden borrar. Los previews de Vercel usan la MISMA base de datos que produccion.
+- **Edge functions (verificado en Supabase el 2026-11-13):** `api-cuentas` publicada = **v14 del 2026-11-13** (con OK de Alejandro; antes se comparo lo publicado con `origin/main`: iguales). Ya manda la forma de pago en `/bandeja`, en `/desglose?detalle=1` y en el conector MCP: `_trabajo_beta/scripts/qa_api_pagos.py` pasa esos puntos contra produccion. La prueba pasa completa (se le quito una cifra fija vieja el 13-nov).
+- **Ramas (2026-11-13):** solo quedan `main` y `beta-amigos`, iguales. Las cuatro ramas viejas ya fusionadas se borraron (local y GitHub) junto con la copia de trabajo `entrenamiento`. Los previews de Vercel usan la MISMA base de datos que produccion.
 - **Base compartida (2026-11-12):** el proyecto de Supabase aloja tickets y POS, un esquema por sistema, con candado contra los esquemas `pos` y `bot_whatsapp`. Detalle en `CLAUDE.md`.
 
 ## Ultimas sesiones (detalle en la bitacora)
