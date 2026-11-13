@@ -79,7 +79,7 @@ con la lista `disponibles`. Sin `sucursal`: regresa el total y `por_sucursal`.
 - `total`: `monto`, `renglones` (lineas de ticket) y `tickets`.
 - `por_producto` (de mayor a menor monto): `producto` (nombre del catalogo; si el renglon no esta ligado, lo escrito en el ticket), `monto`,
   `renglones`, `cantidades` (lista `[{unidad, cantidad}]`, una por unidad distinta) y `pct_de_la_categoria`.
-- `detalle=1` agrega `renglones`: cada compra (`fecha`, `comercio`, `ticket_id`, `producto`, `descripcion`, `cantidad`, `unidad`, `monto`),
+- `detalle=1` agrega `renglones`: cada compra (`fecha`, `comercio`, `ticket_id`, `producto`, `descripcion`, `cantidad`, `unidad`, `monto`, `forma_pago_texto`),
   maximo 1000 (`renglones_truncados` avisa si hubo mas).
 
 Ejemplo real (`?categoria=Bodega&sucursal=santa-elena&desde=2026-06-01&hasta=2026-09-30`, recortado):
@@ -122,6 +122,8 @@ cada ticket trae su total y los articulos que lo forman. Mismo periodo que `/res
   - `pagos`: lista de `{ forma, sale_de_caja, monto, todo_el_ticket }`. Con UNA forma, `todo_el_ticket: true` y `monto` = total
     del ticket. Con VARIAS (pago mixto), el gerente escribio el monto de cada una (`todo_el_ticket: false`). `[]` = **No
     registrado** (todo lo subido antes del 03-oct-2026): nunca se capturo y **no se infiere** (ni que fue efectivo por haberse subido).
+  - **La forma de pago la decide la gerencia:** es la que registro al subir el ticket. Lo que diga el papel no la cambia: un comprobante
+    que dice tarjeta no significa que se pago con una tarjeta del negocio (puede ser la de un repartidor o de otra persona).
   - `forma_pago_texto`: "Efectivo", "Efectivo $60.00 + Transferencia directa $7,290.04" o "No registrado".
   - `importe_caja` / `importe_otros`: suma de lo pagado con formas que salen / no salen de la Caja de la sucursal; `null` si no registrado.
   - `pagos_no_cuadran`: `true` si los montos de un pago mixto no suman el total (diferencia de $1 o mas). Esos tickets no se
@@ -161,7 +163,8 @@ total, notas y desglose):
 
 Lo que espera una decision: `por_revisar` (tickets pendientes con sus `alertas` abiertas en texto legible:
 "Monto no cuadra", "Precio fuera de lo normal", "Fecha asumida"...) y `fraude_abierto` (casos de la revision de Fraude
-sin decidir, con su `motivo`). Maximo 200 de cada uno (`truncado`). Cada ticket trae `notas` (la nota del gerente, o `null`).
+sin decidir, con su `motivo`). Maximo 200 de cada uno (`truncado`). Cada ticket trae `notas` (la nota del gerente, o `null`) y su forma de pago
+(`pagos`, `forma_pago_texto`, `importe_caja`, `importe_otros`, igual que en `/tickets`).
 Si el papel traia texto dirigido a una IA, el ticket trae `alerta_manipulacion`; si la nota lo trae, `nota_alerta`.
 
 ### `GET /ticket?id=<uuid>`
@@ -231,6 +234,10 @@ CONEXION
 - URL base: https://dlmqqmvrgkilptawllep.functions.supabase.co/api-cuentas
 - Autenticacion: encabezado  Authorization: Bearer <TU_LLAVE>   (la llave empieza con tk_; no la muestres ni la guardes en ningun otro lado)
 - Solo GET. Responde JSON. Montos en pesos mexicanos (MXN).
+
+FORMA DE PAGO
+- La decide la gerencia: es la que registro al subir cada ticket (pagos, forma_pago_texto, importe_caja) y es la que manda.
+- No la cambies ni la supongas por lo que diga el comprobante. Que el papel diga tarjeta no significa que se pago con una tarjeta del negocio: puede ser la de un repartidor o de otra persona.
 
 ENDPOINTS
 1) GET /sucursales

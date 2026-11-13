@@ -54,3 +54,8 @@ frontend/public/_qa_sesion.json
 frontend/public/_qa_inv.txt
 # Temporales de la CLI de Supabase
 **/supabase/.temp/
+
+# Copias de documentos viejos (el historial ya vive en git)
+_archive/
+.claude/launch.json
+.claude/worktrees/

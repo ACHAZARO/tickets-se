@@ -116,8 +116,9 @@
 ### 16. Previews de Vercel de las ramas fallan (16-oct-2026)
 - **Desde el 07-oct** todo build de rama (Preview) falla con `supabaseUrl is required` al prerenderizar /admin: las variables
   NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY solo estan en el entorno Production de Vercel. Produccion construye bien.
-- **Hacer (con OK de Alejandro, es configuracion de Vercel):** copiar esas dos variables al entorno Preview, o ignorar los
-  previews. No urge: no afecta a usuarios.
+- **RESUELTO 12-nov-2026:** Alejandro pidio arreglarlo. Se copiaron al entorno Preview (todas las ramas) las tres variables
+  publicas: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY y NEXT_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL (`vercel env add ... preview`).
+  Redeploy de `beta-amigos` (2adbfd7) quedo READY. Ojo: los previews usan la MISMA base de datos que produccion.
 
 ## Hecho
 - 06-oct: la IA corrige faltas de ortografia ("zanaboria", "xanahoria", "huebo") -> `_shared/catalog.ts`.

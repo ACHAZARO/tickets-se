@@ -3,13 +3,13 @@
 ## Descripcion
 Web app movil para que gerentes de restaurantes (Santa Elena) suban fotos de tickets de gastos operacionales. Backend en Edge Functions (Deno) procesa imagenes con Gemini (vision) **en segundo plano**, extrae **multiples productos por ticket**, auto-categoriza cada renglon y vuelca los datos a Google Sheets. Un admin web audita el costo vs ventas **por sucursal**.
 
-> **Estado vivo y "como funciona al momento": ver `PROJECT_STATE.md`.** Este archivo es la guia estable; PROJECT_STATE tiene el detalle actualizado del flujo, tablas y secciones del admin.
+> **Estado de hoy: `PROJECT_STATE.md`** (corto, se reescribe). Este archivo es la guia estable. Historia de sesiones: `BITACORA_SESIONES.md` (consulta puntual, no de arranque).
 
 ## Agentes en este repo (Codex retirado 2026-07-28)
 - **Claude es el unico agente activo**: edita codigo, despliega edge functions y aplica migraciones (Supabase MCP). El frontend lo despliega Vercel solo al hacer push a `main`. La antigua colaboracion Claude+Codex y su bitacora en `AGENTS.md` quedan SOLO como historial.
-- Antes de cambiar codigo: leer `CLAUDE.md`/`AGENTS.md`, `PROJECT_STATE.md` y el archivo especifico a tocar.
-- `CLAUDE.md` y `AGENTS.md` se mantienen sincronizados en instrucciones estables. `PROJECT_STATE.md` manda para el estado vivo, hallazgos recientes, pendientes y decisiones.
-- Deuda o bugs sin corregir en la sesion: dejarlos en `PROJECT_STATE.md` con fecha, evidencia y siguiente accion sugerida.
+- Antes de cambiar codigo: leer `CLAUDE.md`, `PROJECT_STATE.md` y el archivo especifico a tocar.
+- `CLAUDE.md` es la unica guia; `AGENTS.md` solo apunta aqui (desde 2026-11-12 ya no se mantienen dos copias). `PROJECT_STATE.md` manda para el estado de hoy, pendientes y decisiones vigentes.
+- Deuda o bugs sin corregir en la sesion: una linea en `PROJECT_STATE.md` (o un punto en `PENDIENTES_APP.md`) con fecha y siguiente accion; la evidencia y el detalle van en `BITACORA_SESIONES.md`.
 - No pisar cambios no propios. Revisar `git status` antes de editar, usar paths especificos al stagear y nunca commitear secretos.
 
 ## Stack
@@ -220,10 +220,10 @@ Configurados como Supabase Secrets (`npx supabase secrets set`):
 | `superpowers:writing-plans` | Tareas multi-paso |
 | `superpowers:executing-plans` | Seguir un plan aprobado |
 | `code-reviewer` | Despues de cambios significativos; 2do pase sobre el diff en commits >200 LOC |
-| `mem-search` | Historial de sesiones viejas (claude-mem REACTIVADO 2026-07-28) |
+| `historial` | Historial de sesiones viejas (sistema propio; claude-mem ELIMINADO 2026-11-12) |
 | `frontend-design` | Redisenos grandes de UI |
 | `anthropic-skills:pdf` / `xlsx` | Si necesitan reportes |
-| `vercel:deploy` / `vercel:status` | Problemas de deployment |
+| Conector de Vercel (claude.ai) | Problemas de deployment y verificar builds (el plugin `vercel` se desinstaló el 2026-11-12) |
 
 ### NO usar en este proyecto
 - `gws-*` -- No usamos Google Workspace directamente
@@ -248,11 +248,8 @@ Configurados como Supabase Secrets (`npx supabase secrets set`):
 - Si cambias frontend: Vercel auto-deploya desde GitHub
 
 ### Al cerrar sesion (OBLIGATORIO)
-1. **Actualiza `PROJECT_STATE.md`** con:
-   - Que se hizo
-   - Que quedo pendiente
-   - Decisiones tecnicas tomadas
-   - Errores encontrados y como se resolvieron
+1. **REESCRIBE `PROJECT_STATE.md`** (no lo alargues; maximo 1-2 paginas): que hay en produccion, que sigue, que espera a Alejandro, decisiones vigentes.
+   **Lo que paso en la sesion** (que se hizo, decisiones tecnicas, errores y como se resolvieron, respaldos, datos corregidos) va como entrada NUEVA al inicio de `BITACORA_SESIONES.md` y como nota de cierre con la skill `historial`.
 2. **Commit y push** de los cambios a GitHub
 3. **Guarda memoria** si hubo decisiones no-obvias
 4. **Sesion sustancial:** actualiza `RECUPERACION.md` (secciones 2, 3 y 4) y refresca las copias de `respaldo-config-claude/` (comandos en su README) y corre despues el respaldo a Google Drive (`Documents\Claude\respaldar_claude_a_drive.ps1`, acceso directo `RESPALDO A DRIVE.cmd` en el Escritorio). `DIRECTORIO_CUENTAS.md` se toca solo si cambio una cuenta, correo o llave (nunca con valores)
@@ -295,7 +292,7 @@ cd frontend && npx vercel --prod
 - `025` equivalencia 2 niveles (`contiene_sub_cantidad`/`contiene_sub_unidad`): caja → pz → ml
 - `026` revision de fraude (`sospechoso`, `sospecha_motivo`/`origen`/`grupo`/`estado`)
 - `027` hardening RPC grants v2 · `028` `ticket_items.orden` · `029` storage admin-only
-- `030`–`055`: ver `PROJECT_STATE.md` (IA de lectura, revision contra foto, envios, Bodega, etc.)
+- `030`–`055`: ver `BITACORA_SESIONES.md` (IA de lectura, revision contra foto, envios, Bodega, etc.)
 - `056` `resumen_tickets` (subidos vs oficiales) + `api_keys` + `sucursales.es_prueba` · `057` motivo fraude primero · `058` ajustes de revision (duplicado confirmado cuenta $0; solo sucursales activas) · `059` cinta de empaque a Bodega · `060` `cuentas` + llaves de API atadas a una cuenta (la API nunca es global) · `068` `desglose_categoria` (API `/desglose`: una categoria por producto, ej. Bodega) · `069` unidades en minusculas en el desglose · `070`-`072` unificar productos del catalogo (motor con respaldo, detector `sugerir_unificaciones`, descartados) · `075` indices por producto + detector rapido (65 ms) · `076`-`079` INSUMOS (un insumo = varias presentaciones; Entradas y Stock suman juntas) · `081`-`082` `reporte_tickets` (API `/tickets` + hoja Tickets del Excel: ticket por ticket con estado y desglose) · `083` NOTAS del gerente al subir (`registros_tickets.nota` / `nota_para_ia`): solo para humanos, NUNCA se mandan a Gemini; salen en `reporte_tickets` (`notas`), la API y el Excel · `084`-`086` FORMAS DE PAGO: `formas_pago` por cuenta (las crea el admin en Sucursales; `sale_de_caja`; se apagan, no se borran) + `ticket_pagos` (una forma = todo el ticket, monto NULL; varias = monto por forma; sin filas = no registrado, antes del 03-oct-2026); obligatorio al subir; alerta `pagos_no_cuadran` si un mixto no suma el total (no se aprueba solo); `reporte_tickets` con `pagos`, `forma_pago_texto`, `importe_caja/otros`, `motivo_rechazo`, `moneda`, `actualizado` · `087` `revisor_ia_pruebas` (bitacora del SEGUNDO REVISOR IA en prueba; ver `PLAN_REVISOR_IA.md`) · `094`-`096` articulos Ocasional / No autorizado (`catalogo_productos.uso`, `ticket_items.autorizacion`) · `097` resolver fraude por grupo · `098` modo entrenamiento · `099` ARTICULOS VIGILADOS (`catalogo_productos.vigilar` + `vigilar_motivo`; alerta `articulo_vigilado` a Por revisar, el revisor IA nunca la aprueba) · `100` unificar productos conserva Vigilar · `101` aislamiento por cuenta (RLS, `mi_cuenta()`, `cuenta_usuarios`) · `102`-`103` alertas `pago_distinto` y `nota_a_mano` · `104` invitaciones, alta de cuenta, tope por mes, panel de negocios · `105` historial de precios en la unidad del articulo · `106` categorias de la cuenta de prueba · `107`-`108` tarjetas conocidas · `109` cerrar mes y `salidas_caja` (tickets faltantes) · `110` sucursal de prueba por cuenta y fin de la politica anon de sucursales · `111` cualquier renglon puede no contar · `112` funciones de trigger sin permiso de ejecucion · `113`-`114` `salidas_caja.tickets_extra` y `no_es` (una salida con varios tickets; "no es este") · `115` `tarjeta_repone_caja`: el gerente paga con su tarjeta y toma de la caja, ese papel ya no se pregunta · `116` unificar conserva la marca mas estricta (no_autorizado > ocasional > normal) y la decision de cada renglon
 
 ## Base compartida: un esquema por sistema (2026-11-12)
@@ -303,7 +300,7 @@ El proyecto de Supabase `tickets-se` (`dlmqqmvrgkilptawllep`) aloja Tickets y, m
 
 | Esquema | Sistema | Carpeta / repo |
 |---|---|---|
-| `public` | **Tickets** (este proyecto, sin cambios) | `Documents\Claude\Projectsevisión de tickets` · `ACHAZARO/tickets-se` |
+| `public` | **Tickets** (este proyecto, sin cambios) | `Documents\Claude\Projects\revisión de tickets` · `ACHAZARO/tickets-se` |
 | `pos` | **POS** del restaurante (mudanza PENDIENTE, la hace el hermano del dueño) | `C:\Proyectos\santa-elena-pos` · `ACHAZARO/santa-elena-pos` |
 
 El **bot de WhatsApp NO vive aqui**: tendra su propio proyecto de Supabase (el viejo `santa-elena-pos`, que se renombrara "bot-whatsapp").
@@ -338,10 +335,10 @@ Tickets de sucursales reales NO se eliminan (se rechazan) para no perder evidenc
 
 ---
 
-## claude-mem REACTIVADO (2026-07-28)
+## Historial de sesiones — sistema propio `historial` (claude-mem ELIMINADO 2026-11-12)
 
-El plugin **claude-mem** (busqueda en transcripts de sesiones pasadas via `mem-search`) esta **ACTIVO** de nuevo desde 2026-07-28 (`"claude-mem@thedotmack": true` en `~\.claude\settings.json`; estuvo apagado 2026-06-16 → 2026-07-28, los datos nunca se borraron). Orden de memoria: este CLAUDE.md → PROJECT_STATE.md → MEMORY.md curado → `mem-search` para arqueologia.
+El plugin **claude-mem** fue **ELIMINADO el 2026-11-12** (entró en un bucle que se observaba a sí mismo y gastaba tokens; además corría programas en cada acción). No reinstalarlo. Todo su historial se conservó y se consulta con el skill propio **`historial`** (`python ~/.claude/skills/historial/buscar.py "texto"`), solo cuando este `CLAUDE.md` + el estado vivo + `MEMORY.md` no respondan. Al cerrar una sesión sustancial se guarda una nota con `anotar.py`. Detalle en `~\.claude\CLAUDE.md`.
 
 ---
 
-**Ultima actualizacion:** 2026-07-28 — Codex retirado del flujo (Claude unico agente); skills estandar actualizadas; claude-mem reactivado. (Anterior 2026-06-08: Tickets concentra revision, renglones y relectura IA. Detalle vivo en `PROJECT_STATE.md`.)
+**Ultima actualizacion:** 2026-07-28 — Codex retirado del flujo (Claude unico agente); skills estandar actualizadas; claude-mem reactivado. (Anterior 2026-06-08: Tickets concentra revision, renglones y relectura IA. Detalle en `BITACORA_SESIONES.md`.) 2026-11-12: una sola guia (AGENTS.md apunta aqui), estado corto que se reescribe y bitacora aparte.
