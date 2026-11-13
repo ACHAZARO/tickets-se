@@ -3,22 +3,23 @@
 > Foto del estado de HOY. **Se reescribe en cada cierre de sesion; no se alarga.** Lo que paso en cada sesion va al inicio de `BITACORA_SESIONES.md` y a una nota de `historial`.
 > Cambio de computadora / recuperacion: `RECUPERACION.md` y `DIRECTORIO_CUENTAS.md`.
 >
-> **Ultima actualizacion:** 2026-11-13 (ramas revisadas; API de cuentas comprobada contra produccion).
+> **Ultima actualizacion:** 2026-11-13 (API de cuentas v14 publicada y probada; `beta-amigos` fusionada a `main`).
 
 ## Produccion
 
 - **EN PRODUCCION, funcional de punta a punta**, con dos negocios reales: Santa Elena y Wings Palace.
-- **`main` = `bc3f9ba`** (2026-11-08): Fraude se cierra desde el detalle del ticket y la original sale de Fraude con su copia. Vercel despliega solo desde `main`.
+- **`main` = `beta-amigos`** desde el 2026-11-13 (fusion por avance rapido de `7e148fb`: documentacion, candado de esquemas y `api-cuentas`; sin cambios de frontend). Ultimo cambio de pantallas: `bc3f9ba` (2026-11-08, Fraude se cierra desde el detalle). Vercel despliega solo desde `main`.
 - **Migraciones aplicadas:** hasta la 116.
-- **Edge functions (verificado en Supabase el 2026-11-13):** `api-cuentas` publicada = **v13 del 2026-11-03**. La mejora del 05-nov (forma de pago en `/bandeja`, en `/desglose?detalle=1` y en el conector MCP) esta en el repo pero **SIN publicar**: `_trabajo_beta/scripts/qa_api_pagos.py` falla en esos 3 puntos contra produccion. Publicar con `npx supabase functions deploy api-cuentas --project-ref dlmqqmvrgkilptawllep --no-verify-jwt` desde `backend/` (pendiente del OK de Alejandro) y volver a correr la prueba.
-- **Ramas (verificado 2026-11-13):** solo `beta-amigos` va por delante de `main` (documentacion, candado de esquemas y el codigo de `api-cuentas` sin publicar). `modo-entrenamiento`, `rediseno-pistache`, `feat/fase1-backoffice-backend` y `feat/fase2-admin-panel` ya estan dentro de `main`: se pueden borrar. Los previews de Vercel usan la MISMA base de datos que produccion.
+- **Edge functions (verificado en Supabase el 2026-11-13):** `api-cuentas` publicada = **v14 del 2026-11-13** (con OK de Alejandro; antes se comparo lo publicado con `origin/main`: iguales). Ya manda la forma de pago en `/bandeja`, en `/desglose?detalle=1` y en el conector MCP: `_trabajo_beta/scripts/qa_api_pagos.py` pasa esos puntos contra produccion. Le queda 1 fallo que NO es de la API: la prueba espera «6 tickets con tarjeta» en octubre y hoy hay 24 (dato fijo viejo en la prueba; corregirla para que no dependa de una cifra).
+- **Ramas (verificado 2026-11-13):** `main` y `beta-amigos` estan iguales. `modo-entrenamiento`, `rediseno-pistache`, `feat/fase1-backoffice-backend` y `feat/fase2-admin-panel` ya estan dentro de `main`: se pueden borrar. Los previews de Vercel usan la MISMA base de datos que produccion.
 - **Base compartida (2026-11-12):** el proyecto de Supabase aloja tickets y POS, un esquema por sistema, con candado contra los esquemas `pos` y `bot_whatsapp`. Detalle en `CLAUDE.md`.
 
 ## Ultimas sesiones (detalle en la bitacora)
 
 - **2026-11-08** — Fraude: los originales de tickets resubidos ya se pueden cerrar desde el detalle.
 - **2026-11-06** — Tickets resubidos por duda quedan como duplicado SIN Fraude. Credito de Gemini.
-- **2026-11-05** — La API de cuentas manda la forma de pago en todo ticket: el codigo esta en el repo, pero **NO esta publicado** (ver Produccion).
+- **2026-11-05** — La API de cuentas manda la forma de pago en todo ticket: el codigo quedo sin publicar hasta el 13-nov.
+- **2026-11-13** — Guias adelgazadas, `api-cuentas` v14 publicada y `beta-amigos` fusionada a `main`.
 - **2026-11-04** — Tickets con el mismo encabezado en todas las pestanas; «Tortilla» unificada en Wings; migracion 116; pantalla de Tickets faltantes RETIRADA.
 - **2026-11-03** — Beta para negocios de amigos publicada (multi-negocio, alta de cuentas, alertas nuevas, QA 63 de 63). Plan: `PLAN_BETA_AMIGOS.md`.
 

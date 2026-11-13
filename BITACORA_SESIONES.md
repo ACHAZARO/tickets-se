@@ -5,6 +5,13 @@
 
 ---
 
+## 2026-11-13 — API de cuentas v14 publicada y beta-amigos fusionada a main
+
+- Antes de publicar se descargo `api-cuentas` de produccion y se comparo con `origin/main`: iguales (nadie publico encima).
+- Publicada con `npx supabase functions deploy api-cuentas --project-ref dlmqqmvrgkilptawllep --no-verify-jwt --yes` desde `backend/` (la CLI nueva pide `--yes` en corridas de agente). Quedo en v14, `verify_jwt=false` como antes.
+- `_trabajo_beta/scripts/qa_api_pagos.py` contra produccion: pasan `/bandeja`, `/desglose detalle` y MCP bandeja. Queda 1 fallo de la prueba misma (espera 6 tickets con tarjeta en octubre; hoy hay 24).
+- `beta-amigos` (`7e148fb`) fusionada a `main` por avance rapido y subida. Sin cambios de frontend.
+
 # PROJECT_STATE.md — Revision de Tickets
 
 > Estado vivo del proyecto. Ultima actualizacion: 2026-11-03.
